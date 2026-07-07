@@ -123,6 +123,12 @@ scheduler:
       memory: 768Mi
 
 webserver:
+  strategy:
+    type: Recreate
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+    timeoutSeconds: 20
   resources:
     requests:
       cpu: 100m
