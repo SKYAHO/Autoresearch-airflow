@@ -52,6 +52,8 @@ postgresql:
     tag: 16.1.0-debian-11-r15
     pullPolicy: IfNotPresent
   primary:
+    nodeSelector:
+      cloud.google.com/gke-nodepool: airflow-dev
     resources:
       requests:
         cpu: 50m
@@ -116,6 +118,8 @@ env:
     value: "0"
 
 scheduler:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
   logGroomerSidecar:
     enabled: false
   livenessProbe:
@@ -133,6 +137,8 @@ scheduler:
       memory: 768Mi
 
 webserver:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
   strategy:
     type: Recreate
   args:
@@ -157,6 +163,8 @@ webserver:
       memory: 768Mi
 
 migrateDatabaseJob:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
   resources:
     requests:
       cpu: 50m
@@ -166,6 +174,8 @@ migrateDatabaseJob:
       memory: 256Mi
 
 createUserJob:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
   resources:
     requests:
       cpu: 50m
