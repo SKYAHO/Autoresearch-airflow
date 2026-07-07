@@ -35,6 +35,11 @@ workers:
 
 postgresql:
   enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 16.1.0-debian-11-r15
+    pullPolicy: IfNotPresent
   primary:
     resources:
       requests:
