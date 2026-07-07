@@ -27,6 +27,11 @@ def test_batch_dockerfile_uses_uv_and_autoresearch_source() -> None:
     assert "(git fetch --depth 1 origin" in content
 
 
+def test_astro_airflow_image_has_required_build_context_files() -> None:
+    assert (ROOT / "packages.txt").read_text(encoding="utf-8").strip() == ""
+    assert (ROOT / "requirements.txt").read_text(encoding="utf-8").strip() == ""
+
+
 def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     values = (ROOT / "helm" / "values-dev.yaml").read_text(encoding="utf-8")
 
