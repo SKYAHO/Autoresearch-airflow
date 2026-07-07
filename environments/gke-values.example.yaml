@@ -1,0 +1,43 @@
+# Copy this file to a private values file and replace placeholders before deployment.
+
+global:
+  projectId: "your-gcp-project-id"
+  region: "asia-northeast3"
+
+airflow:
+  scheduler:
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: "autoresearch-airflow@your-gcp-project-id.iam.gserviceaccount.com"
+  workers:
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: "autoresearch-airflow@your-gcp-project-id.iam.gserviceaccount.com"
+  triggerer:
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: "autoresearch-airflow@your-gcp-project-id.iam.gserviceaccount.com"
+
+  dags:
+    gitSync:
+      repo: https://github.com/SKYAHO/Autoresearch.git
+      branch: main
+      ref: main
+      rev: HEAD
+      subPath: dags
+      wait: 30
+
+  webserver:
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: "autoresearch-airflow@your-gcp-project-id.iam.gserviceaccount.com"
+    defaultUser:
+      username: admin
+      email: admin@example.com
+      firstName: Autoresearch
+      lastName: Admin
+
+  # If you use a managed Cloud SQL Postgres instance, disable the bundled Postgres
+  # and provide the official Airflow chart database connection values here.
+  postgresql:
+    enabled: true

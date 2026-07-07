@@ -1,0 +1,15 @@
+# Autoresearch Airflow infrastructure ownership
+# GitHub usernames can be replaced with actual team owners later.
+
+# GitHub settings, Actions, issue/PR templates
+/.github/ @SKYAHO
+
+# Helm chart and deployment values
+/charts/ @SKYAHO
+/environments/ @SKYAHO
+
+# Operations documentation
+/docs/ @SKYAHO
+/README.md @SKYAHO
+/AGENTS.md @SKYAHO
+/CLAUDE.md @SKYAHO

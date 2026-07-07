@@ -1,0 +1,61 @@
+name: Operation task
+description: Deployment, migration, rollback, or maintenance task
+labels: ["operation"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: 작업 목표
+      placeholder: 예) Airflow DAG sync interval을 30초에서 60초로 변경합니다.
+    validations:
+      required: true
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: 작업 유형
+      options:
+        - Deploy
+        - Rollback
+        - Migration
+        - Configuration change
+        - Secret rotation
+        - Incident follow-up
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: 실행 계획
+      placeholder: |
+        1. values 변경
+        2. helm template 검증
+        3. helm upgrade 적용
+        4. kubectl logs 확인
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: 롤백 계획
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: 검증 방법
+      placeholder: |
+        - helm lint ...
+        - kubectl get pods -n airflow
+        - airflow dags list
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 운영 체크리스트
+      options:
+        - label: 변경에 필요한 Secret/credential은 Git 밖에서 관리합니다.
+          required: true
+        - label: 영향 범위와 롤백 방법을 PR 또는 이슈에 명시합니다.
+          required: true
