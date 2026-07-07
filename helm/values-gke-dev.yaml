@@ -125,6 +125,11 @@ scheduler:
 webserver:
   strategy:
     type: Recreate
+  webserverConfig: |
+    from airflow import configuration as conf
+
+    SQLALCHEMY_DATABASE_URI = conf.get("database", "SQL_ALCHEMY_CONN")
+    CSRF_ENABLED = True
   startupProbe:
     failureThreshold: 30
     periodSeconds: 10
