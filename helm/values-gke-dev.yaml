@@ -1,0 +1,124 @@
+# Concrete dev deployment values for apache-airflow/airflow chart 1.16.0.
+# Target cluster: ar-infra-501607 / autoresearch-dev-gke.
+
+airflowVersion: "2.10.5"
+executor: LocalExecutor
+
+defaultAirflowRepository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+defaultAirflowTag: "78f9851"
+
+images:
+  airflow:
+    repository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+    tag: "78f9851"
+    pullPolicy: IfNotPresent
+
+webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
+
+redis:
+  enabled: false
+
+flower:
+  enabled: false
+
+statsd:
+  enabled: false
+
+triggerer:
+  enabled: false
+
+dagProcessor:
+  enabled: false
+
+workers:
+  replicas: 0
+
+postgresql:
+  enabled: true
+
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: true
+    repo: https://github.com/SKYAHO/Autoresearch-airflow.git
+    branch: main
+    rev: HEAD
+    ref: main
+    depth: 1
+    subPath: dags
+    period: 30s
+
+env:
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "False"
+  - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
+    value: "ar-infra-501607-autoresearch-dev-raw-data"
+  - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
+    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:78f9851"
+  - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
+    value: "airflow"
+  - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
+    value: "autoresearch-batch"
+  - name: AIRFLOW_VAR_ACTION_LOG_GENERATOR
+    value: "rule_based"
+  - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_OUTPUT_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
+    value: "24"
+  - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR
+    value: "0.02"
+  - name: AIRFLOW_VAR_ACTION_LOG_PERSONALIZED_RATIO
+    value: "0.7"
+  - name: AIRFLOW_VAR_ACTION_LOG_POPULAR_RATIO
+    value: "0.2"
+  - name: AIRFLOW_VAR_ACTION_LOG_EXPLORATION_RATIO
+    value: "0.1"
+  - name: AIRFLOW_VAR_ACTION_LOG_SEED
+    value: "42"
+  - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
+    value: "1"
+  - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE
+    value: "0"
+
+scheduler:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+webserver:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+migrateDatabaseJob:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+createUserJob:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
