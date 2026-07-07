@@ -1,0 +1,14 @@
+[project]
+name = "autoresearch-airflow"
+version = "0.1.0"
+description = "Airflow delivery layer for AutoResearch batch pipelines"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

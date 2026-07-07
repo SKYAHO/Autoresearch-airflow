@@ -1,0 +1,59 @@
+# Example values for the official Apache Airflow Helm chart.
+# Infrastructure-owned values such as namespace, Workload Identity, and secrets
+# should be finalized in SKYAHO/Autoresearch-infra.
+
+images:
+  airflow:
+    repository: asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-airflow
+    tag: replace-me
+    pullPolicy: IfNotPresent
+
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: true
+    repo: https://github.com/SKYAHO/Autoresearch-airflow.git
+    branch: main
+    rev: HEAD
+    depth: 1
+    subPath: dags
+    period: 30s
+
+env:
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "False"
+  - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
+    value: "<gcs-bucket-name-without-gs-prefix>"
+  - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
+    value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch:replace-me"
+  - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
+    value: "airflow"
+  - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
+    value: "autoresearch-batch"
+  - name: AIRFLOW_VAR_ACTION_LOG_GENERATOR
+    value: "rule_based"
+  - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_OUTPUT_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
+    value: "24"
+  - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR
+    value: "0.02"
+  - name: AIRFLOW_VAR_ACTION_LOG_PERSONALIZED_RATIO
+    value: "0.7"
+  - name: AIRFLOW_VAR_ACTION_LOG_POPULAR_RATIO
+    value: "0.2"
+  - name: AIRFLOW_VAR_ACTION_LOG_EXPLORATION_RATIO
+    value: "0.1"
+  - name: AIRFLOW_VAR_ACTION_LOG_SEED
+    value: "42"
+  - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
+    value: "1"
+  - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE
+    value: "0"
