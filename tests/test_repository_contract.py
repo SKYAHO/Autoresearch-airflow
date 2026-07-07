@@ -16,6 +16,29 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "youtube_gcs_action_log_pipeline" in source
 
 
+def test_kpo_runtime_fields_are_not_jinja_literals() -> None:
+    dag_path = ROOT / "dags" / "youtube_gcs_action_log_pipeline.py"
+    tree = ast.parse(dag_path.read_text(encoding="utf-8"))
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Name) or node.func.id != "KubernetesPodOperator":
+            continue
+
+        keyword_values = {keyword.arg: keyword.value for keyword in node.keywords}
+        for field_name in ("service_account_name", "image_pull_policy"):
+            value = keyword_values[field_name]
+            assert not (
+                isinstance(value, ast.Constant)
+                and isinstance(value.value, str)
+                and "{{" in value.value
+            ), f"{field_name} is not rendered by KubernetesPodOperator templating"
+        return
+
+    raise AssertionError("KubernetesPodOperator call not found")
+
+
 def test_batch_dockerfile_uses_uv_and_autoresearch_source() -> None:
     dockerfile = ROOT / "docker" / "batch" / "Dockerfile"
     content = dockerfile.read_text(encoding="utf-8")

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from airflow import DAG
+from airflow.models import Variable
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from kubernetes.client import models as k8s
 
@@ -21,6 +22,12 @@ from autoresearch_airflow.dag_config import (
 
 _KST = ZoneInfo("Asia/Seoul")
 _SETTINGS = ActionLogDagSettings()
+_KPO_SERVICE_ACCOUNT = Variable.get(
+    "AIRFLOW_KPO_SERVICE_ACCOUNT", default_var="autoresearch-batch"
+)
+_BATCH_IMAGE_PULL_POLICY = Variable.get(
+    "AUTORESEARCH_BATCH_IMAGE_PULL_POLICY", default_var="IfNotPresent"
+)
 
 
 with DAG(
@@ -40,8 +47,8 @@ with DAG(
         image="{{ var.value.AUTORESEARCH_BATCH_IMAGE }}",
         cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
         arguments=build_action_log_kpo_arguments(_SETTINGS),
-        service_account_name="{{ var.value.get('AIRFLOW_KPO_SERVICE_ACCOUNT', 'autoresearch-batch') }}",
-        image_pull_policy="{{ var.value.get('AUTORESEARCH_BATCH_IMAGE_PULL_POLICY', 'IfNotPresent') }}",
+        service_account_name=_KPO_SERVICE_ACCOUNT,
+        image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
         in_cluster=True,
         get_logs=True,
         is_delete_operator_pod=True,
