@@ -35,6 +35,18 @@ workers:
 
 postgresql:
   enabled: true
+  primary:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+logs:
+  persistence:
+    enabled: false
 
 dags:
   persistence:
@@ -88,37 +100,39 @@ env:
     value: "0"
 
 scheduler:
+  logGroomerSidecar:
+    enabled: false
   resources:
     requests:
       cpu: 100m
-      memory: 512Mi
+      memory: 384Mi
     limits:
       cpu: 500m
-      memory: 1Gi
+      memory: 768Mi
 
 webserver:
   resources:
     requests:
       cpu: 100m
-      memory: 512Mi
+      memory: 384Mi
     limits:
       cpu: 500m
-      memory: 1Gi
+      memory: 768Mi
 
 migrateDatabaseJob:
   resources:
     requests:
-      cpu: 100m
-      memory: 256Mi
+      cpu: 50m
+      memory: 128Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 250m
+      memory: 256Mi
 
 createUserJob:
   resources:
     requests:
-      cpu: 100m
-      memory: 256Mi
+      cpu: 50m
+      memory: 128Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 250m
+      memory: 256Mi
