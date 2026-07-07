@@ -21,6 +21,10 @@ config:
     dag_processor_manager_log_location: /tmp/airflow/logs/dag_processor_manager/dag_processor_manager.log
   scheduler:
     child_process_log_directory: /tmp/airflow/logs/scheduler
+  webserver:
+    workers: "1"
+    web_server_master_timeout: "300"
+    web_server_worker_timeout: "300"
 
 redis:
   enabled: false
@@ -114,6 +118,12 @@ env:
 scheduler:
   logGroomerSidecar:
     enabled: false
+  livenessProbe:
+    timeoutSeconds: 30
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+    timeoutSeconds: 30
   resources:
     requests:
       cpu: 100m
@@ -125,6 +135,10 @@ scheduler:
 webserver:
   strategy:
     type: Recreate
+  args:
+    - bash
+    - -c
+    - exec airflow webserver --pid /tmp/airflow-webserver.pid
   webserverConfig: |
     from airflow import configuration as conf
 
