@@ -35,3 +35,13 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "enabled: true" in values
     assert "https://github.com/SKYAHO/Autoresearch-airflow.git" in values
     assert "subPath: dags" in values
+
+
+def test_cloudbuild_builds_airflow_and_batch_images_from_main() -> None:
+    config = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+
+    assert "docker/batch/Dockerfile" in config
+    assert "docker/airflow/Dockerfile" in config
+    assert "AUTORESEARCH_REF=main" in config
+    assert "autoresearch-batch:${_IMAGE_TAG}" in config
+    assert "autoresearch-airflow:${_IMAGE_TAG}" in config

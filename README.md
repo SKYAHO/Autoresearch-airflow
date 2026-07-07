@@ -48,3 +48,21 @@ Manual re-run example:
 python -m pytest
 python -m compileall autoresearch_airflow autoresearch_airflow_jobs dags
 ```
+
+## Build Images
+
+Local Docker is not required. Build and push both images with Cloud Build:
+
+```bash
+gcloud builds submit \
+  --project ar-infra-501607 \
+  --config cloudbuild.yaml \
+  --substitutions _IMAGE_TAG=<tag>
+```
+
+This builds:
+
+```text
+asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
+asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
+```

@@ -1,0 +1,31 @@
+substitutions:
+  _REGION: asia-northeast3
+  _REPOSITORY: autoresearch-dev-docker
+  _IMAGE_TAG: manual
+
+steps:
+  - id: build-batch-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - docker/batch/Dockerfile
+      - --build-arg
+      - AUTORESEARCH_REF=main
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/autoresearch-batch:${_IMAGE_TAG}
+      - .
+
+  - id: build-airflow-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - docker/airflow/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/autoresearch-airflow:${_IMAGE_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/autoresearch-batch:${_IMAGE_TAG}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/autoresearch-airflow:${_IMAGE_TAG}
