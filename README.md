@@ -66,3 +66,21 @@ This builds:
 asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
 asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
 ```
+
+## GKE Diagnostics
+
+Capture the current Airflow deployment evidence when debugging image pulls,
+resource scheduling, migrations, or init containers:
+
+```powershell
+.\scripts\collect_airflow_gke_diagnostics.ps1 `
+  -Namespace airflow `
+  -Release airflow `
+  -Tail 120
+```
+
+To keep a timestamped local log outside git:
+
+```powershell
+.\scripts\collect_airflow_gke_diagnostics.ps1 *> airflow-diagnostics.log
+```

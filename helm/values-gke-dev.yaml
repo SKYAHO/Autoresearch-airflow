@@ -15,6 +15,13 @@ images:
 
 webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
 
+config:
+  logging:
+    base_log_folder: /tmp/airflow/logs
+    dag_processor_manager_log_location: /tmp/airflow/logs/dag_processor_manager/dag_processor_manager.log
+  scheduler:
+    child_process_log_directory: /tmp/airflow/logs/scheduler
+
 redis:
   enabled: false
 
