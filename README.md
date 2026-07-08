@@ -115,6 +115,63 @@ helm template autoresearch-airflow charts/autoresearch-airflow \
 See `docs/gke-helm-gitsync.md` for the deployment, operations, and rollback
 runbook.
 
+## Team Airflow Access
+
+The dev Airflow Webserver is intentionally kept as a `ClusterIP` Service. Team
+members should access it through `kubectl port-forward` until an internal
+VPN/Bastion/IAP path is available.
+
+Prerequisites:
+
+- Your Google account is added to the GCP project with GKE access.
+- Your Google account is allowed in the Airflow OAuth allowlist.
+- The Google OAuth app includes `http://localhost:8080/oauth-authorized/google`
+  as an authorized redirect URI.
+- `gcloud` and `kubectl` are installed locally.
+
+Configure local cluster access:
+
+```powershell
+gcloud auth login
+gcloud config set project ar-infra-501607
+
+gcloud container clusters get-credentials autoresearch-dev-gke `
+  --zone asia-northeast3-a `
+  --project ar-infra-501607
+
+kubectl get pods -n airflow
+```
+
+Open the Airflow Webserver:
+
+```powershell
+kubectl port-forward -n airflow svc/airflow-webserver 8080:8080
+```
+
+Then open:
+
+```text
+http://localhost:8080/login/
+```
+
+Use your allowlisted Google account to sign in. Use `localhost`, not
+`127.0.0.1`, because the OAuth redirect URI is registered for
+`localhost:8080`. Stop port-forwarding with `Ctrl+C`.
+
+If access fails, check the current context and Webserver state:
+
+```powershell
+kubectl config current-context
+kubectl auth can-i get pods -n airflow
+kubectl get svc airflow-webserver -n airflow
+kubectl get deploy airflow-webserver -n airflow
+kubectl logs -n airflow deploy/airflow-webserver -c webserver --tail=80
+```
+
+Do not share OAuth client secrets, kubeconfig files, or Kubernetes Secret
+payloads in GitHub, chat, screenshots, or PR comments. The OAuth client secret
+is stored only in the `airflow-web-oauth` Kubernetes Secret.
+
 ## GKE Diagnostics
 
 Capture the current Airflow deployment evidence when debugging image pulls,
