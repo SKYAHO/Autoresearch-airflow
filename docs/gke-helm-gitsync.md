@@ -122,39 +122,69 @@ gcloud compute ssh autoresearch-dev-bastion `
 ## 팀원 로그인 검증 절차
 
 팀원에게 아래 절차를 전달하여 각자 계정으로 로그인이 되는지 확인합니다. 공용
-URL은 없으며, Bastion IAP 터널을 거쳐 `localhost:8080`으로만 접속합니다.
+URL은 없으며, Bastion IAP 터널을 거쳐 접속합니다. 표준은 SOCKS + 원격 DNS로 내부
+FQDN을 그대로 쓰는 방식이고, localhost 포트 포워딩은 fallback입니다.
 
 사전 준비(최초 1회):
 
 - gcloud CLI 설치 후 본인 GCP 계정으로 `gcloud auth login`을 실행합니다.
 - Bastion 접근에는 GCP IAM 권한(IAP-secured Tunnel User 및 compute 접근)이
-  필요합니다. 아래 SSH가 권한 오류로 막히면 관리자에게 IAM 권한 부여를
-  요청합니다.
-- 로컬 `8080` 포트를 사용하는 다른 프로세스가 없어야 합니다.
+  필요합니다. SSH가 권한 오류로 막히면 관리자에게 IAM 권한 부여를 요청합니다.
+- 표준(SOCKS)은 로컬 `1080` 포트, fallback은 로컬 `8080` 포트를 사용합니다. 해당
+  포트를 쓰는 다른 프로세스가 없어야 합니다.
 
-1. Bastion 포트 포워딩을 실행하고 이 터미널은 켜둔 채로 둡니다. 아래 명령은
-   PowerShell, cmd, bash에서 모두 한 줄로 동작합니다.
+**표준: SOCKS + 원격 DNS (FQDN 그대로 접속)**
+
+1. SOCKS 터널을 실행하고 이 터미널은 켜둔 채로 둡니다.
+
+   ```text
+   gcloud compute ssh autoresearch-dev-bastion --zone asia-northeast3-a --project ar-infra-501607 --tunnel-through-iap -- -N -D 1080
+   ```
+
+2. 브라우저 SOCKS5 프록시를 `localhost:1080`으로 설정하고 원격 DNS를 켭니다.
+   - Firefox: 설정 > 네트워크 설정 > 수동 프록시, SOCKS v5, 호스트 `localhost`
+     포트 `1080`, "SOCKS v5 사용 시 DNS 프록시 사용"을 체크합니다.
+   - Chrome: 원격 DNS를 기본 지원하지 않으므로, SwitchyOmega 등 프록시 확장이나
+     별도 프록시 도구로 SOCKS5 + 원격 DNS를 지정합니다.
+3. 브라우저에서 `http://airflow.dev.autoresearch.internal:8080/login/`으로
+   접속합니다.
+4. "Sign In with Google" 버튼을 누르고, `_GOOGLE_ALLOWED_EMAILS`에 등록된 본인
+   Google 계정으로 로그인합니다. gcloud에 쓴 GCP 계정과 다를 수 있으므로 등록한
+   이메일로 로그인합니다.
+5. Airflow 대시보드가 뜨고 상단에 Admin 메뉴가 보이면 정상입니다. 로그인 성공
+   여부와 본인 이메일을 관리자에게 회신합니다.
+
+터널 없이 curl로 경로만 빠르게 확인하려면:
+
+```text
+curl -x socks5h://localhost:1080 http://airflow.dev.autoresearch.internal:8080/health
+```
+
+**Fallback: 포트 포워딩 + localhost (SOCKS 설정 없이)**
+
+1. 포트 포워딩을 실행하고 터미널을 켜둡니다.
 
    ```text
    gcloud compute ssh autoresearch-dev-bastion --zone asia-northeast3-a --project ar-infra-501607 --tunnel-through-iap -- -N -L 8080:airflow.dev.autoresearch.internal:8080
    ```
 
-2. 브라우저에서 `http://localhost:8080/login/`으로 접속합니다. 반드시
-   `localhost:8080`을 사용해야 OAuth redirect URI가 일치합니다.
-3. "Sign in with Google" 버튼을 누르고, `_GOOGLE_ALLOWED_EMAILS`에 등록된
-   본인 Google 계정으로 로그인합니다. gcloud 로그인에 쓴 GCP 계정과 다를 수
-   있으므로 등록한 이메일로 로그인합니다.
-4. Airflow 대시보드가 뜨고 상단에 Admin 메뉴가 보이면 Admin 권한이 정상
-   부여된 것입니다. 로그인 성공 여부와 본인 이메일을 관리자에게 회신합니다.
+2. 브라우저에서 `http://localhost:8080/login/`으로 접속하여 위 4~5번과 동일하게
+   로그인합니다.
 
 문제 발생 시 확인 순서:
 
-- 브라우저가 연결되지 않으면 1번 포트 포워딩 터미널이 유지되고 있는지, `8080`
-  포트 충돌이 없는지 확인합니다.
+- 표준 경로에서 `redirect_uri_mismatch`가 나오면, Google OAuth client에
+  `http://airflow.dev.autoresearch.internal:8080/oauth-authorized/google`가
+  등록돼 있는지 관리자에게 확인합니다. 임시로는 fallback(localhost) 경로로
+  로그인할 수 있습니다.
+- FQDN이 안 풀리면(주소를 찾을 수 없음) 브라우저 SOCKS5 원격 DNS가 꺼져 있거나
+  `socks5`(로컬 DNS)로 설정된 경우입니다. 원격 DNS를 켜거나 fallback을 씁니다.
+- 브라우저가 연결되지 않으면 터널 터미널이 유지되는지, 포트(1080/8080) 충돌이
+  없는지 확인합니다.
 - 로그인 후 권한 오류나 빈 화면이 나오면 등록되지 않은 다른 Google 계정으로
-  로그인한 경우이므로, 등록한 이메일로 재시도합니다.
+  로그인한 경우이므로 등록한 이메일로 재시도합니다.
 - Google 로그인 창에서 막히면 해당 이메일이 `_GOOGLE_ALLOWED_EMAILS`와 OAuth
-  테스트 사용자에 모두 등록되어 있는지 관리자에게 확인합니다.
+  테스트 사용자에 모두 등록돼 있는지 관리자에게 확인합니다.
 
 ## dev Webserver Google OAuth
 
@@ -181,7 +211,11 @@ URIs에 등록합니다.
 
 ```text
 http://localhost:8080/oauth-authorized/google
+http://airflow.dev.autoresearch.internal:8080/oauth-authorized/google
 ```
+
+표준(SOCKS+FQDN) 접속은 두 번째 URI가, fallback(localhost) 접속은 첫 번째 URI가
+사용됩니다. 두 URI를 모두 등록해 두 경로를 병행 유지합니다.
 
 공용 URL은 열지 않습니다. 내부 FQDN을 브라우저에서 직접 쓰는 HTTPS 경로가 별도
 이슈로 추가되기 전까지 OAuth 검증은 Bastion 포트 포워딩의 localhost URI로
