@@ -216,7 +216,11 @@ webserver:
     }
 
     _GOOGLE_ALLOWED_EMAILS = {
-        "youngjun3108@gmail.com",
+        "pjy154444@gmail.com",     # 박주용
+        "shc7657@gmail.com",       # 성효창
+        "youngjun3108@gmail.com",  # 이영준
+        "toastome@gmail.com",      # 유현서
+        "hyeongyu.data@gmail.com", # 최현규
     }
 
     OAUTH_PROVIDERS = [
