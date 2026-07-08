@@ -78,6 +78,47 @@ webserver memory limit을 `1Gi`로 둡니다. 운영 중 `airflow dags list` 또
 trigger CLI가 `exit code 137`로 끝나면 Helm live values가 이 값보다 낮아졌는지
 먼저 확인합니다.
 
+## dev Webserver 내부 접근
+
+dev Airflow Webserver는 공용 URL로 열지 않습니다. 인프라 저장소의 #47/#48
+구성에 맞춰 Webserver Service는 GKE internal LoadBalancer로만 노출하고, 팀원은
+Bastion IAP 터널을 통해 접근합니다.
+
+```text
+local browser -> IAP tunnel -> autoresearch-dev-bastion
+  -> airflow.dev.autoresearch.internal -> internal LoadBalancer -> airflow-webserver
+```
+
+`helm/values-gke-dev.yaml`은 Terraform output으로 예약된 내부 ILB IP
+`10.10.0.12`를 `webserver.service.loadBalancerIP`로 사용합니다.
+
+Airflow chart 1.16.0은 `webserver.service.externalTrafficPolicy` 값을 직접
+렌더링하지 않습니다. Helm upgrade 후에는 NetworkPolicy의 source CIDR 제한이
+실효를 갖도록 Service를 `externalTrafficPolicy=Local`로 패치합니다.
+
+```powershell
+.\scripts\patch_airflow_webserver_service.ps1 `
+  -Namespace airflow `
+  -ServiceName airflow-webserver
+```
+
+팀원이 OAuth 로그인을 검증할 때는 내부 FQDN을 브라우저에 직접 열지 말고, Bastion
+포트 포워딩으로 localhost를 유지합니다. Google OAuth의 등록된 redirect URI가
+`http://localhost:8080/oauth-authorized/google`이기 때문입니다.
+
+```powershell
+gcloud compute ssh autoresearch-dev-bastion `
+  --zone asia-northeast3-a `
+  --project ar-infra-501607 `
+  --tunnel-through-iap `
+  -- -N -L 8080:airflow.dev.autoresearch.internal:8080
+```
+
+이후 브라우저에서 `http://localhost:8080/login/`으로 접속합니다. SOCKS 프록시로
+`http://airflow.dev.autoresearch.internal:8080`을 직접 열면 OAuth redirect URI가
+달라지므로, 내부 HTTPS 엔드포인트를 별도로 만들기 전에는 로그인 검증 경로로 쓰지
+않습니다.
+
 ## dev Webserver Google OAuth
 
 공용 URL로 Webserver를 노출하기 전에 dev 배포는 Google OAuth 로그인을
@@ -102,12 +143,9 @@ URIs에 등록합니다.
 http://localhost:8080/oauth-authorized/google
 ```
 
-공용 URL을 열 때는 같은 OAuth client 또는 운영용 OAuth client에 다음 redirect URI를
-추가합니다.
-
-```text
-https://<airflow-public-domain>/oauth-authorized/google
-```
+공용 URL은 열지 않습니다. 내부 FQDN을 브라우저에서 직접 쓰는 HTTPS 경로가 별도
+이슈로 추가되기 전까지 OAuth 검증은 Bastion 포트 포워딩의 localhost URI로
+진행합니다.
 
 OAuth client id와 secret은 Kubernetes Secret으로만 주입합니다. 값은 파일,
 Helm values, Git, PR 본문에 저장하지 않습니다.
@@ -131,12 +169,20 @@ helm upgrade airflow apache-airflow/airflow `
   --version 1.16.0 `
   --namespace airflow `
   --values helm/values-gke-dev.yaml
+
+.\scripts\patch_airflow_webserver_service.ps1 `
+  -Namespace airflow `
+  -ServiceName airflow-webserver
 ```
 
-port-forward로 OAuth 로그인을 검증합니다.
+Bastion 포트 포워딩으로 OAuth 로그인을 검증합니다.
 
 ```powershell
-kubectl port-forward -n airflow svc/airflow-webserver 8080:8080
+gcloud compute ssh autoresearch-dev-bastion `
+  --zone asia-northeast3-a `
+  --project ar-infra-501607 `
+  --tunnel-through-iap `
+  -- -N -L 8080:airflow.dev.autoresearch.internal:8080
 ```
 
 브라우저에서 `http://localhost:8080`으로 접속하여 Google 로그인 버튼을 누르고,
