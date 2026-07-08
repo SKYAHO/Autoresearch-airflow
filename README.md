@@ -22,16 +22,21 @@ gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 
 ## Daily Pipeline
 
-`dags/youtube_gcs_action_log_pipeline.py` runs every day at UTC 16:00
-(KST 01:00). It launches a KubernetesPodOperator batch pod using
+`dags/youtube_gcs_action_log_pipeline.py` runs every day at UTC 15:30
+(KST 00:30). It launches KubernetesPodOperator batch pods using
 `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
 
-The batch job:
+The DAG:
 
-1. Checks the YouTube daily partition in GCS.
+1. Calls the YouTube Data API and writes the KR trending partition to GCS.
 2. Checks the virtual user parquet in GCS.
 3. Skips when the action log partition already exists and `overwrite=false`.
-4. Generates the action log partition when missing or when `overwrite=true`.
+4. Generates the action log partition with OpenRouter `mistralai/mistral-nemo`
+   when missing or when `overwrite=true`.
+
+Secret values are not passed as CLI arguments. The KPO pods read
+`YOUTUBE_API_KEYS` or `YOUTUBE_API_KEY`, and `OPENROUTER_API_KEY`, from the
+Kubernetes Secret named by `AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME`.
 
 Manual re-run example:
 
@@ -51,8 +56,8 @@ python -m compileall autoresearch_airflow autoresearch_airflow_jobs dags
 
 ## Operational QA
 
-운영 DAG에서 실제 YouTube API 호출과 Mistral Nemo action log 생성을 검증하기
-위한 준비 항목과 one-off smoke evidence는
+운영 DAG에서 실제 YouTube API 호출과 Mistral Nemo action log 생성을 한 번
+검증하기 위한 준비 항목, 수동 데이터품질 체크 명령, one-off smoke evidence는
 [docs/operational-dag-qa.md](docs/operational-dag-qa.md)에 정리되어 있습니다.
 
 ## Build Images

@@ -47,7 +47,12 @@ airflow:
 ```bash
 kubectl create namespace airflow
 
-kubectl create secret generic autoresearch-airflow-env   --namespace airflow   --from-literal=YOUTUBE_API_KEY='<youtube-api-key>'   --from-literal=YOUTUBE_LAKE_BUCKET='<gcs-bucket>'
+kubectl create secret generic autoresearch-airflow-env \
+  --namespace airflow \
+  --from-literal=YOUTUBE_API_KEYS='<youtube-api-key-1>,<youtube-api-key-2>' \
+  --from-literal=YOUTUBE_API_KEY='<youtube-api-key>' \
+  --from-literal=OPENROUTER_API_KEY='<openrouter-api-key>' \
+  --from-literal=YOUTUBE_LAKE_BUCKET='<gcs-bucket>'
 
 helm repo add apache-airflow https://airflow.apache.org
 helm repo update

@@ -1,6 +1,14 @@
 from autoresearch_airflow.dag_config import (
     ActionLogDagSettings,
+    YouTubeTrendingDagSettings,
     build_action_log_kpo_arguments,
+    build_youtube_trending_kpo_arguments,
+)
+
+
+PARTITION_DATE_TEMPLATE = (
+    "{{ dag_run.conf.get('partition_date', "
+    "data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d')) }}"
 )
 
 
@@ -12,7 +20,7 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
 
     assert build_action_log_kpo_arguments(settings) == [
         "--partition-date",
-        "{{ dag_run.conf.get('partition_date', ds) }}",
+        PARTITION_DATE_TEMPLATE,
         "--bucket",
         "{{ var.value.YOUTUBE_LAKE_BUCKET }}",
         "--youtube-base-path",
@@ -26,7 +34,9 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "--overwrite",
         "{{ dag_run.conf.get('overwrite', false) }}",
         "--generator-name",
-        "{{ var.value.get('ACTION_LOG_GENERATOR', 'rule_based') }}",
+        "{{ var.value.get('ACTION_LOG_GENERATOR', 'openrouter') }}",
+        "--model-name",
+        "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
         "--candidates-per-user",
         "{{ var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24') }}",
         "--target-ctr",
@@ -43,4 +53,25 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '1') }}",
         "--chunk-size",
         "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '0') }}",
+    ]
+
+
+def test_build_youtube_trending_kpo_arguments_uses_airflow_templates() -> None:
+    settings = YouTubeTrendingDagSettings(
+        bucket_template="{{ var.value.YOUTUBE_LAKE_BUCKET }}",
+    )
+
+    assert build_youtube_trending_kpo_arguments(settings) == [
+        "--partition-date",
+        PARTITION_DATE_TEMPLATE,
+        "--bucket",
+        "{{ var.value.YOUTUBE_LAKE_BUCKET }}",
+        "--youtube-base-path",
+        "{{ var.value.get('YOUTUBE_TRENDING_BASE_PATH', '') }}",
+        "--region-code",
+        "{{ var.value.get('YOUTUBE_TRENDING_REGION_CODE', 'KR') }}",
+        "--max-results",
+        "{{ var.value.get('YOUTUBE_TRENDING_MAX_RESULTS', '200') }}",
+        "--proxy-url",
+        "{{ var.value.get('YOUTUBE_PROXY_URL', '') }}",
     ]

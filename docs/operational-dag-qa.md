@@ -1,24 +1,23 @@
 # Operational DAG QA for YouTube API and Mistral Nemo
 
 이 문서는 dev GKE Airflow에서 실제 YouTube API 수집과 Mistral Nemo 기반
-action log 생성을 운영 DAG QA로 검증하기 위해 필요한 조건과, 2026-07-08
-one-off smoke 결과를 정리한다.
+action log 생성을 운영 DAG로 실행하고, 데이터품질 QA는 1회 수동 검증으로
+진행하기 위한 조건과 2026-07-08 one-off smoke 결과를 정리한다.
 
 ## 목표
 
-운영 DAG 기준 QA는 아래 흐름을 end-to-end로 증명해야 한다.
+운영 DAG는 아래 흐름을 매일 실행한다.
 
 ```text
 YouTube Data API v3
   -> KR trending parquet
   -> Mistral Nemo action log batch
-  -> GCS QA output parquet
-  -> data quality checks
+  -> GCS action log parquet
 ```
 
-현재 배포된 `youtube_gcs_action_log_pipeline`은 이미 GCS에 존재하는
-YouTube daily partition을 입력으로 action log를 생성한다. 즉, 이 DAG만으로는
-YouTube API 호출 단계까지 검증하지 않는다.
+데이터품질 QA는 DAG 태스크로 매일 넣지 않는다. 운영 DAG 배포 후 특정
+`partition_date`를 한 번 수동 trigger하고, 생성된 parquet을
+`scripts/check_action_log_data_quality.py`로 읽어 품질을 확인한다.
 
 ## 현재 충족된 조건
 
@@ -32,7 +31,7 @@ YouTube API 호출 단계까지 검증하지 않는다.
 - `ACTION_LOG_GENERATOR=openrouter`를 사용하면 action log generator가
   `mistralai/mistral-nemo`를 기본 모델로 사용한다.
 
-## 운영 DAG QA에 필요한 보강
+## 운영 DAG 구성
 
 ### 1. Secret 주입
 
@@ -48,36 +47,37 @@ YouTube API 호출 단계까지 검증하지 않는다.
 - Airflow Variable에 API key를 평문 저장하지 않는다.
 - 권장 방식은 Kubernetes Secret 또는 Secret Manager 연동이다.
 
-예상 Kubernetes Secret 이름:
+기본 Kubernetes Secret 이름:
 
 ```text
-autoresearch-api-keys
+autoresearch-airflow-env
 ```
 
 예상 key:
 
 ```text
+YOUTUBE_API_KEYS
 YOUTUBE_API_KEY
 OPENROUTER_API_KEY
 ```
 
-### 2. DAG 구성
+### 2. DAG 태스크
 
-실제 YouTube API까지 운영 DAG에서 검증하려면 다음 중 하나가 필요하다.
+`youtube_gcs_action_log_pipeline`은 아래 두 KPO 태스크를 순서대로 실행한다.
 
-1. QA 전용 DAG를 추가한다.
-   - `collect_youtube_api_snapshot`
-   - `generate_mistral_nemo_action_log`
-   - `validate_action_log_quality`
+```text
+collect_youtube_trending_partition
+  -> ensure_action_log_partition
+```
 
-2. 기존 `youtube_gcs_action_log_pipeline` 앞단에 YouTube API 수집 task를 붙인다.
+스케줄은 UTC 15:30(KST 00:30)이고, 기본 partition date는
+`data_interval_end`를 KST로 변환한 날짜다. 수동 실행 시에는
+`dag_run.conf.partition_date`로 덮어쓸 수 있다.
 
-현재 운영 DAG는 action log 생성 전용이므로, QA 전용 DAG를 별도로 두는 편이
-운영 partition 오염 위험이 가장 낮다.
+### 3. 1회 QA 전용 GCS prefix
 
-### 3. QA 전용 GCS prefix
-
-운영 partition을 덮어쓰지 않도록 QA output은 별도 prefix에 쓴다.
+1회 테스트에서 운영 partition을 덮어쓰지 않으려면 아래처럼 Airflow Variable을
+QA prefix로 임시 override한다.
 
 권장 prefix:
 
@@ -90,14 +90,19 @@ gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo
 
 ### 4. Airflow variables
 
-기존 action log DAG에 필요한 값:
+운영 DAG에 필요한 값:
 
 ```text
 YOUTUBE_LAKE_BUCKET=ar-infra-501607-autoresearch-dev-raw-data
 AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
 AIRFLOW_KPO_NAMESPACE=airflow
 AIRFLOW_KPO_SERVICE_ACCOUNT=autoresearch-batch
+AUTORESEARCH_API_SECRET_NAME=autoresearch-airflow-env
+YOUTUBE_TRENDING_BASE_PATH=<empty for default or QA YouTube base path>
+YOUTUBE_TRENDING_REGION_CODE=KR
+YOUTUBE_TRENDING_MAX_RESULTS=200
 ACTION_LOG_GENERATOR=openrouter
+ACTION_LOG_MODEL_NAME=mistralai/mistral-nemo
 ACTION_LOG_YOUTUBE_BASE_PATH=<QA YouTube base path>
 ACTION_LOG_VIRTUAL_USERS_PATH=<QA virtual user parquet path>
 ACTION_LOG_OUTPUT_DIR=<QA action log base path>
@@ -108,11 +113,6 @@ ACTION_LOG_MAX_CONCURRENCY=1
 ACTION_LOG_CHUNK_SIZE=0
 ```
 
-현재 OpenRouter action log generator의 기본 모델은 `mistralai/mistral-nemo`다.
-운영에서 모델명을 명시적으로 추적하려면 DAG argument에 `--model-name`을
-추가하고 `ACTION_LOG_MODEL_NAME=mistralai/mistral-nemo` 변수를 넘기도록
-보강한다.
-
 ### 5. QA 입력 크기
 
 API 비용과 LLM 비용을 제한하기 위해 운영 QA는 작은 입력으로 시작한다.
@@ -121,6 +121,30 @@ API 비용과 LLM 비용을 제한하기 위해 운영 QA는 작은 입력으로
 - Virtual users: 5명 또는 10명 sample parquet
 - Candidates per user: 24
 - Max concurrency: 1 또는 2
+
+수동 trigger 예시:
+
+```json
+{
+  "partition_date": "2026-07-08",
+  "overwrite": true
+}
+```
+
+## 1회 데이터품질 체크
+
+운영 DAG가 끝난 뒤 아래 스크립트로 parquet 품질을 확인한다.
+
+```powershell
+python .\scripts\check_action_log_data_quality.py `
+  --youtube-path "gs://<bucket>/data_lake/youtube_trending_kr/dt=YYYY-MM-DD/part-0.parquet" `
+  --action-log-path "gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet" `
+  --virtual-users-path "gs://<bucket>/asset/virtual_user/vu_1000.parquet" `
+  --expected-model "mistralai/mistral-nemo"
+```
+
+스크립트는 JSON으로 row count, event type 분포, CTR, `llm_model`, 영상/유저
+참조 무결성을 출력한다. `errors`가 빈 배열이면 1회 QA를 통과한 것으로 본다.
 
 ## 완료 판정
 
@@ -153,6 +177,7 @@ API 비용과 LLM 비용을 제한하기 위해 운영 QA는 작은 입력으로
   - `view`: 2
   - `like`: 2
 - Quarantine: 0 byte
+- Data quality script result: `errors=[]`
 
 GCS outputs:
 
@@ -170,4 +195,14 @@ C:\Users\young\AppData\Local\Temp\autoresearch_youtube_llm_smoke_20260708T000307
 C:\Users\young\AppData\Local\Temp\autoresearch_youtube_llm_smoke_20260708T000307Z\virtual_users_5.parquet
 C:\Users\young\AppData\Local\Temp\autoresearch_youtube_llm_smoke_20260708T000307Z\action_log_mistral_nemo_smoke\dt=2026-07-08\part-0.parquet
 C:\Users\young\AppData\Local\Temp\autoresearch_youtube_llm_smoke_20260708T000307Z\action_log_mistral_nemo_quarantine\dt=2026-07-08\quarantine.jsonl
+```
+
+Re-check command:
+
+```powershell
+python .\scripts\check_action_log_data_quality.py `
+  --youtube-path "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr_api_llm_smoke/run=20260708T000307Z/dt=2026-07-08/part-0.parquet" `
+  --action-log-path "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_smoke/run=20260708T000307Z/dt=2026-07-08/part-0.parquet" `
+  --virtual-users-path "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user_smoke/run=20260708T000307Z/vu_5.parquet" `
+  --expected-model "mistralai/mistral-nemo"
 ```
