@@ -206,3 +206,42 @@ python .\scripts\check_action_log_data_quality.py `
   --virtual-users-path "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user_smoke/run=20260708T000307Z/vu_5.parquet" `
   --expected-model "mistralai/mistral-nemo"
 ```
+
+## 2026-07-08 operating DAG QA evidence
+
+dev GKE Airflow 운영 DAG 자체를 수동 trigger해 실제 YouTube API 수집과
+OpenRouter Mistral Nemo action log 생성을 확인했다. 운영 partition을 덮어쓰지
+않기 위해 Helm env를 QA prefix로 임시 override했고, run 종료 후 운영 기본값으로
+복구했다.
+
+- Airflow DAG: `youtube_gcs_action_log_pipeline`
+- DAG run ID: `manual__qa_20260708T043316Z`
+- Partition: `dt=2026-07-08`
+- YouTube API: KR trending 30개 수집
+- Action log model: `mistralai/mistral-nemo`
+- Users: 기존 smoke sample 5명
+- Output events: 126
+- Event counts:
+  - `impression`: 120
+  - `click`: 2
+  - `view`: 2
+  - `like`: 2
+- Data quality script result: `errors=[]`
+
+GCS outputs:
+
+```text
+gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr_api_llm_smoke/run=20260708T043316Z/dt=2026-07-08/part-0.parquet
+gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user_smoke/run=20260708T000307Z/vu_5.parquet
+gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_smoke/run=20260708T043316Z/dt=2026-07-08/part-0.parquet
+```
+
+Data quality re-check command:
+
+```powershell
+python .\scripts\check_action_log_data_quality.py `
+  --youtube-path "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr_api_llm_smoke/run=20260708T043316Z/dt=2026-07-08/part-0.parquet" `
+  --action-log-path "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_smoke/run=20260708T043316Z/dt=2026-07-08/part-0.parquet" `
+  --virtual-users-path "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user_smoke/run=20260708T000307Z/vu_5.parquet" `
+  --expected-model "mistralai/mistral-nemo"
+```

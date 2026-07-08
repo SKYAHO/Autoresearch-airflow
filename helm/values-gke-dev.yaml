@@ -5,12 +5,12 @@ airflowVersion: "2.10.5"
 executor: LocalExecutor
 
 defaultAirflowRepository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
-defaultAirflowTag: "78f9851"
+defaultAirflowTag: "ea2c0b4"
 
 images:
   airflow:
     repository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
-    tag: "78f9851"
+    tag: "ea2c0b4"
     pullPolicy: IfNotPresent
 
 webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
@@ -85,7 +85,7 @@ env:
   - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
     value: "ar-infra-501607-autoresearch-dev-raw-data"
   - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
-    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:78f9851"
+    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:ea2c0b4"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
     value: "airflow"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
@@ -141,10 +141,10 @@ scheduler:
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
       cpu: 500m
-      memory: 768Mi
+      memory: 1536Mi
 
 webserver:
   nodeSelector:
@@ -167,10 +167,10 @@ webserver:
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
       cpu: 500m
-      memory: 768Mi
+      memory: 1Gi
 
 migrateDatabaseJob:
   nodeSelector:

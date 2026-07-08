@@ -72,6 +72,12 @@ kubectl exec -n airflow deploy/autoresearch-airflow-scheduler -c scheduler -- ai
 `git-sync` 로그에서 새 commit hash가 sync되는지 확인하고, Airflow scheduler가
 DAG를 파싱하는지 `airflow dags list` 또는 Web UI에서 확인합니다.
 
+dev GKE의 `helm/values-gke-dev.yaml`은 Airflow CLI와 scheduler heartbeat가 같은
+컨테이너에서 동작해도 OOM kill이 나지 않도록 scheduler memory limit을 `1536Mi`,
+webserver memory limit을 `1Gi`로 둡니다. 운영 중 `airflow dags list` 또는 수동
+trigger CLI가 `exit code 137`로 끝나면 Helm live values가 이 값보다 낮아졌는지
+먼저 확인합니다.
+
 ## 비공개 DAG 저장소로 전환할 경우
 
 현재 DAG 원본은 public GitHub 저장소이므로 credential secret이 필요하지
