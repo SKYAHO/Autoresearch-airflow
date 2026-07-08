@@ -20,7 +20,7 @@ airflow:
 
   dags:
     gitSync:
-      repo: https://github.com/SKYAHO/Autoresearch.git
+      repo: https://github.com/SKYAHO/Autoresearch-airflow.git
       branch: main
       ref: main
       rev: HEAD

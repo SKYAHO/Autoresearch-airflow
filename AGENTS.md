@@ -2,7 +2,8 @@
 
 > Version: 1.0.0 | Last Updated: 2026-07-07
 
-이 저장소는 Autoresearch Airflow를 GKE에 배포하기 위한 Helm 인프라 저장소입니다.
+이 저장소는 Autoresearch Airflow DAG, batch entrypoint, image build 설정,
+Helm 배포 값을 함께 관리하는 Airflow delivery 저장소입니다.
 AI 코딩 에이전트는 아래 규칙을 우선 적용합니다.
 
 ## Language Preference
@@ -12,18 +13,22 @@ AI 코딩 에이전트는 아래 규칙을 우선 적용합니다.
 
 ## Project Context
 
-- 애플리케이션 코드는 `SKYAHO/Autoresearch` 저장소에 있습니다.
-- 이 저장소는 Airflow 배포와 운영 설정만 관리합니다.
-- DAG는 컨테이너 이미지에 굽지 않고 `git-sync` sidecar로
-  `SKYAHO/Autoresearch`의 `dags/` 디렉터리를 동기화합니다.
+- 애플리케이션 코드는 `SKYAHO/Autoresearch` 저장소에 있고, Airflow 배포
+  wrapper와 DAG 운영 표면은 이 저장소에 있습니다.
+- 이 저장소는 Airflow DAG, Airflow helper, KubernetesPodOperator batch
+  entrypoint, Dockerfile, Cloud Build, Helm values를 관리합니다.
+- dev GKE 배포는 컨테이너 이미지에 DAG를 굽지 않고 `git-sync` sidecar로
+  `SKYAHO/Autoresearch-airflow`의 `dags/` 디렉터리를 동기화합니다.
 - 기본 배포 대상은 GKE이며 Workload Identity 사용을 전제로 합니다.
-- Helm chart 루트는 `charts/autoresearch-airflow`입니다.
+- Helm umbrella chart 루트는 `charts/autoresearch-airflow`이고, 실제 dev 배포
+  values는 `helm/values-gke-dev.yaml`입니다.
 
 ## Core Rules
 
 - Kubernetes Secret 값, API key, GCP service account key JSON, kubeconfig를 커밋하지 않습니다.
 - 실제 환경 값은 `environments/*.example.yaml`을 복사해서 별도 비공개 파일로 관리합니다.
-- DAG 동기화 정책 변경 시 `README.md`와 `docs/gke-helm-gitsync.md`를 함께 갱신합니다.
+- DAG 동기화 정책 변경 시 `README.md`, `docs/gke-helm-gitsync.md`,
+  `helm/values-gke-dev.yaml`을 함께 확인합니다.
 - Upstream `apache-airflow/airflow` chart 값을 변경할 때는 Helm template 렌더링으로 검증합니다.
 - 구조 변경과 운영 파라미터 변경은 커밋/PR 설명에서 분리해 설명합니다.
 

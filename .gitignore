@@ -6,6 +6,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
 # Local environment files
 .env
 .env.*
@@ -24,3 +25,6 @@ charts/**/Chart.lock
 .DS_Store
 .idea/
 .vscode/
+
+# Local diagnostics
+airflow-diagnostics*.log

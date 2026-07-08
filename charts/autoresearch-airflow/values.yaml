@@ -59,7 +59,7 @@ airflow:
       enabled: false
     gitSync:
       enabled: true
-      repo: https://github.com/SKYAHO/Autoresearch.git
+      repo: https://github.com/SKYAHO/Autoresearch-airflow.git
       branch: main
       rev: HEAD
       ref: main

@@ -81,7 +81,7 @@ airflow:
   dags:
     gitSync:
       enabled: true
-      repo: https://github.com/SKYAHO/Autoresearch.git
+      repo: https://github.com/SKYAHO/Autoresearch-airflow.git
       branch: main
       ref: main
       rev: HEAD
@@ -110,3 +110,21 @@ PRs can be reviewed by Claude Code through `.github/workflows/claude.yml`.
 The workflow runs on PR open/ready-for-review and can also be triggered with a
 `/claude-review` PR comment. Configure the repository secret
 `CLAUDE_CODE_OAUTH_TOKEN` before using it.
+
+## GKE Diagnostics
+
+Capture the current Airflow deployment evidence when debugging image pulls,
+resource scheduling, migrations, or init containers:
+
+```powershell
+.\scripts\collect_airflow_gke_diagnostics.ps1 `
+  -Namespace airflow `
+  -Release airflow `
+  -Tail 120
+```
+
+To keep a timestamped local log outside git:
+
+```powershell
+.\scripts\collect_airflow_gke_diagnostics.ps1 *> airflow-diagnostics.log
+```

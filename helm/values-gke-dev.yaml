@@ -1,0 +1,198 @@
+# Concrete dev deployment values for apache-airflow/airflow chart 1.16.0.
+# Target cluster: ar-infra-501607 / autoresearch-dev-gke.
+
+airflowVersion: "2.10.5"
+executor: LocalExecutor
+
+defaultAirflowRepository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+defaultAirflowTag: "78f9851"
+
+images:
+  airflow:
+    repository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+    tag: "78f9851"
+    pullPolicy: IfNotPresent
+
+webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
+
+config:
+  logging:
+    base_log_folder: /tmp/airflow/logs
+    dag_processor_manager_log_location: /tmp/airflow/logs/dag_processor_manager/dag_processor_manager.log
+  scheduler:
+    child_process_log_directory: /tmp/airflow/logs/scheduler
+  webserver:
+    workers: "1"
+    web_server_master_timeout: "300"
+    web_server_worker_timeout: "300"
+
+redis:
+  enabled: false
+
+flower:
+  enabled: false
+
+statsd:
+  enabled: false
+
+triggerer:
+  enabled: false
+
+dagProcessor:
+  enabled: false
+
+workers:
+  replicas: 0
+
+postgresql:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 16.1.0-debian-11-r15
+    pullPolicy: IfNotPresent
+  primary:
+    nodeSelector:
+      cloud.google.com/gke-nodepool: airflow-dev
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+logs:
+  persistence:
+    enabled: false
+
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: true
+    repo: https://github.com/SKYAHO/Autoresearch-airflow.git
+    branch: main
+    rev: HEAD
+    ref: main
+    depth: 1
+    subPath: dags
+    period: 30s
+
+env:
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "False"
+  - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
+    value: "ar-infra-501607-autoresearch-dev-raw-data"
+  - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
+    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:78f9851"
+  - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
+    value: "airflow"
+  - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
+    value: "autoresearch-batch"
+  - name: AIRFLOW_VAR_ACTION_LOG_GENERATOR
+    value: "rule_based"
+  - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_OUTPUT_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
+    value: "24"
+  - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR
+    value: "0.02"
+  - name: AIRFLOW_VAR_ACTION_LOG_PERSONALIZED_RATIO
+    value: "0.7"
+  - name: AIRFLOW_VAR_ACTION_LOG_POPULAR_RATIO
+    value: "0.2"
+  - name: AIRFLOW_VAR_ACTION_LOG_EXPLORATION_RATIO
+    value: "0.1"
+  - name: AIRFLOW_VAR_ACTION_LOG_SEED
+    value: "42"
+  - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
+    value: "1"
+  - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE
+    value: "0"
+
+scheduler:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
+  logGroomerSidecar:
+    enabled: false
+  livenessProbe:
+    timeoutSeconds: 30
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+    timeoutSeconds: 30
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+
+webserver:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
+  strategy:
+    type: Recreate
+  args:
+    - bash
+    - -c
+    - exec airflow webserver --pid /tmp/airflow-webserver.pid
+  webserverConfig: |
+    from airflow import configuration as conf
+
+    SQLALCHEMY_DATABASE_URI = conf.get("database", "SQL_ALCHEMY_CONN")
+    CSRF_ENABLED = True
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+    timeoutSeconds: 20
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+
+migrateDatabaseJob:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+createUserJob:
+  command:
+    - bash
+    - -c
+  args:
+    - |
+      airflow sync-perm
+      airflow users create \
+        --role Admin \
+        --username admin \
+        --email admin@example.com \
+        --firstname admin \
+        --lastname user \
+        --password admin || true
+  nodeSelector:
+    cloud.google.com/gke-nodepool: airflow-dev
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
