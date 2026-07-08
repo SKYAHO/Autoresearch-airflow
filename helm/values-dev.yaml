@@ -31,8 +31,18 @@ env:
     value: "airflow"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
     value: "autoresearch-batch"
+  - name: AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME
+    value: "autoresearch-airflow-env"
+  - name: AIRFLOW_VAR_YOUTUBE_TRENDING_BASE_PATH
+    value: ""
+  - name: AIRFLOW_VAR_YOUTUBE_TRENDING_REGION_CODE
+    value: "KR"
+  - name: AIRFLOW_VAR_YOUTUBE_TRENDING_MAX_RESULTS
+    value: "200"
   - name: AIRFLOW_VAR_ACTION_LOG_GENERATOR
-    value: "rule_based"
+    value: "openrouter"
+  - name: AIRFLOW_VAR_ACTION_LOG_MODEL_NAME
+    value: "mistralai/mistral-nemo"
   - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
     value: ""
   - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH

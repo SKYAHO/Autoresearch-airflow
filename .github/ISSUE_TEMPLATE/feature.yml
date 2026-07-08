@@ -25,7 +25,7 @@ body:
         - GKE / Workload Identity
         - git-sync DAG delivery
         - Airflow runtime configuration
-        - CI/CD / Claude review
+        - CI/CD
         - Documentation
         - Other
     validations:

@@ -11,9 +11,17 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     source = ast.unparse(tree)
 
     assert "KubernetesPodOperator" in source
+    assert "autoresearch_airflow_jobs.daily_youtube_trending" in source
     assert "autoresearch_airflow_jobs.daily_action_log" in source
     assert "AUTORESEARCH_BATCH_IMAGE" in source
     assert "youtube_gcs_action_log_pipeline" in source
+    assert "collect_youtube_trending_partition" in source
+    assert "ensure_action_log_partition" in source
+    assert (
+        "collect_youtube_trending_partition >> ensure_action_log_partition"
+        in source
+    )
+    assert "--api-key" not in source
 
 
 def test_kpo_runtime_fields_are_not_jinja_literals() -> None:

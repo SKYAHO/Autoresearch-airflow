@@ -24,7 +24,7 @@ body:
         - GKE / Workload Identity
         - git-sync DAG delivery
         - Airflow scheduler/webserver/worker
-        - GitHub Actions / Claude review
+        - GitHub Actions
         - Documentation
         - Other
     validations:
