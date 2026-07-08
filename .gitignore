@@ -6,4 +6,25 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+*.local.yaml
+*.secret.yaml
+
+# Kubernetes/GCP credentials
+kubeconfig*
+*-service-account.json
+*gcp-key*.json
+# Helm artifacts
+charts/**/charts/*.tgz
+charts/**/Chart.lock
+# Python/editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Local diagnostics
 airflow-diagnostics*.log

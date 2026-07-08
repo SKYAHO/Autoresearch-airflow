@@ -67,6 +67,50 @@ asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresea
 asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
 ```
 
+## GKE Helm Deployment with git-sync
+
+This repository can also be deployed to GKE with the Helm umbrella chart in
+`charts/autoresearch-airflow`. The chart depends on the official
+`apache-airflow/airflow` chart and configures Airflow DAG delivery through a
+`git-sync` sidecar.
+
+Default DAG sync source:
+
+```yaml
+airflow:
+  dags:
+    gitSync:
+      enabled: true
+      repo: https://github.com/SKYAHO/Autoresearch-airflow.git
+      branch: main
+      ref: main
+      rev: HEAD
+      subPath: dags
+      wait: 30
+```
+
+Render and lint the chart before deployment:
+
+```bash
+helm repo add apache-airflow https://airflow.apache.org
+helm repo update
+helm dependency update charts/autoresearch-airflow
+helm lint charts/autoresearch-airflow
+helm template autoresearch-airflow charts/autoresearch-airflow \
+  --namespace airflow \
+  --values environments/gke-values.example.yaml >/tmp/autoresearch-airflow.yaml
+```
+
+See `docs/gke-helm-gitsync.md` for the deployment, operations, and rollback
+runbook.
+
+## Claude Review Automation
+
+PRs can be reviewed by Claude Code through `.github/workflows/claude.yml`.
+The workflow runs on PR open/ready-for-review and can also be triggered with a
+`/claude-review` PR comment. Configure the repository secret
+`CLAUDE_CODE_OAUTH_TOKEN` before using it.
+
 ## GKE Diagnostics
 
 Capture the current Airflow deployment evidence when debugging image pulls,

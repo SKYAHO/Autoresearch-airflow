@@ -1,0 +1,77 @@
+name: Bug report
+description: GKE, Helm, Airflow, or git-sync deployment bug
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Autoresearch Airflow 인프라 저장소의 배포/운영 문제를 제보해 주세요.
+        DAG/Python 코드 자체 문제는 `SKYAHO/Autoresearch` 저장소에 등록해 주세요.
+  - type: textarea
+    id: summary
+    attributes:
+      label: 문제 요약
+      description: 어떤 문제가 발생했는지 간략히 작성해 주세요.
+      placeholder: 예) git-sync는 성공하지만 Airflow UI에 신규 DAG가 보이지 않습니다.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영향 영역
+      options:
+        - Helm chart / values
+        - GKE / Workload Identity
+        - git-sync DAG delivery
+        - Airflow scheduler/webserver/worker
+        - GitHub Actions / Claude review
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 절차
+      description: 실행한 명령과 순서를 적어 주세요.
+      placeholder: |
+        1. helm upgrade --install ...
+        2. kubectl logs ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작 / 로그
+      description: Secret 값은 반드시 제거하고 붙여 주세요.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 환경 정보
+      placeholder: |
+        - GKE version:
+        - Helm version:
+        - Chart version/commit:
+        - Namespace:
+        - Values file:
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 체크리스트
+      options:
+        - label: Secret/API key/kubeconfig/GCP key JSON을 첨부하지 않았습니다.
+          required: true
+        - label: "`helm lint` 또는 `helm template` 결과를 확인했습니다."
+          required: false

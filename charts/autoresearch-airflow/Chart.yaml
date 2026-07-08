@@ -1,0 +1,10 @@
+apiVersion: v2
+name: autoresearch-airflow
+description: Helm umbrella chart for Autoresearch Airflow on GKE with git-sync DAG delivery
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: airflow
+    version: 1.16.0
+    repository: https://airflow.apache.org

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Autoresearch application repository
+    url: https://github.com/SKYAHO/Autoresearch
+    about: DAG/Python application code issues should be filed in the application repository.
+  - name: Airflow Helm chart documentation
+    url: https://airflow.apache.org/docs/helm-chart/stable/
+    about: Upstream chart behavior and values reference.
