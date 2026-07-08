@@ -49,6 +49,12 @@ python -m pytest
 python -m compileall autoresearch_airflow autoresearch_airflow_jobs dags
 ```
 
+## Operational QA
+
+운영 DAG에서 실제 YouTube API 호출과 Mistral Nemo action log 생성을 검증하기
+위한 준비 항목과 one-off smoke evidence는
+[docs/operational-dag-qa.md](docs/operational-dag-qa.md)에 정리되어 있습니다.
+
 ## Build Images
 
 Local Docker is not required. Build and push both images with Cloud Build:
