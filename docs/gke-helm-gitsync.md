@@ -119,13 +119,53 @@ gcloud compute ssh autoresearch-dev-bastion `
 달라지므로, 내부 HTTPS 엔드포인트를 별도로 만들기 전에는 로그인 검증 경로로 쓰지
 않습니다.
 
+## 팀원 로그인 검증 절차
+
+팀원에게 아래 절차를 전달하여 각자 계정으로 로그인이 되는지 확인합니다. 공용
+URL은 없으며, Bastion IAP 터널을 거쳐 `localhost:8080`으로만 접속합니다.
+
+사전 준비(최초 1회):
+
+- gcloud CLI 설치 후 본인 GCP 계정으로 `gcloud auth login`을 실행합니다.
+- Bastion 접근에는 GCP IAM 권한(IAP-secured Tunnel User 및 compute 접근)이
+  필요합니다. 아래 SSH가 권한 오류로 막히면 관리자에게 IAM 권한 부여를
+  요청합니다.
+- 로컬 `8080` 포트를 사용하는 다른 프로세스가 없어야 합니다.
+
+1. Bastion 포트 포워딩을 실행하고 이 터미널은 켜둔 채로 둡니다. 아래 명령은
+   PowerShell, cmd, bash에서 모두 한 줄로 동작합니다.
+
+   ```text
+   gcloud compute ssh autoresearch-dev-bastion --zone asia-northeast3-a --project ar-infra-501607 --tunnel-through-iap -- -N -L 8080:airflow.dev.autoresearch.internal:8080
+   ```
+
+2. 브라우저에서 `http://localhost:8080/login/`으로 접속합니다. 반드시
+   `localhost:8080`을 사용해야 OAuth redirect URI가 일치합니다.
+3. "Sign in with Google" 버튼을 누르고, `_GOOGLE_ALLOWED_EMAILS`에 등록된
+   본인 Google 계정으로 로그인합니다. gcloud 로그인에 쓴 GCP 계정과 다를 수
+   있으므로 등록한 이메일로 로그인합니다.
+4. Airflow 대시보드가 뜨고 상단에 Admin 메뉴가 보이면 Admin 권한이 정상
+   부여된 것입니다. 로그인 성공 여부와 본인 이메일을 관리자에게 회신합니다.
+
+문제 발생 시 확인 순서:
+
+- 브라우저가 연결되지 않으면 1번 포트 포워딩 터미널이 유지되고 있는지, `8080`
+  포트 충돌이 없는지 확인합니다.
+- 로그인 후 권한 오류나 빈 화면이 나오면 등록되지 않은 다른 Google 계정으로
+  로그인한 경우이므로, 등록한 이메일로 재시도합니다.
+- Google 로그인 창에서 막히면 해당 이메일이 `_GOOGLE_ALLOWED_EMAILS`와 OAuth
+  테스트 사용자에 모두 등록되어 있는지 관리자에게 확인합니다.
+
 ## dev Webserver Google OAuth
 
 공용 URL로 Webserver를 노출하기 전에 dev 배포는 Google OAuth 로그인을
 사용합니다. `helm/values-gke-dev.yaml`은 다음 원칙을 따릅니다.
 
 - OAuth provider는 Google만 설정합니다.
-- 허용 계정은 우선 `youngjun3108@gmail.com` 하나로 제한합니다.
+- 허용 계정은 `helm/values-gke-dev.yaml`의 `_GOOGLE_ALLOWED_EMAILS`에서
+  관리하며, 현재 팀원 이메일이 등록되어 있습니다. 이메일은 소문자 기준으로
+  비교하므로 소문자로 등록합니다. Google Cloud Console의 OAuth 테스트 사용자에도
+  동일 이메일이 등록되어 있어야 로그인이 허용됩니다.
 - `AUTH_USER_REGISTRATION=True`,
   `AUTH_USER_REGISTRATION_ROLE="Admin"`으로 허용 계정의 최초 로그인 시 Admin
   사용자를 등록합니다.
@@ -185,8 +225,9 @@ gcloud compute ssh autoresearch-dev-bastion `
   -- -N -L 8080:airflow.dev.autoresearch.internal:8080
 ```
 
-브라우저에서 `http://localhost:8080`으로 접속하여 Google 로그인 버튼을 누르고,
-`youngjun3108@gmail.com` 계정이 Admin 권한으로 진입하는지 확인합니다.
+브라우저에서 `http://localhost:8080/login/`으로 접속하여 Google 로그인 버튼을
+누르고, `_GOOGLE_ALLOWED_EMAILS`에 등록된 계정이 Admin 권한으로 진입하는지
+확인합니다. 팀원 검증은 위의 "팀원 로그인 검증 절차"를 따릅니다.
 
 기존 shared `admin` 계정은 OAuth 로그인이 성공하고 Admin 권한이 확인된 뒤에만
 삭제합니다.
