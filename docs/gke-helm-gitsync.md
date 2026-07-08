@@ -78,6 +78,91 @@ webserver memory limit을 `1Gi`로 둡니다. 운영 중 `airflow dags list` 또
 trigger CLI가 `exit code 137`로 끝나면 Helm live values가 이 값보다 낮아졌는지
 먼저 확인합니다.
 
+## dev Webserver Google OAuth
+
+공용 URL로 Webserver를 노출하기 전에 dev 배포는 Google OAuth 로그인을
+사용합니다. `helm/values-gke-dev.yaml`은 다음 원칙을 따릅니다.
+
+- OAuth provider는 Google만 설정합니다.
+- 허용 계정은 우선 `youngjun3108@gmail.com` 하나로 제한합니다.
+- `AUTH_USER_REGISTRATION=True`,
+  `AUTH_USER_REGISTRATION_ROLE="Admin"`으로 허용 계정의 최초 로그인 시 Admin
+  사용자를 등록합니다.
+- `webserver.defaultUser.enabled=false`로 chart 기본 `admin/admin` 생성 경로를
+  끕니다.
+- Airflow chart 1.16.0은 `webserver.defaultUser.enabled=false`일 때
+  `createUserJob`을 렌더링하지 않으므로, `airflow sync-perm`은
+  `migrateDatabaseJob`에서 database migration 직후 실행합니다.
+
+Google Cloud Console에서 OAuth client를 만들 때 애플리케이션 유형은 Web
+application으로 선택하고, 테스트 중에는 다음 redirect URI를 Authorized redirect
+URIs에 등록합니다.
+
+```text
+http://localhost:8080/oauth-authorized/google
+```
+
+공용 URL을 열 때는 같은 OAuth client 또는 운영용 OAuth client에 다음 redirect URI를
+추가합니다.
+
+```text
+https://<airflow-public-domain>/oauth-authorized/google
+```
+
+OAuth client id와 secret은 Kubernetes Secret으로만 주입합니다. 값은 파일,
+Helm values, Git, PR 본문에 저장하지 않습니다.
+
+```powershell
+kubectl create secret generic airflow-web-oauth -n airflow `
+  --from-literal=GOOGLE_OAUTH_CLIENT_ID="<client-id>" `
+  --from-literal=GOOGLE_OAUTH_CLIENT_SECRET="<client-secret>" `
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Secret 생성 후 렌더링을 확인하고 dev release를 업그레이드합니다.
+
+```powershell
+helm template airflow apache-airflow/airflow `
+  --version 1.16.0 `
+  --namespace airflow `
+  --values helm/values-gke-dev.yaml > $env:TEMP\airflow-gke-dev.yaml
+
+helm upgrade airflow apache-airflow/airflow `
+  --version 1.16.0 `
+  --namespace airflow `
+  --values helm/values-gke-dev.yaml
+```
+
+port-forward로 OAuth 로그인을 검증합니다.
+
+```powershell
+kubectl port-forward -n airflow svc/airflow-webserver 8080:8080
+```
+
+브라우저에서 `http://localhost:8080`으로 접속하여 Google 로그인 버튼을 누르고,
+`youngjun3108@gmail.com` 계정이 Admin 권한으로 진입하는지 확인합니다.
+
+기존 shared `admin` 계정은 OAuth 로그인이 성공하고 Admin 권한이 확인된 뒤에만
+삭제합니다.
+
+```powershell
+kubectl exec -n airflow deploy/airflow-webserver -- airflow users delete --username admin
+```
+
+lockout 또는 OAuth 오류가 발생하면 `admin` 계정을 삭제하지 말고 먼저 다음 순서로
+복구합니다.
+
+1. `kubectl get secret airflow-web-oauth -n airflow`로 Secret 존재 여부를
+   확인합니다.
+2. Google OAuth client의 Authorized redirect URI가 현재 접속 URL과 일치하는지
+   확인합니다.
+3. webserver pod 로그에서 OAuth import 오류 또는 Secret env 누락 오류를
+   확인합니다.
+4. 즉시 접근 복구가 필요하면 `helm rollback airflow <revision> -n airflow`로
+   OAuth 적용 전 revision으로 되돌립니다.
+5. rollback 후 port-forward로 기존 `admin` 로그인이 되는지 확인한 뒤 설정을
+   수정해 다시 배포합니다.
+
 ## 비공개 DAG 저장소로 전환할 경우
 
 현재 DAG 원본은 public GitHub 저장소이므로 credential secret이 필요하지

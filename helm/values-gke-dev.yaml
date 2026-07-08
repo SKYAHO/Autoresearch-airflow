@@ -22,7 +22,7 @@ config:
   scheduler:
     child_process_log_directory: /tmp/airflow/logs/scheduler
   webserver:
-    workers: "1"
+    workers: "2"
     web_server_master_timeout: "300"
     web_server_worker_timeout: "300"
 
@@ -155,14 +155,84 @@ webserver:
     - bash
     - -c
     - exec airflow webserver --pid /tmp/airflow-webserver.pid
+  defaultUser:
+    enabled: false
+  env:
+    - name: GOOGLE_OAUTH_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: airflow-web-oauth
+          key: GOOGLE_OAUTH_CLIENT_ID
+          optional: false
+    - name: GOOGLE_OAUTH_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: airflow-web-oauth
+          key: GOOGLE_OAUTH_CLIENT_SECRET
+          optional: false
   webserverConfig: |
+    import os
+
     from airflow import configuration as conf
+    from airflow.providers.fab.auth_manager.security_manager.override import (
+        FabAirflowSecurityManagerOverride,
+    )
+    from flask_appbuilder.security.manager import AUTH_OAUTH
 
     SQLALCHEMY_DATABASE_URI = conf.get("database", "SQL_ALCHEMY_CONN")
     CSRF_ENABLED = True
+
+    AUTH_TYPE = AUTH_OAUTH
+    AUTH_USER_REGISTRATION = True
+    AUTH_USER_REGISTRATION_ROLE = "Admin"
+    AUTH_ROLES_SYNC_AT_LOGIN = True
+    AUTH_ROLES_MAPPING = {
+        "Admin": ["Admin"],
+    }
+
+    _GOOGLE_ALLOWED_EMAILS = {
+        "youngjun3108@gmail.com",
+    }
+
+    OAUTH_PROVIDERS = [
+        {
+            "name": "google",
+            "icon": "fa-google",
+            "token_key": "access_token",
+            "remote_app": {
+                "client_id": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
+                "client_secret": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
+                "api_base_url": "https://www.googleapis.com/oauth2/v2/",
+                "server_metadata_url": "https://accounts.google.com/.well-known/openid-configuration",
+                "client_kwargs": {"scope": "openid email profile"},
+                "request_token_url": None,
+                "access_token_url": "https://oauth2.googleapis.com/token",
+                "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            },
+        },
+    ]
+
+    class GoogleOAuthSecurityManager(FabAirflowSecurityManagerOverride):
+        def get_oauth_user_info(self, provider, resp):
+            if provider != "google":
+                return {}
+
+            user_info = super().get_oauth_user_info(provider, resp)
+            email = (user_info.get("email") or "").lower()
+            if email not in _GOOGLE_ALLOWED_EMAILS:
+                return {}
+
+            user_info["role_keys"] = ["Admin"]
+            return user_info
+
+    SECURITY_MANAGER_CLASS = GoogleOAuthSecurityManager
   startupProbe:
     failureThreshold: 30
     periodSeconds: 10
+    timeoutSeconds: 20
+  readinessProbe:
+    timeoutSeconds: 20
+  livenessProbe:
     timeoutSeconds: 20
   resources:
     requests:
@@ -173,6 +243,12 @@ webserver:
       memory: 1Gi
 
 migrateDatabaseJob:
+  args:
+    - bash
+    - -c
+    - |
+      airflow db migrate
+      airflow sync-perm
   nodeSelector:
     cloud.google.com/gke-nodepool: airflow-dev
   resources:
@@ -190,13 +266,6 @@ createUserJob:
   args:
     - |
       airflow sync-perm
-      airflow users create \
-        --role Admin \
-        --username admin \
-        --email admin@example.com \
-        --firstname admin \
-        --lastname user \
-        --password admin || true
   nodeSelector:
     cloud.google.com/gke-nodepool: airflow-dev
   resources:
