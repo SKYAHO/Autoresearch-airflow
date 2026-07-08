@@ -115,13 +115,6 @@ helm template autoresearch-airflow charts/autoresearch-airflow \
 See `docs/gke-helm-gitsync.md` for the deployment, operations, and rollback
 runbook.
 
-## Claude Review Automation
-
-PRs can be reviewed by Claude Code through `.github/workflows/claude.yml`.
-The workflow runs on PR open/ready-for-review and can also be triggered with a
-`/claude-review` PR comment. Configure the repository secret
-`CLAUDE_CODE_OAUTH_TOKEN` before using it.
-
 ## GKE Diagnostics
 
 Capture the current Airflow deployment evidence when debugging image pulls,

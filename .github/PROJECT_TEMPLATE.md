@@ -37,5 +37,3 @@ helm lint charts/autoresearch-airflow
 helm template autoresearch-airflow charts/autoresearch-airflow   --namespace airflow   --values environments/gke-values.example.yaml >/tmp/autoresearch-airflow.yaml
 git diff --check
 ```
-
-Claude 리뷰가 필요하면 PR에 `/claude-review` 코멘트를 남깁니다.

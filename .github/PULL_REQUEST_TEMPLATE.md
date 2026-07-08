@@ -18,7 +18,6 @@ Closes #
 - [ ] git-sync repo/branch/subPath가 실제 DAG 위치와 일치한다
 - [ ] Secret, API key, kubeconfig, GCP key JSON이 포함되지 않았다
 - [ ] 운영 방식 변경을 README 또는 docs에 반영했다
-- [ ] 필요한 경우 `/claude-review`로 Claude 리뷰를 요청했다
 
 ## 리뷰어 참고사항
 
