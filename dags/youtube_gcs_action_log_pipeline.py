@@ -23,8 +23,18 @@ from autoresearch_airflow.dag_config import (
 
 
 _KST = ZoneInfo("Asia/Seoul")
-_YOUTUBE_SETTINGS = YouTubeTrendingDagSettings()
-_ACTION_LOG_SETTINGS = ActionLogDagSettings()
+_PARTITION_DATE_TEMPLATE = (
+    "{{ dag_run.conf.get('partition_date') "
+    "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
+)
+_YOUTUBE_SETTINGS = YouTubeTrendingDagSettings(
+    partition_date_template=_PARTITION_DATE_TEMPLATE,
+)
+_ACTION_LOG_SETTINGS = ActionLogDagSettings(
+    partition_date_template=_PARTITION_DATE_TEMPLATE,
+    max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '60') }}",
+    chunk_size_template="{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
+)
 _KPO_SERVICE_ACCOUNT = Variable.get(
     "AIRFLOW_KPO_SERVICE_ACCOUNT", default_var="autoresearch-batch"
 )
@@ -56,9 +66,10 @@ def _secret_env_vars(*keys: str) -> list[k8s.V1EnvVar]:
 
 with DAG(
     dag_id="youtube_gcs_action_log_pipeline",
-    schedule="30 15 * * *",  # UTC 15:30 = KST 00:30
+    schedule="0 6 * * *",  # KST 06:00; GCS partitions should be ready before KST 10:00.
     start_date=datetime(2026, 7, 1, tzinfo=_KST),
     catchup=False,
+    max_active_runs=1,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
     tags=["youtube", "collection", "action-log", "gcs", "kubernetes"],
     params={"partition_date": "", "overwrite": False},
@@ -81,6 +92,7 @@ with DAG(
         in_cluster=True,
         get_logs=True,
         is_delete_operator_pod=True,
+        execution_timeout=timedelta(minutes=30),
         startup_timeout_seconds=600,
         labels={"app": "autoresearch", "pipeline": "youtube-collection"},
         container_resources=k8s.V1ResourceRequirements(
@@ -102,6 +114,7 @@ with DAG(
         in_cluster=True,
         get_logs=True,
         is_delete_operator_pod=True,
+        execution_timeout=timedelta(hours=3, minutes=45),
         startup_timeout_seconds=600,
         labels={"app": "autoresearch", "pipeline": "youtube-action-log"},
         container_resources=k8s.V1ResourceRequirements(

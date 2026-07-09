@@ -7,8 +7,8 @@ from autoresearch_airflow.dag_config import (
 
 
 PARTITION_DATE_TEMPLATE = (
-    "{{ dag_run.conf.get('partition_date', "
-    "data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d')) }}"
+    "{{ dag_run.conf.get('partition_date') "
+    "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
 )
 
 
@@ -50,9 +50,9 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "--seed",
         "{{ var.value.get('ACTION_LOG_SEED', '42') }}",
         "--max-concurrency",
-        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '1') }}",
+        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '60') }}",
         "--chunk-size",
-        "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '0') }}",
+        "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
     ]
 
 

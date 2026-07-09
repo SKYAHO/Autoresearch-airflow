@@ -70,9 +70,11 @@ collect_youtube_trending_partition
   -> ensure_action_log_partition
 ```
 
-스케줄은 UTC 15:30(KST 00:30)이고, 기본 partition date는
-`data_interval_end`를 KST로 변환한 날짜다. 수동 실행 시에는
-`dag_run.conf.partition_date`로 덮어쓸 수 있다.
+스케줄은 KST 06:00이고, 운영 목표는 KST 10:00에 YouTube partition과
+action log partition을 모두 GCS에서 확인할 수 있게 하는 것이다. 기본
+partition date는 `data_interval_end`를 KST로 변환한 날짜다. 수동 실행
+시에는 `dag_run.conf.partition_date`로 덮어쓸 수 있고, 값이 비어 있거나
+null이면 기본 partition date로 fallback한다.
 
 ### 3. 1회 QA 전용 GCS prefix
 
@@ -109,18 +111,20 @@ ACTION_LOG_OUTPUT_DIR=<QA action log base path>
 ACTION_LOG_QUARANTINE_DIR=<QA quarantine base path>
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
-ACTION_LOG_MAX_CONCURRENCY=1
-ACTION_LOG_CHUNK_SIZE=0
+ACTION_LOG_MAX_CONCURRENCY=60
+ACTION_LOG_CHUNK_SIZE=24
 ```
 
 ### 5. QA 입력 크기
 
-API 비용과 LLM 비용을 제한하기 위해 운영 QA는 작은 입력으로 시작한다.
+운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_MAX_CONCURRENCY=60`,
+`ACTION_LOG_CHUNK_SIZE=24`를 사용한다. 단, 일회성 QA는 실패 원인을 좁히기
+위해 작은 입력으로 시작할 수 있다.
 
 - YouTube API: KR trending `max_results=30`
 - Virtual users: 5명 또는 10명 sample parquet
 - Candidates per user: 24
-- Max concurrency: 1 또는 2
+- Max concurrency: QA에서는 1 또는 2, 운영 검증에서는 60
 
 수동 trigger 예시:
 

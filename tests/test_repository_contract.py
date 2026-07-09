@@ -17,6 +17,9 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "youtube_gcs_action_log_pipeline" in source
     assert "collect_youtube_trending_partition" in source
     assert "ensure_action_log_partition" in source
+    assert "schedule='0 6 * * *'" in source
+    assert "max_active_runs=1" in source
+    assert "execution_timeout=timedelta(hours=3, minutes=45)" in source
     assert (
         "collect_youtube_trending_partition >> ensure_action_log_partition"
         in source

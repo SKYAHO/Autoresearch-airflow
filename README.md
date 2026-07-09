@@ -22,9 +22,10 @@ gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 
 ## Daily Pipeline
 
-`dags/youtube_gcs_action_log_pipeline.py` runs every day at UTC 15:30
-(KST 00:30). It launches KubernetesPodOperator batch pods using
-`AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
+`dags/youtube_gcs_action_log_pipeline.py` runs every day at KST 06:00. The
+operational target is that both the YouTube and action-log GCS partitions are
+ready for inspection by KST 10:00. It launches KubernetesPodOperator batch pods
+using `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
 
 The DAG:
 

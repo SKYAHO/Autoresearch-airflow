@@ -64,6 +64,6 @@ env:
   - name: AIRFLOW_VAR_ACTION_LOG_SEED
     value: "42"
   - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
-    value: "1"
+    value: "60"
   - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE
-    value: "0"
+    value: "24"
