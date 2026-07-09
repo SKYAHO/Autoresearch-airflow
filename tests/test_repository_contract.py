@@ -16,12 +16,15 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "AUTORESEARCH_BATCH_IMAGE" in source
     assert "youtube_gcs_action_log_pipeline" in source
     assert "collect_youtube_trending_partition" in source
-    assert "ensure_action_log_partition" in source
+    assert "ensure_action_log_shards" in source
+    assert "ensure_action_log_shard_" in source
+    assert "merge_action_log_partition" in source
     assert "schedule='0 6 * * *'" in source
     assert "max_active_runs=1" in source
-    assert "execution_timeout=timedelta(hours=3, minutes=45)" in source
+    assert "execution_timeout=timedelta(hours=2, minutes=30)" in source
+    assert "execution_timeout=timedelta(minutes=30)" in source
     assert (
-        "collect_youtube_trending_partition >> ensure_action_log_partition"
+        "collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition"
         in source
     )
     assert "--api-key" not in source
@@ -76,11 +79,12 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "subPath: dags" in values
 
 
-def test_cloudbuild_builds_airflow_and_batch_images_from_main() -> None:
+def test_cloudbuild_builds_airflow_and_batch_images_from_configured_ref() -> None:
     config = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
 
     assert "docker/batch/Dockerfile" in config
     assert "docker/airflow/Dockerfile" in config
-    assert "AUTORESEARCH_REF=main" in config
+    assert "_AUTORESEARCH_REF: main" in config
+    assert "AUTORESEARCH_REF=${_AUTORESEARCH_REF}" in config
     assert "autoresearch-batch:${_IMAGE_TAG}" in config
     assert "autoresearch-airflow:${_IMAGE_TAG}" in config

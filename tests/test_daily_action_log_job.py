@@ -33,13 +33,20 @@ def test_build_config_uses_default_gcs_paths() -> None:
     )
 
     assert config == DailyActionLogConfig(
+        mode="single",
         partition_date=date(2026, 7, 7),
         bucket="autoresearch-dev-lake",
         youtube_base_path="autoresearch-dev-lake/data_lake/youtube_trending_kr",
         virtual_users_path="autoresearch-dev-lake/asset/virtual_user/vu_1000.parquet",
         output_base_path="autoresearch-dev-lake/data_lake/action_log",
         quarantine_base_path="autoresearch-dev-lake/data_lake/action_log_quarantine",
+        work_output_base_path="autoresearch-dev-lake/data_lake/action_log_work",
+        work_quarantine_base_path=(
+            "autoresearch-dev-lake/data_lake/action_log_quarantine_work"
+        ),
         overwrite=False,
+        shard_index=None,
+        shard_count=1,
         generator_name="rule_based",
         model_name=None,
         candidates_per_user=24,
@@ -50,6 +57,32 @@ def test_build_config_uses_default_gcs_paths() -> None:
         seed=42,
         max_concurrency=1,
         chunk_size=0,
+    )
+
+
+def test_build_config_shard_mode_uses_default_work_paths() -> None:
+    config = build_config(
+        [
+            "--mode",
+            "shard",
+            "--partition-date",
+            "2026-07-07",
+            "--bucket",
+            "autoresearch-dev-lake",
+            "--shard-index",
+            "2",
+            "--shard-count",
+            "8",
+        ]
+    )
+
+    assert config.mode == "shard"
+    assert config.shard_index == 2
+    assert config.shard_count == 8
+    assert config.output_base_path == "autoresearch-dev-lake/data_lake/action_log_work"
+    assert (
+        config.quarantine_base_path
+        == "autoresearch-dev-lake/data_lake/action_log_quarantine_work"
     )
 
 

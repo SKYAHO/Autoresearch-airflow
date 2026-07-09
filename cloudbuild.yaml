@@ -2,6 +2,7 @@ substitutions:
   _REGION: asia-northeast3
   _REPOSITORY: autoresearch-dev-docker
   _IMAGE_TAG: manual
+  _AUTORESEARCH_REF: main
 
 steps:
   - id: build-batch-image
@@ -11,7 +12,7 @@ steps:
       - -f
       - docker/batch/Dockerfile
       - --build-arg
-      - AUTORESEARCH_REF=main
+      - AUTORESEARCH_REF=${_AUTORESEARCH_REF}
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/autoresearch-batch:${_IMAGE_TAG}
       - .

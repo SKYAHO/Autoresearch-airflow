@@ -1,7 +1,9 @@
 from autoresearch_airflow.dag_config import (
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
+    build_action_log_merge_kpo_arguments,
     build_action_log_kpo_arguments,
+    build_action_log_shard_kpo_arguments,
     build_youtube_trending_kpo_arguments,
 )
 
@@ -53,6 +55,46 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '60') }}",
         "--chunk-size",
         "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
+    ]
+
+
+def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
+    settings = ActionLogDagSettings(
+        bucket_template="{{ var.value.YOUTUBE_LAKE_BUCKET }}",
+        overwrite_template="{{ dag_run.conf.get('overwrite', false) }}",
+    )
+
+    args = build_action_log_shard_kpo_arguments(settings, shard_index=3)
+
+    assert args[:3] == ["--mode", "shard", "--partition-date"]
+    assert "--output-base-path" in args
+    assert "{{ var.value.get('ACTION_LOG_WORK_OUTPUT_DIR', '') }}" in args
+    assert "--quarantine-base-path" in args
+    assert "{{ var.value.get('ACTION_LOG_WORK_QUARANTINE_DIR', '') }}" in args
+    assert args[-4:] == [
+        "--shard-index",
+        "3",
+        "--shard-count",
+        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '8') }}",
+    ]
+
+
+def test_build_action_log_merge_kpo_arguments_uses_final_and_work_paths() -> None:
+    settings = ActionLogDagSettings(
+        bucket_template="{{ var.value.YOUTUBE_LAKE_BUCKET }}",
+        overwrite_template="{{ dag_run.conf.get('overwrite', false) }}",
+    )
+
+    args = build_action_log_merge_kpo_arguments(settings)
+
+    assert args[:3] == ["--mode", "merge", "--partition-date"]
+    output_index = args.index("--output-base-path") + 1
+    assert args[output_index] == "{{ var.value.get('ACTION_LOG_OUTPUT_DIR', '') }}"
+    work_index = args.index("--work-output-base-path") + 1
+    assert args[work_index] == "{{ var.value.get('ACTION_LOG_WORK_OUTPUT_DIR', '') }}"
+    assert args[-2:] == [
+        "--shard-count",
+        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '8') }}",
     ]
 
 

@@ -51,6 +51,12 @@ env:
     value: ""
   - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
     value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_WORK_OUTPUT_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_WORK_QUARANTINE_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_SHARD_COUNT
+    value: "8"
   - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
     value: "24"
   - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR

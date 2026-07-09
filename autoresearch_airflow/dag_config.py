@@ -33,7 +33,12 @@ class ActionLogDagSettings:
     virtual_users_path_template: str = "{{ var.value.get('ACTION_LOG_VIRTUAL_USERS_PATH', '') }}"
     output_base_path_template: str = "{{ var.value.get('ACTION_LOG_OUTPUT_DIR', '') }}"
     quarantine_base_path_template: str = "{{ var.value.get('ACTION_LOG_QUARANTINE_DIR', '') }}"
+    work_output_base_path_template: str = "{{ var.value.get('ACTION_LOG_WORK_OUTPUT_DIR', '') }}"
+    work_quarantine_base_path_template: str = (
+        "{{ var.value.get('ACTION_LOG_WORK_QUARANTINE_DIR', '') }}"
+    )
     overwrite_template: str = "{{ dag_run.conf.get('overwrite', false) }}"
+    shard_count_template: str = "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '8') }}"
     generator_name_template: str = "{{ var.value.get('ACTION_LOG_GENERATOR', 'openrouter') }}"
     model_name_template: str = "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}"
     candidates_per_user_template: str = "{{ var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24') }}"
@@ -65,8 +70,13 @@ def build_youtube_trending_kpo_arguments(settings: YouTubeTrendingDagSettings) -
     ]
 
 
-def build_action_log_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
-    """Build CLI arguments for the daily action log batch container."""
+def _build_action_log_common_arguments(
+    settings: ActionLogDagSettings,
+    *,
+    output_base_path_template: str,
+    quarantine_base_path_template: str,
+) -> list[str]:
+    """Build shared CLI arguments for action log batch containers."""
 
     return [
         "--partition-date",
@@ -78,9 +88,9 @@ def build_action_log_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
         "--virtual-users-path",
         settings.virtual_users_path_template,
         "--output-base-path",
-        settings.output_base_path_template,
+        output_base_path_template,
         "--quarantine-base-path",
-        settings.quarantine_base_path_template,
+        quarantine_base_path_template,
         "--overwrite",
         settings.overwrite_template,
         "--generator-name",
@@ -103,4 +113,56 @@ def build_action_log_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
         settings.max_concurrency_template,
         "--chunk-size",
         settings.chunk_size_template,
+    ]
+
+
+def build_action_log_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
+    """Build CLI arguments for the legacy single-pod daily action log container."""
+
+    return _build_action_log_common_arguments(
+        settings,
+        output_base_path_template=settings.output_base_path_template,
+        quarantine_base_path_template=settings.quarantine_base_path_template,
+    )
+
+
+def build_action_log_shard_kpo_arguments(
+    settings: ActionLogDagSettings,
+    *,
+    shard_index: int,
+) -> list[str]:
+    """Build CLI arguments for one action log shard container."""
+
+    return [
+        "--mode",
+        "shard",
+        *_build_action_log_common_arguments(
+            settings,
+            output_base_path_template=settings.work_output_base_path_template,
+            quarantine_base_path_template=settings.work_quarantine_base_path_template,
+        ),
+        "--shard-index",
+        str(shard_index),
+        "--shard-count",
+        settings.shard_count_template,
+    ]
+
+
+def build_action_log_merge_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
+    """Build CLI arguments for the action log shard merge container."""
+
+    return [
+        "--mode",
+        "merge",
+        *_build_action_log_common_arguments(
+            settings,
+            output_base_path_template=settings.output_base_path_template,
+            quarantine_base_path_template=settings.quarantine_base_path_template,
+        ),
+        "--work-output-base-path",
+        settings.work_output_base_path_template,
+        "--work-quarantine-base-path",
+        settings.work_quarantine_base_path_template,
+        "--shard-count",
+        settings.shard_count_template,
     ]

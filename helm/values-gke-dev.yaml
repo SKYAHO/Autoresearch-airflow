@@ -5,12 +5,12 @@ airflowVersion: "2.10.5"
 executor: LocalExecutor
 
 defaultAirflowRepository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
-defaultAirflowTag: "ea2c0b4"
+defaultAirflowTag: "sharding-20260709-185329"
 
 images:
   airflow:
     repository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
-    tag: "ea2c0b4"
+    tag: "sharding-20260709-185329"
     pullPolicy: IfNotPresent
 
 webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
@@ -85,7 +85,7 @@ env:
   - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
     value: "ar-infra-501607-autoresearch-dev-raw-data"
   - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
-    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:ea2c0b4"
+    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:sharding-20260709-185329"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
     value: "airflow"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
@@ -110,6 +110,12 @@ env:
     value: ""
   - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
     value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_WORK_OUTPUT_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_WORK_QUARANTINE_DIR
+    value: ""
+  - name: AIRFLOW_VAR_ACTION_LOG_SHARD_COUNT
+    value: "8"
   - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
     value: "24"
   - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR

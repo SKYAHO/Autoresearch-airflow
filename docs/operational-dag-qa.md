@@ -63,11 +63,13 @@ OPENROUTER_API_KEY
 
 ### 2. DAG 태스크
 
-`youtube_gcs_action_log_pipeline`은 아래 두 KPO 태스크를 순서대로 실행한다.
+`youtube_gcs_action_log_pipeline`은 YouTube 수집 뒤 action-log shard KPO를
+fan-out하고, 마지막 merge KPO에서 최종 partition을 만든다.
 
 ```text
 collect_youtube_trending_partition
-  -> ensure_action_log_partition
+  -> ensure_action_log_shard_000 ... ensure_action_log_shard_NNN
+  -> merge_action_log_partition
 ```
 
 스케줄은 KST 06:00이고, 운영 목표는 KST 10:00에 YouTube partition과
@@ -86,7 +88,9 @@ QA prefix로 임시 override한다.
 ```text
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr_api_llm_smoke/run=<run_id>/dt=<yyyy-mm-dd>/part-0.parquet
 gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user_smoke/run=<run_id>/vu_5.parquet
+gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/part-0.parquet
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_smoke/run=<run_id>/dt=<yyyy-mm-dd>/part-0.parquet
+gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_quarantine_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/quarantine.jsonl
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_quarantine/run=<run_id>/dt=<yyyy-mm-dd>/quarantine.jsonl
 ```
 
@@ -109,6 +113,9 @@ ACTION_LOG_YOUTUBE_BASE_PATH=<QA YouTube base path>
 ACTION_LOG_VIRTUAL_USERS_PATH=<QA virtual user parquet path>
 ACTION_LOG_OUTPUT_DIR=<QA action log base path>
 ACTION_LOG_QUARANTINE_DIR=<QA quarantine base path>
+ACTION_LOG_WORK_OUTPUT_DIR=<QA action log shard work base path>
+ACTION_LOG_WORK_QUARANTINE_DIR=<QA quarantine shard work base path>
+ACTION_LOG_SHARD_COUNT=8
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
 ACTION_LOG_MAX_CONCURRENCY=60
@@ -117,9 +124,11 @@ ACTION_LOG_CHUNK_SIZE=24
 
 ### 5. QA 입력 크기
 
-운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_MAX_CONCURRENCY=60`,
-`ACTION_LOG_CHUNK_SIZE=24`를 사용한다. 단, 일회성 QA는 실패 원인을 좁히기
-위해 작은 입력으로 시작할 수 있다.
+운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_SHARD_COUNT=8`,
+`ACTION_LOG_MAX_CONCURRENCY=60`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
+Shard work parquet은 최종 event log가 아니라 LLM judgment draft이며, merge
+태스크가 모든 shard를 읽어 전역 CTR 정규화와 `event_id` 부여를 수행한다.
+단, 일회성 QA는 실패 원인을 좁히기 위해 작은 입력으로 시작할 수 있다.
 
 - YouTube API: KR trending `max_results=30`
 - Virtual users: 5명 또는 10명 sample parquet

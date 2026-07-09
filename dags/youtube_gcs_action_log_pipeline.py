@@ -17,7 +17,8 @@ from kubernetes.client import models as k8s
 from autoresearch_airflow.dag_config import (
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
-    build_action_log_kpo_arguments,
+    build_action_log_merge_kpo_arguments,
+    build_action_log_shard_kpo_arguments,
     build_youtube_trending_kpo_arguments,
 )
 
@@ -44,6 +45,22 @@ _BATCH_IMAGE_PULL_POLICY = Variable.get(
 _API_SECRET_NAME = Variable.get(
     "AUTORESEARCH_API_SECRET_NAME", default_var="autoresearch-airflow-env"
 )
+
+
+def _positive_int_variable(name: str, default: int) -> int:
+    """Read a positive integer Airflow Variable at DAG parse time."""
+
+    raw_value = Variable.get(name, default_var=str(default))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer: {raw_value}") from exc
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer: {raw_value}")
+    return value
+
+
+_ACTION_LOG_SHARD_COUNT = _positive_int_variable("ACTION_LOG_SHARD_COUNT", 8)
 
 
 def _secret_env_vars(*keys: str) -> list[k8s.V1EnvVar]:
@@ -101,20 +118,52 @@ with DAG(
         ),
     )
 
-    ensure_action_log_partition = KubernetesPodOperator(
-        task_id="ensure_action_log_partition",
-        name="ensure-action-log-partition",
+    ensure_action_log_shards = [
+        KubernetesPodOperator(
+            task_id=f"ensure_action_log_shard_{shard_index:03d}",
+            name=f"ensure-action-log-shard-{shard_index:03d}",
+            namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
+            image="{{ var.value.AUTORESEARCH_BATCH_IMAGE }}",
+            cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
+            arguments=build_action_log_shard_kpo_arguments(
+                _ACTION_LOG_SETTINGS,
+                shard_index=shard_index,
+            ),
+            env_vars=_secret_env_vars("OPENROUTER_API_KEY"),
+            service_account_name=_KPO_SERVICE_ACCOUNT,
+            image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
+            in_cluster=True,
+            get_logs=True,
+            is_delete_operator_pod=True,
+            execution_timeout=timedelta(hours=2, minutes=30),
+            startup_timeout_seconds=600,
+            labels={
+                "app": "autoresearch",
+                "pipeline": "youtube-action-log",
+                "shard": f"{shard_index:03d}",
+            },
+            container_resources=k8s.V1ResourceRequirements(
+                requests={"cpu": "500m", "memory": "1Gi"},
+                limits={"cpu": "2", "memory": "4Gi"},
+            ),
+        )
+        for shard_index in range(_ACTION_LOG_SHARD_COUNT)
+    ]
+
+    merge_action_log_partition = KubernetesPodOperator(
+        task_id="merge_action_log_partition",
+        name="merge-action-log-partition",
         namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
         image="{{ var.value.AUTORESEARCH_BATCH_IMAGE }}",
         cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
-        arguments=build_action_log_kpo_arguments(_ACTION_LOG_SETTINGS),
-        env_vars=_secret_env_vars("OPENROUTER_API_KEY"),
+        arguments=build_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS),
+        env_vars=_secret_env_vars(),
         service_account_name=_KPO_SERVICE_ACCOUNT,
         image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
         in_cluster=True,
         get_logs=True,
         is_delete_operator_pod=True,
-        execution_timeout=timedelta(hours=3, minutes=45),
+        execution_timeout=timedelta(minutes=30),
         startup_timeout_seconds=600,
         labels={"app": "autoresearch", "pipeline": "youtube-action-log"},
         container_resources=k8s.V1ResourceRequirements(
@@ -123,4 +172,4 @@ with DAG(
         ),
     )
 
-    collect_youtube_trending_partition >> ensure_action_log_partition
+    collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition

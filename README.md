@@ -17,6 +17,7 @@ The source of truth for data is GCS:
 ```text
 gs://<bucket>/data_lake/youtube_trending_kr/dt=YYYY-MM-DD/part-0.parquet
 gs://<bucket>/asset/virtual_user/vu_1000.parquet
+gs://<bucket>/data_lake/action_log_work/dt=YYYY-MM-DD/shard=000/part-0.parquet
 gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 ```
 
@@ -31,9 +32,11 @@ The DAG:
 
 1. Calls the YouTube Data API and writes the KR trending partition to GCS.
 2. Checks the virtual user parquet in GCS.
-3. Skips when the action log partition already exists and `overwrite=false`.
-4. Generates the action log partition with OpenRouter `mistralai/mistral-nemo`
-   when missing or when `overwrite=true`.
+3. Fans out action-log generation into `ACTION_LOG_SHARD_COUNT` shard pods.
+   Each shard writes LLM judgment draft parquet under `data_lake/action_log_work`.
+4. Fans in through one merge pod. The merge pod applies global CTR normalization,
+   assigns final `event_id` values, and writes the final action-log partition.
+5. Skips existing shard or final partitions when `overwrite=false`.
 
 Secret values are not passed as CLI arguments. The KPO pods read
 `YOUTUBE_API_KEYS` or `YOUTUBE_API_KEY`, and `OPENROUTER_API_KEY`, from the
@@ -69,7 +72,7 @@ Local Docker is not required. Build and push both images with Cloud Build:
 gcloud builds submit \
   --project ar-infra-501607 \
   --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=<tag>
+  --substitutions _IMAGE_TAG=<tag>,_AUTORESEARCH_REF=<autoresearch-ref>
 ```
 
 This builds:
