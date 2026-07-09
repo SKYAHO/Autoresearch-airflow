@@ -143,7 +143,7 @@ with DAG(
                 "shard": f"{shard_index:03d}",
             },
             container_resources=k8s.V1ResourceRequirements(
-                requests={"cpu": "500m", "memory": "1Gi"},
+                requests={"cpu": "250m", "memory": "512Mi"},
                 limits={"cpu": "2", "memory": "4Gi"},
             ),
         )
