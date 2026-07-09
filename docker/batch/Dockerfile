@@ -18,8 +18,8 @@ ARG AUTORESEARCH_REF=main
 
 RUN git clone --depth 1 "${AUTORESEARCH_REPO}" /opt/autoresearch \
     && cd /opt/autoresearch \
-    && (git fetch --depth 1 origin "${AUTORESEARCH_REF}" || true) \
-    && git checkout "${AUTORESEARCH_REF}"
+    && git fetch --depth 1 origin "${AUTORESEARCH_REF}" \
+    && git checkout FETCH_HEAD
 
 WORKDIR /opt/autoresearch
 

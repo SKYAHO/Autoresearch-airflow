@@ -61,7 +61,8 @@ def test_batch_dockerfile_uses_uv_and_autoresearch_source() -> None:
     assert "https://github.com/SKYAHO/Autoresearch.git" in content
     assert "uv pip install --system" in content
     assert "autoresearch_airflow_jobs" in content
-    assert "(git fetch --depth 1 origin" in content
+    assert "git fetch --depth 1 origin" in content
+    assert "git checkout FETCH_HEAD" in content
 
 
 def test_astro_airflow_image_has_required_build_context_files() -> None:
