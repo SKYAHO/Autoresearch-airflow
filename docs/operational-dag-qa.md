@@ -118,14 +118,14 @@ ACTION_LOG_WORK_QUARANTINE_DIR=<QA quarantine shard work base path>
 ACTION_LOG_SHARD_COUNT=8
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
-ACTION_LOG_MAX_CONCURRENCY=60
+ACTION_LOG_MAX_CONCURRENCY=15
 ACTION_LOG_CHUNK_SIZE=24
 ```
 
 ### 5. QA 입력 크기
 
 운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_SHARD_COUNT=8`,
-`ACTION_LOG_MAX_CONCURRENCY=60`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
+`ACTION_LOG_MAX_CONCURRENCY=15`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
 Shard work parquet은 최종 event log가 아니라 LLM judgment draft이며, merge
 태스크가 모든 shard를 읽어 전역 CTR 정규화와 `event_id` 부여를 수행한다.
 단, 일회성 QA는 실패 원인을 좁히기 위해 작은 입력으로 시작할 수 있다.

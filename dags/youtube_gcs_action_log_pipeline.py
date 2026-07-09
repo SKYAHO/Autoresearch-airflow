@@ -33,7 +33,7 @@ _YOUTUBE_SETTINGS = YouTubeTrendingDagSettings(
 )
 _ACTION_LOG_SETTINGS = ActionLogDagSettings(
     partition_date_template=_PARTITION_DATE_TEMPLATE,
-    max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '60') }}",
+    max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '15') }}",
     chunk_size_template="{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
 )
 _KPO_SERVICE_ACCOUNT = Variable.get(

@@ -47,7 +47,7 @@ class ActionLogDagSettings:
     popular_ratio_template: str = "{{ var.value.get('ACTION_LOG_POPULAR_RATIO', '0.2') }}"
     exploration_ratio_template: str = "{{ var.value.get('ACTION_LOG_EXPLORATION_RATIO', '0.1') }}"
     seed_template: str = "{{ var.value.get('ACTION_LOG_SEED', '42') }}"
-    max_concurrency_template: str = "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '60') }}"
+    max_concurrency_template: str = "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '15') }}"
     chunk_size_template: str = "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}"
 
 
