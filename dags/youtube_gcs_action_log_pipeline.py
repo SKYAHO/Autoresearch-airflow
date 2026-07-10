@@ -172,7 +172,7 @@ with DAG(
             do_xcom_push=False,
             retries=1,
             retry_delay=timedelta(minutes=10),
-            execution_timeout=timedelta(hours=2, minutes=30),
+            execution_timeout=timedelta(hours=6, minutes=30),
             startup_timeout_seconds=600,
             labels={
                 "app": "autoresearch",

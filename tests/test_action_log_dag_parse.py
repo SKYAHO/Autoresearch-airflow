@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
 
@@ -129,6 +130,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         assert task.kwargs["pool"] == "action_log_openrouter"
         assert task.kwargs["pool_slots"] == 1
         assert task.kwargs["retries"] == 1
+        assert task.kwargs["retry_delay"] == timedelta(minutes=10)
+        assert task.kwargs["execution_timeout"] == timedelta(hours=6, minutes=30)
+        assert task.kwargs["get_logs"] is True
         assert task.kwargs["do_xcom_push"] is False
         assert "OPENROUTER_API_KEY" not in " ".join(arguments)
         secret_env = task.kwargs["env_vars"][0]

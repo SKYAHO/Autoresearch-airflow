@@ -21,8 +21,9 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "merge_action_log_partition" in source
     assert "schedule='0 6 * * *'" in source
     assert "max_active_runs=1" in source
-    assert "execution_timeout=timedelta(hours=2, minutes=30)" in source
+    assert "execution_timeout=timedelta(hours=6, minutes=30)" in source
     assert "execution_timeout=timedelta(minutes=30)" in source
+    assert "get_logs=True" in source
     assert "pool=_OPENROUTER_POOL" in source
     assert "pool_slots=1" in source
     assert "do_xcom_push=False" in source
