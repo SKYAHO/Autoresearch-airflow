@@ -13,8 +13,11 @@ ACTION_LOG_LAKE_DIR = "data_lake/action_log"
 ACTION_LOG_QUARANTINE_DIR = "data_lake/action_log_quarantine"
 ACTION_LOG_WORK_DIR = "data_lake/action_log_work"
 ACTION_LOG_QUARANTINE_WORK_DIR = "data_lake/action_log_quarantine_work"
+ACTION_LOG_PROGRESS_DIR = "data_lake/action_log_progress"
+ACTION_LOG_CHECKPOINT_DIR = "data_lake/action_log_checkpoints"
 DEFAULT_VIRTUAL_USERS_PATH = "asset/virtual_user/vu_1000.parquet"
 PARTITION_FILE = "part-0.parquet"
+QUARANTINE_FILE = "quarantine.jsonl"
 
 
 @dataclass(frozen=True)
@@ -28,8 +31,12 @@ class DailyActionLogConfig:
     virtual_users_path: str
     output_base_path: str
     quarantine_base_path: str
-    work_output_base_path: str
-    work_quarantine_base_path: str
+    shard_output_base_path: str
+    shard_quarantine_base_path: str
+    progress_base_path: str
+    checkpoint_base_path: str
+    final_output_base_path: str
+    final_quarantine_base_path: str
     overwrite: bool
     shard_index: int | None
     shard_count: int
@@ -43,6 +50,7 @@ class DailyActionLogConfig:
     seed: int
     max_concurrency: int
     chunk_size: int
+    max_quarantine_ratio: float
 
 
 def _strip_gs(path: str) -> str:
@@ -61,6 +69,12 @@ def _dt_file(base_path: str, partition_date: date) -> str:
     """Build a dt partition file path under a base path."""
 
     return f"{_strip_gs(base_path).rstrip('/')}/dt={partition_date:%Y-%m-%d}/{PARTITION_FILE}"
+
+
+def _dt_quarantine_file(base_path: str, partition_date: date) -> str:
+    """Build a quarantine file path under a base path."""
+
+    return f"{_strip_gs(base_path).rstrip('/')}/dt={partition_date:%Y-%m-%d}/{QUARANTINE_FILE}"
 
 
 def _dt_shard_file(base_path: str, partition_date: date, shard_index: int) -> str:
@@ -100,8 +114,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--virtual-users-path", default="")
     parser.add_argument("--output-base-path", default="")
     parser.add_argument("--quarantine-base-path", default="")
-    parser.add_argument("--work-output-base-path", default="")
-    parser.add_argument("--work-quarantine-base-path", default="")
+    parser.add_argument(
+        "--shard-output-base-path",
+        "--work-output-base-path",
+        dest="shard_output_base_path",
+        default="",
+    )
+    parser.add_argument(
+        "--shard-quarantine-base-path",
+        "--work-quarantine-base-path",
+        dest="shard_quarantine_base_path",
+        default="",
+    )
+    parser.add_argument("--progress-base-path", default="")
+    parser.add_argument("--checkpoint-base-path", default="")
+    parser.add_argument("--final-output-base-path", default="")
+    parser.add_argument("--final-quarantine-base-path", default="")
     parser.add_argument("--overwrite", type=_parse_bool, default=False)
     parser.add_argument("--shard-index", type=int, default=None)
     parser.add_argument("--shard-count", type=int, default=1)
@@ -115,6 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-concurrency", type=int, default=1)
     parser.add_argument("--chunk-size", type=int, default=0)
+    parser.add_argument("--max-quarantine-ratio", type=float, default=0.5)
     return parser
 
 
@@ -126,12 +155,16 @@ def build_config(argv: Sequence[str] | None = None) -> DailyActionLogConfig:
     partition_date = date.fromisoformat(args.partition_date)
     if args.shard_count < 1:
         raise ValueError("--shard-count must be at least 1")
+    if not 0 <= args.max_quarantine_ratio <= 1:
+        raise ValueError("--max-quarantine-ratio must be between 0 and 1")
     if args.mode == "shard":
         if args.shard_index is None:
             raise ValueError("--shard-index is required when --mode=shard")
         if not 0 <= args.shard_index < args.shard_count:
             raise ValueError("--shard-index must satisfy 0 <= index < shard-count")
-    default_output_dir = ACTION_LOG_WORK_DIR if args.mode == "shard" else ACTION_LOG_LAKE_DIR
+    default_output_dir = (
+        ACTION_LOG_WORK_DIR if args.mode == "shard" else ACTION_LOG_LAKE_DIR
+    )
     default_quarantine_dir = (
         ACTION_LOG_QUARANTINE_WORK_DIR
         if args.mode == "shard"
@@ -153,12 +186,24 @@ def build_config(argv: Sequence[str] | None = None) -> DailyActionLogConfig:
         quarantine_base_path=_strip_gs(args.quarantine_base_path)
         if args.quarantine_base_path
         else _bucket_path(bucket, default_quarantine_dir),
-        work_output_base_path=_strip_gs(args.work_output_base_path)
-        if args.work_output_base_path
+        shard_output_base_path=_strip_gs(args.shard_output_base_path)
+        if args.shard_output_base_path
         else _bucket_path(bucket, ACTION_LOG_WORK_DIR),
-        work_quarantine_base_path=_strip_gs(args.work_quarantine_base_path)
-        if args.work_quarantine_base_path
+        shard_quarantine_base_path=_strip_gs(args.shard_quarantine_base_path)
+        if args.shard_quarantine_base_path
         else _bucket_path(bucket, ACTION_LOG_QUARANTINE_WORK_DIR),
+        progress_base_path=_strip_gs(args.progress_base_path)
+        if args.progress_base_path
+        else _bucket_path(bucket, ACTION_LOG_PROGRESS_DIR),
+        checkpoint_base_path=_strip_gs(args.checkpoint_base_path)
+        if args.checkpoint_base_path
+        else _bucket_path(bucket, ACTION_LOG_CHECKPOINT_DIR),
+        final_output_base_path=_strip_gs(args.final_output_base_path)
+        if args.final_output_base_path
+        else _bucket_path(bucket, ACTION_LOG_LAKE_DIR),
+        final_quarantine_base_path=_strip_gs(args.final_quarantine_base_path)
+        if args.final_quarantine_base_path
+        else _bucket_path(bucket, ACTION_LOG_QUARANTINE_DIR),
         overwrite=args.overwrite,
         shard_index=args.shard_index,
         shard_count=args.shard_count,
@@ -172,6 +217,7 @@ def build_config(argv: Sequence[str] | None = None) -> DailyActionLogConfig:
         seed=args.seed,
         max_concurrency=args.max_concurrency,
         chunk_size=args.chunk_size,
+        max_quarantine_ratio=args.max_quarantine_ratio,
     )
 
 
@@ -197,6 +243,14 @@ def _require_exists(filesystem, path: str, label: str) -> None:
 
     if not _exists(filesystem, path):
         raise FileNotFoundError(f"{label} does not exist: {path}")
+
+
+def _delete_if_exists(filesystem, path: str) -> None:
+    """Delete one stale success artifact before/after a merge attempt."""
+
+    normalized_path = _strip_gs(path)
+    if _exists(filesystem, normalized_path):
+        filesystem.delete_file(normalized_path)
 
 
 def run_daily_action_log(**kwargs):
@@ -255,21 +309,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             seed=config.seed,
             max_concurrency=config.max_concurrency,
             chunk_size=config.chunk_size,
+            max_quarantine_ratio=config.max_quarantine_ratio,
             generator_name=config.generator_name,
             model_name=config.model_name,
         )
     elif config.mode == "shard":
         if config.shard_index is None:
             raise ValueError("--shard-index is required when --mode=shard")
-        output_path = _dt_shard_file(
-            config.output_base_path,
-            config.partition_date,
-            config.shard_index,
-        )
-        if _exists(filesystem, output_path) and not config.overwrite:
-            print(f"Action log shard already exists; skipping: {output_path}")
-            return 0
-
+        if config.shard_index == 0:
+            _delete_if_exists(
+                filesystem,
+                _dt_file(config.final_output_base_path, config.partition_date),
+            )
+            _delete_if_exists(
+                filesystem,
+                _dt_quarantine_file(
+                    config.final_quarantine_base_path,
+                    config.partition_date,
+                ),
+            )
         summary = run_daily_action_log_shard(
             partition_date=config.partition_date,
             shard_index=config.shard_index,
@@ -287,41 +345,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             seed=config.seed,
             max_concurrency=config.max_concurrency,
             chunk_size=config.chunk_size,
+            max_quarantine_ratio=config.max_quarantine_ratio,
             generator_name=config.generator_name,
             model_name=config.model_name,
+            progress_base_path=config.progress_base_path,
+            checkpoint_base_path=config.checkpoint_base_path,
         )
     else:
         output_path = _dt_file(config.output_base_path, config.partition_date)
-        if _exists(filesystem, output_path) and not config.overwrite:
-            print(f"Action log already exists; skipping: {output_path}")
-            return 0
-
-        for shard_index in range(config.shard_count):
-            shard_path = _dt_shard_file(
-                config.work_output_base_path,
-                config.partition_date,
-                shard_index,
-            )
-            _require_exists(filesystem, shard_path, f"Action log shard {shard_index:03d}")
-
-        summary = merge_daily_action_log_shards(
-            partition_date=config.partition_date,
-            shard_count=config.shard_count,
-            shard_output_base_path=config.work_output_base_path,
-            output_base_path=config.output_base_path,
-            shard_quarantine_base_path=config.work_quarantine_base_path,
-            quarantine_base_path=config.quarantine_base_path,
-            filesystem=filesystem,
-            candidates_per_user=config.candidates_per_user,
-            target_ctr=config.target_ctr,
-            personalized_ratio=config.personalized_ratio,
-            popular_ratio=config.popular_ratio,
-            exploration_ratio=config.exploration_ratio,
-            seed=config.seed,
-            max_concurrency=config.max_concurrency,
-            chunk_size=config.chunk_size,
-            model_name=config.model_name,
+        quarantine_path = _dt_quarantine_file(
+            config.quarantine_base_path,
+            config.partition_date,
         )
+        _delete_if_exists(filesystem, output_path)
+        _delete_if_exists(filesystem, quarantine_path)
+        try:
+            summary = merge_daily_action_log_shards(
+                partition_date=config.partition_date,
+                shard_count=config.shard_count,
+                shard_output_base_path=config.shard_output_base_path,
+                output_base_path=config.output_base_path,
+                shard_quarantine_base_path=config.shard_quarantine_base_path,
+                quarantine_base_path=config.quarantine_base_path,
+                filesystem=filesystem,
+                max_quarantine_ratio=config.max_quarantine_ratio,
+            )
+        except Exception:
+            # The app writes the final parquet near the end of merge. If a later
+            # quarantine publish fails, do not leave that parquet as a success marker.
+            _delete_if_exists(filesystem, output_path)
+            raise
     print(summary)
     return 0
 

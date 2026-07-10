@@ -38,6 +38,31 @@ airflow:
 
 ## 배포 절차
 
+Action-log shard DAG는 batch image와 Airflow helper image에 동시에 의존합니다.
+따라서 DAG를 `main`에 반영하기 전에 애플리케이션 커밋이 포함된 image를 먼저
+빌드하고 Helm으로 배포합니다. image 반영 전 DAG 변경은 live 적용으로 간주하지
+않습니다.
+
+```bash
+IMAGE_TAG=action-log-shard-6db0728-<yyyymmdd-hhmmss>
+
+gcloud builds submit \
+  --project ar-infra-501607 \
+  --config cloudbuild.yaml \
+  --substitutions _IMAGE_TAG=${IMAGE_TAG},_AUTORESEARCH_REF=6db0728da32ac2da6a1997e1e44389fa0bddf3cd
+```
+
+배포 순서는 반드시 다음과 같습니다.
+
+1. Artifact Registry에서 새 batch image digest와
+   `org.opencontainers.image.revision=6db0728...`를 확인합니다.
+2. `helm/values-gke-dev.yaml`의 Airflow/batch image tag를 새 tag로 바꾸고 Helm
+   upgrade를 수행합니다. 이 단계에서 action-log Variable과 Pool도 반영합니다.
+3. scheduler와 webserver rollout, `action_log_openrouter=2 slots`를 확인합니다.
+4. 그 후에만 DAG 변경을 `main`에 반영하고 git-sync의 새 commit 동기화와 DAG
+   import 상태를 확인합니다.
+5. 수동 run으로 shard fan-out과 단일 merge를 확인합니다.
+
 1. GKE cluster와 `airflow` namespace를 준비합니다.
 2. Workload Identity용 Kubernetes ServiceAccount와 Google ServiceAccount 매핑을
    환경값에 맞게 설정합니다.
@@ -61,12 +86,40 @@ helm dependency update charts/autoresearch-airflow
 helm upgrade --install autoresearch-airflow charts/autoresearch-airflow   --namespace airflow   --values environments/gke-values.example.yaml
 ```
 
+dev release는 upstream chart에 실제 values를 직접 적용하므로 다음 명령을
+사용합니다.
+
+```bash
+helm upgrade airflow apache-airflow/airflow \
+  --version 1.16.0 \
+  --namespace airflow \
+  --values helm/values-gke-dev.yaml
+```
+
+`migrateDatabaseJob`은 DB migration 직후 다음 Pool을 idempotent하게 생성하거나
+갱신합니다.
+
+```text
+Pool: action_log_openrouter
+Slots: 2
+Shard task pool_slots: 1
+Shard app concurrency: 2
+실질 OpenRouter 동시성: 2 × 2 = 4
+```
+
+초기값은 `ACTION_LOG_SHARD_COUNT=5`이지만 Pool 때문에 동시에 실행되는 shard는
+2개입니다. shard KPO timeout은 2시간 30분, Airflow retry는 1회이고 앱 내부
+OpenRouter 전체 retry 상한은 2회(timeout retry 상한 1회)입니다. Pool slots,
+shard별 concurrency, 두 retry 계층을 함께 상향하지 않습니다.
+
 ## 운영 확인
 
 ```bash
 kubectl get pods -n airflow
-kubectl logs -n airflow deploy/autoresearch-airflow-scheduler -c git-sync
-kubectl exec -n airflow deploy/autoresearch-airflow-scheduler -c scheduler -- airflow dags list
+kubectl logs -n airflow airflow-scheduler-0 -c git-sync
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow pools get action_log_openrouter
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-import-errors
 ```
 
 `git-sync` 로그에서 새 commit hash가 sync되는지 확인하고, Airflow scheduler가

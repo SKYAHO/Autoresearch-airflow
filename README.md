@@ -18,6 +18,9 @@ The source of truth for data is GCS:
 gs://<bucket>/data_lake/youtube_trending_kr/dt=YYYY-MM-DD/part-0.parquet
 gs://<bucket>/asset/virtual_user/vu_1000.parquet
 gs://<bucket>/data_lake/action_log_work/dt=YYYY-MM-DD/shard=000/part-0.parquet
+gs://<bucket>/data_lake/action_log_work/dt=YYYY-MM-DD/shard=000/manifest.json
+gs://<bucket>/data_lake/action_log_progress/dt=YYYY-MM-DD/shard=000/progress.json
+gs://<bucket>/data_lake/action_log_checkpoints/dt=YYYY-MM-DD/shard=000/fingerprint=<sha256>/parts/*.parquet
 gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 ```
 
@@ -35,12 +38,31 @@ The DAG:
 3. Fans out action-log generation into `ACTION_LOG_SHARD_COUNT` shard pods.
    Each shard writes LLM judgment draft parquet under `data_lake/action_log_work`.
 4. Fans in through one merge pod. The merge pod applies global CTR normalization,
-   assigns final `event_id` values, and writes the final action-log partition.
-5. Skips existing shard or final partitions when `overwrite=false`.
+   validates every manifest/config fingerprint and the global quarantine ratio,
+   then assigns final `event_id` values and writes the final partition.
+5. Reuses only immutable checkpoint parts in the matching fingerprint namespace.
+   `progress.json` is observability state and is never used as a checkpoint.
+
+Shard task 000 invalidates any stale final partition before generation starts. The
+merge entrypoint removes the final parquet before each attempt and removes a
+partially published parquet again on failure. Therefore a failed merge, including
+a global quarantine-limit failure, does not leave a parquet that can be mistaken
+for the current run's successful output.
 
 Secret values are not passed as CLI arguments. The KPO pods read
 `YOUTUBE_API_KEYS` or `YOUTUBE_API_KEY`, and `OPENROUTER_API_KEY`, from the
 Kubernetes Secret named by `AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME`.
+`do_xcom_push=false` is explicit for every KPO task. OpenRouter resilience values
+are non-secret environment variables; the API key remains a `secretKeyRef` and is
+not present in task arguments or rendered values.
+
+The initial dev limit is five shards, two in-process calls per shard, and an
+`action_log_openrouter` Airflow Pool with two slots. At most two shard pods run at
+once, so the effective OpenRouter request concurrency is `2 × 2 = 4`. A shard
+task has one Airflow retry after ten minutes and a 2h30m timeout; the application
+has at most two request retries (one timeout retry). A timeout resumes from the
+durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`
+task with no automatic retry.
 
 Manual re-run example:
 
@@ -72,7 +94,7 @@ Local Docker is not required. Build and push both images with Cloud Build:
 gcloud builds submit \
   --project ar-infra-501607 \
   --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=<tag>,_AUTORESEARCH_REF=<autoresearch-ref>
+  --substitutions _IMAGE_TAG=<tag>,_AUTORESEARCH_REF=6db0728da32ac2da6a1997e1e44389fa0bddf3cd
 ```
 
 This builds:
@@ -81,6 +103,17 @@ This builds:
 asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
 asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
 ```
+
+운영 반영 순서는 다음과 같습니다.
+
+1. 위 커밋으로 batch image를 빌드하고 Artifact Registry digest와 OCI
+   `org.opencontainers.image.revision`을 확인합니다.
+2. Helm values의 batch/Airflow image tag, action-log Variable, Pool을 먼저
+   배포합니다.
+3. 새 image가 배포된 뒤에만 DAG 커밋을 `main`에 반영하여 git-sync가
+   동기화하게 합니다. 1~2단계 전에는 새 DAG를 live로 간주하지 않습니다.
+4. scheduler의 DAG import error가 없고 Pool이 2 slots인지 확인한 뒤 수동 run을
+   수행합니다.
 
 ## GKE Helm Deployment with git-sync
 
