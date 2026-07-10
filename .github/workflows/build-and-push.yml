@@ -1,0 +1,82 @@
+name: Build and Push Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      autoresearch_ref:
+        description: 'Autoresearch git ref (tag, SHA, or branch)'
+        required: true
+        default: 'main'
+      image_tag:
+        description: 'Docker image tag (defaults to autoresearch_ref if empty)'
+        required: false
+        default: ''
+  # Phase 3: 코드 리포 release:published → repository_dispatch
+  # repository_dispatch:
+  #   types: [autoresearch-released]
+
+env:
+  REGION: asia-northeast3
+  PROJECT_ID: ar-infra-501607
+  REPOSITORY: autoresearch-dev-docker
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve variables
+        id: vars
+        run: |
+          REF="${{ inputs.autoresearch_ref }}"
+          TAG="${{ inputs.image_tag }}"
+          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG:-$REF}" >> "$GITHUB_OUTPUT"
+
+      # TODO: WIF pool 확장 필요 (Autoresearch-infra #121)
+      # 현재 autoresearch-github pool이 Autoresearch-infra만 허용.
+      # GAR_PUSHER_SA secret도 infra 팀에서 SA 생성 후 등록해야 함.
+      - name: Authenticate to GCP (WIF)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/185508640491/locations/global/workloadIdentityPools/autoresearch-github/providers/github
+          service_account: ${{ secrets.GAR_PUSHER_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GAR
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build batch image
+        run: |
+          docker build \
+            -f docker/batch/Dockerfile \
+            --build-arg AUTORESEARCH_REF=${{ steps.vars.outputs.ref }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-batch:${{ steps.vars.outputs.tag }} \
+            .
+
+      - name: Build airflow image
+        run: |
+          docker build \
+            -f docker/airflow/Dockerfile \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }} \
+            .
+
+      - name: Push images
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-batch:${{ steps.vars.outputs.tag }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }}
+
+      - name: Summary
+        run: |
+          echo "## Docker images pushed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- \`autoresearch-batch:${{ steps.vars.outputs.tag }}\` (AUTORESEARCH_REF: ${{ steps.vars.outputs.ref }})" >> $GITHUB_STEP_SUMMARY
+          echo "- \`autoresearch-airflow:${{ steps.vars.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
