@@ -20,6 +20,7 @@ from autoresearch_airflow.dag_config import (
     build_action_log_merge_kpo_arguments,
     build_action_log_shard_kpo_arguments,
     build_youtube_trending_kpo_arguments,
+    resolve_dag_run_path,
 )
 
 
@@ -118,6 +119,7 @@ with DAG(
     default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
     tags=["youtube", "collection", "action-log", "gcs", "kubernetes"],
     params={"partition_date": "", "overwrite": False},
+    user_defined_macros={"resolve_dag_run_path": resolve_dag_run_path},
     doc_md=__doc__,
 ) as dag:
     collect_youtube_trending_partition = KubernetesPodOperator(

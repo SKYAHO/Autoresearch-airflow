@@ -64,7 +64,8 @@ has at most two request retries (one timeout retry). A timeout resumes from the
 durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`
 task with no automatic retry.
 
-Manual re-run example:
+Manual production-path re-run example (path keys omitted, so Airflow
+Variable/default paths remain in effect):
 
 ```json
 {
@@ -72,6 +73,34 @@ Manual re-run example:
   "overwrite": true
 }
 ```
+
+For an isolated 100-user QA, do not mutate global Airflow Variables or Helm
+environment values. Pre-stage the 100-user parquet below a unique
+`qa/action-log/<run-id>` prefix and trigger the same DAG with the complete path
+set:
+
+```json
+{
+  "partition_date": "2026-07-10",
+  "overwrite": true,
+  "qa_prefix": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z",
+  "youtube_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/youtube",
+  "virtual_users_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",
+  "action_log_output_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/final",
+  "action_log_quarantine_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/final-quarantine",
+  "action_log_shard_output_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/shard-work",
+  "action_log_shard_quarantine_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/shard-quarantine",
+  "action_log_progress_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/progress",
+  "action_log_checkpoint_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/checkpoints"
+}
+```
+
+QA path overrides are all-or-nothing. Every path must be distinct and below the
+same run-specific `qa_prefix`; a partial set, a production prefix, or an unknown
+run-conf key fails during task template rendering. `shard_count`, model/generator,
+bucket, API keys, and Secret configuration cannot be supplied through
+`dag_run.conf`; they remain parse-time Airflow Variables or Kubernetes Secrets.
+See [docs/operational-dag-qa.md](docs/operational-dag-qa.md) for the full contract.
 
 ## Local Verification
 
