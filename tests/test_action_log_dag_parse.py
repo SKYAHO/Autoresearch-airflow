@@ -107,6 +107,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     spec.loader.exec_module(module)
 
     dag = module.dag
+    assert dag.kwargs["user_defined_macros"] == {
+        "resolve_dag_run_path": module.resolve_dag_run_path
+    }
     shards = [
         task
         for task_id, task in dag.task_dict.items()
@@ -116,6 +119,13 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
 
     collect = dag.task_dict["collect_youtube_trending_partition"]
     merge = dag.task_dict["merge_action_log_partition"]
+    collect_arguments = collect.kwargs["arguments"]
+    collect_youtube_path_position = collect_arguments.index("--youtube-base-path") + 1
+    assert (
+        "resolve_dag_run_path(dag_run.conf"
+        in collect_arguments[collect_youtube_path_position]
+    )
+    assert "'youtube_base_path'" in collect_arguments[collect_youtube_path_position]
     assert collect.downstream_task_ids == {task.task_id for task in shards}
     assert all(task.downstream_task_ids == {merge.task_id} for task in shards)
 
@@ -127,6 +137,21 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         assert arguments[count_position] == (
             "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}"
         )
+        assert "dag_run.conf" not in arguments[arguments.index("--model-name") + 1]
+        expected_path_keys = {
+            "--youtube-base-path": "youtube_base_path",
+            "--virtual-users-path": "virtual_users_path",
+            "--output-base-path": "action_log_shard_output_base_path",
+            "--quarantine-base-path": "action_log_shard_quarantine_base_path",
+            "--progress-base-path": "action_log_progress_base_path",
+            "--checkpoint-base-path": "action_log_checkpoint_base_path",
+            "--final-output-base-path": "action_log_output_base_path",
+            "--final-quarantine-base-path": "action_log_quarantine_base_path",
+        }
+        for argument_name, conf_key in expected_path_keys.items():
+            path_template = arguments[arguments.index(argument_name) + 1]
+            assert "resolve_dag_run_path(dag_run.conf" in path_template
+            assert f"'{conf_key}'" in path_template
         assert task.kwargs["pool"] == "action_log_openrouter"
         assert task.kwargs["pool_slots"] == 1
         assert task.kwargs["retries"] == 1
@@ -152,3 +177,16 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     assert merge.kwargs["trigger_rule"] == "all_success"
     assert merge.kwargs["retries"] == 0
     assert merge.kwargs["do_xcom_push"] is False
+    merge_arguments = merge.kwargs["arguments"]
+    assert merge_arguments[merge_arguments.index("--shard-count") + 1] == (
+        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}"
+    )
+    for argument_name, conf_key in {
+        "--output-base-path": "action_log_output_base_path",
+        "--quarantine-base-path": "action_log_quarantine_base_path",
+        "--shard-output-base-path": "action_log_shard_output_base_path",
+        "--shard-quarantine-base-path": "action_log_shard_quarantine_base_path",
+    }.items():
+        path_template = merge_arguments[merge_arguments.index(argument_name) + 1]
+        assert "resolve_dag_run_path(dag_run.conf" in path_template
+        assert f"'{conf_key}'" in path_template
