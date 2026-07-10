@@ -52,9 +52,11 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "--seed",
         "{{ var.value.get('ACTION_LOG_SEED', '42') }}",
         "--max-concurrency",
-        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '15') }}",
+        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '2') }}",
         "--chunk-size",
         "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
+        "--max-quarantine-ratio",
+        "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}",
     ]
 
 
@@ -68,14 +70,25 @@ def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
 
     assert args[:3] == ["--mode", "shard", "--partition-date"]
     assert "--output-base-path" in args
-    assert "{{ var.value.get('ACTION_LOG_WORK_OUTPUT_DIR', '') }}" in args
+    assert "{{ var.value.get('ACTION_LOG_SHARD_WORK_DIR', '') }}" in args
     assert "--quarantine-base-path" in args
-    assert "{{ var.value.get('ACTION_LOG_WORK_QUARANTINE_DIR', '') }}" in args
-    assert args[-4:] == [
+    assert "{{ var.value.get('ACTION_LOG_SHARD_QUARANTINE_DIR', '') }}" in args
+    shard_index_position = args.index("--shard-index")
+    assert args[shard_index_position : shard_index_position + 4] == [
         "--shard-index",
         "3",
         "--shard-count",
-        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '8') }}",
+        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}",
+    ]
+    assert args[-8:] == [
+        "--progress-base-path",
+        "{{ var.value.get('ACTION_LOG_PROGRESS_DIR', '') }}",
+        "--checkpoint-base-path",
+        "{{ var.value.get('ACTION_LOG_CHECKPOINT_DIR', '') }}",
+        "--final-output-base-path",
+        "{{ var.value.get('ACTION_LOG_OUTPUT_DIR', '') }}",
+        "--final-quarantine-base-path",
+        "{{ var.value.get('ACTION_LOG_QUARANTINE_DIR', '') }}",
     ]
 
 
@@ -90,12 +103,20 @@ def test_build_action_log_merge_kpo_arguments_uses_final_and_work_paths() -> Non
     assert args[:3] == ["--mode", "merge", "--partition-date"]
     output_index = args.index("--output-base-path") + 1
     assert args[output_index] == "{{ var.value.get('ACTION_LOG_OUTPUT_DIR', '') }}"
-    work_index = args.index("--work-output-base-path") + 1
-    assert args[work_index] == "{{ var.value.get('ACTION_LOG_WORK_OUTPUT_DIR', '') }}"
-    assert args[-2:] == [
+    work_index = args.index("--shard-output-base-path") + 1
+    assert args[work_index] == "{{ var.value.get('ACTION_LOG_SHARD_WORK_DIR', '') }}"
+    quarantine_index = args.index("--shard-quarantine-base-path") + 1
+    assert args[quarantine_index] == (
+        "{{ var.value.get('ACTION_LOG_SHARD_QUARANTINE_DIR', '') }}"
+    )
+    assert args[-4:] == [
         "--shard-count",
-        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '8') }}",
+        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}",
+        "--max-quarantine-ratio",
+        "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}",
     ]
+    assert "--model-name" not in args
+    assert "--seed" not in args
 
 
 def test_build_youtube_trending_kpo_arguments_uses_airflow_templates() -> None:

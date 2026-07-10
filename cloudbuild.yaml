@@ -2,7 +2,7 @@ substitutions:
   _REGION: asia-northeast3
   _REPOSITORY: autoresearch-dev-docker
   _IMAGE_TAG: manual
-  _AUTORESEARCH_REF: main
+  _AUTORESEARCH_REF: 6db0728da32ac2da6a1997e1e44389fa0bddf3cd
 
 steps:
   - id: build-batch-image

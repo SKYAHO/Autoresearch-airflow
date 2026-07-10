@@ -69,7 +69,7 @@ fan-out하고, 마지막 merge KPO에서 최종 partition을 만든다.
 ```text
 collect_youtube_trending_partition
   -> ensure_action_log_shard_000 ... ensure_action_log_shard_NNN
-  -> merge_action_log_partition
+  -> merge_action_log_partition (all_success)
 ```
 
 스케줄은 KST 06:00이고, 운영 목표는 KST 10:00에 YouTube partition과
@@ -89,6 +89,9 @@ QA prefix로 임시 override한다.
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr_api_llm_smoke/run=<run_id>/dt=<yyyy-mm-dd>/part-0.parquet
 gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user_smoke/run=<run_id>/vu_5.parquet
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/part-0.parquet
+gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/manifest.json
+gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_progress/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/progress.json
+gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_checkpoints/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/fingerprint=<sha256>/parts/*.parquet
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_smoke/run=<run_id>/dt=<yyyy-mm-dd>/part-0.parquet
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_quarantine_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/quarantine.jsonl
 gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_quarantine/run=<run_id>/dt=<yyyy-mm-dd>/quarantine.jsonl
@@ -113,27 +116,58 @@ ACTION_LOG_YOUTUBE_BASE_PATH=<QA YouTube base path>
 ACTION_LOG_VIRTUAL_USERS_PATH=<QA virtual user parquet path>
 ACTION_LOG_OUTPUT_DIR=<QA action log base path>
 ACTION_LOG_QUARANTINE_DIR=<QA quarantine base path>
-ACTION_LOG_WORK_OUTPUT_DIR=<QA action log shard work base path>
-ACTION_LOG_WORK_QUARANTINE_DIR=<QA quarantine shard work base path>
-ACTION_LOG_SHARD_COUNT=8
+ACTION_LOG_SHARD_WORK_DIR=<QA action log shard work base path>
+ACTION_LOG_SHARD_QUARANTINE_DIR=<QA quarantine shard work base path>
+ACTION_LOG_PROGRESS_DIR=<QA progress snapshot base path>
+ACTION_LOG_CHECKPOINT_DIR=<QA durable checkpoint base path>
+ACTION_LOG_SHARD_COUNT=5
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
-ACTION_LOG_MAX_CONCURRENCY=15
+ACTION_LOG_MAX_CONCURRENCY=2
 ACTION_LOG_CHUNK_SIZE=24
+ACTION_LOG_MAX_QUARANTINE_RATIO=0.5
+ACTION_LOG_OPENROUTER_POOL=action_log_openrouter
+OPENROUTER_TIMEOUT_SEC=60
+OPENROUTER_MAX_RETRIES=2
+OPENROUTER_TIMEOUT_MAX_RETRIES=1
+OPENROUTER_RETRY_BACKOFF_BASE_SEC=1
+OPENROUTER_RETRY_BACKOFF_MAX_SEC=30
 ```
+
+선택값 `OPENROUTER_PROVIDER_SORT`, `OPENROUTER_ALLOW_FALLBACKS`,
+`OPENROUTER_REQUIRE_PARAMETERS`는 명시적으로 설정한 경우에만 batch pod에
+주입합니다. 이 값들은 API key가 아니며, `OPENROUTER_API_KEY`만 Kubernetes
+Secret의 `secretKeyRef`로 주입합니다.
 
 ### 5. QA 입력 크기
 
-운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_SHARD_COUNT=8`,
-`ACTION_LOG_MAX_CONCURRENCY=15`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
+운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_SHARD_COUNT=5`,
+`ACTION_LOG_MAX_CONCURRENCY=2`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
+Airflow Pool `action_log_openrouter`는 2 slots이므로 동시에 실행되는 shard는
+최대 2개이고, 실질 OpenRouter 동시 호출 상한은 `2 × 2 = 4`이다. Pool을
+적용하지 않았을 때의 이론상 상한 `5 × 2 = 10`과 혼동하지 않는다.
 Shard work parquet은 최종 event log가 아니라 LLM judgment draft이며, merge
 태스크가 모든 shard를 읽어 전역 CTR 정규화와 `event_id` 부여를 수행한다.
+`progress.json`은 관측용 snapshot일 뿐 재개 입력이 아니다. 재시도와 timeout
+복구는 동일 config fingerprint namespace의 immutable checkpoint parquet
+part만 사용하며, fingerprint가 달라지면 기존 part를 재사용하지 않는다.
 단, 일회성 QA는 실패 원인을 좁히기 위해 작은 입력으로 시작할 수 있다.
 
 - YouTube API: KR trending `max_results=30`
 - Virtual users: 5명 또는 10명 sample parquet
 - Candidates per user: 24
-- Max concurrency: QA에서는 1 또는 2, 운영 검증에서는 60
+- Max concurrency: QA에서는 shard당 1, 운영 초기값은 shard당 2 / 총 4
+
+Shard KPO는 `execution_timeout=2h30m`, Airflow retry 1회, retry delay 10분을
+사용합니다. 앱 내부에서는 요청당 전체 retry 상한 2회와 timeout retry 상한
+1회를 적용합니다. 두 retry 계층을 합산하면 한 work item의 호출 시도가 커질 수
+있으므로 Pool slots·`ACTION_LOG_MAX_CONCURRENCY`·Airflow retry를 함께 올리지
+않습니다. Merge KPO는 모든 shard 성공 후 하나만 실행하며 자동 retry는 0회입니다.
+
+Shard 000은 시작 시 기존 final parquet을 무효화합니다. Merge도 시작 전에 final을
+삭제하고, 앱 merge 호출 중 어떤 예외가 발생해도 부분 게시된 final parquet을 다시
+삭제합니다. 전역 quarantine 비율 초과 시 현재 quarantine은 보존할 수 있지만 final
+parquet은 성공 산출물로 남지 않습니다.
 
 수동 trigger 예시:
 

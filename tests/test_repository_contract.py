@@ -23,6 +23,10 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "max_active_runs=1" in source
     assert "execution_timeout=timedelta(hours=2, minutes=30)" in source
     assert "execution_timeout=timedelta(minutes=30)" in source
+    assert "pool=_OPENROUTER_POOL" in source
+    assert "pool_slots=1" in source
+    assert "do_xcom_push=False" in source
+    assert "trigger_rule='all_success'" in source
     assert (
         "collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition"
         in source
@@ -37,7 +41,10 @@ def test_kpo_runtime_fields_are_not_jinja_literals() -> None:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if not isinstance(node.func, ast.Name) or node.func.id != "KubernetesPodOperator":
+        if (
+            not isinstance(node.func, ast.Name)
+            or node.func.id != "KubernetesPodOperator"
+        ):
             continue
 
         keyword_values = {keyword.arg: keyword.value for keyword in node.keywords}
@@ -59,10 +66,12 @@ def test_batch_dockerfile_uses_uv_and_autoresearch_source() -> None:
 
     assert "ghcr.io/astral-sh/uv:" in content
     assert "https://github.com/SKYAHO/Autoresearch.git" in content
-    assert "uv pip install --system" in content
+    assert "uv venv /opt/venv" in content
+    assert "uv pip install --python /opt/venv/bin/python" in content
     assert "autoresearch_airflow_jobs" in content
     assert "git fetch --depth 1 origin" in content
     assert "git checkout FETCH_HEAD" in content
+    assert 'org.opencontainers.image.revision="${AUTORESEARCH_REF}"' in content
 
 
 def test_astro_airflow_image_has_required_build_context_files() -> None:
@@ -80,12 +89,32 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "subPath: dags" in values
 
 
+def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() -> None:
+    values = (ROOT / "helm" / "values-gke-dev.yaml").read_text(encoding="utf-8")
+
+    for variable_name in (
+        "ACTION_LOG_SHARD_WORK_DIR",
+        "ACTION_LOG_SHARD_QUARANTINE_DIR",
+        "ACTION_LOG_PROGRESS_DIR",
+        "ACTION_LOG_CHECKPOINT_DIR",
+        "ACTION_LOG_MAX_QUARANTINE_RATIO",
+        "OPENROUTER_TIMEOUT_SEC",
+        "OPENROUTER_MAX_RETRIES",
+        "OPENROUTER_TIMEOUT_MAX_RETRIES",
+        "OPENROUTER_RETRY_BACKOFF_BASE_SEC",
+        "OPENROUTER_RETRY_BACKOFF_MAX_SEC",
+    ):
+        assert f"AIRFLOW_VAR_{variable_name}" in values
+    assert "airflow pools set action_log_openrouter 2" in values
+    assert "OPENROUTER_API_KEY" not in values
+
+
 def test_cloudbuild_builds_airflow_and_batch_images_from_configured_ref() -> None:
     config = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
 
     assert "docker/batch/Dockerfile" in config
     assert "docker/airflow/Dockerfile" in config
-    assert "_AUTORESEARCH_REF: main" in config
+    assert "_AUTORESEARCH_REF: 6db0728da32ac2da6a1997e1e44389fa0bddf3cd" in config
     assert "AUTORESEARCH_REF=${_AUTORESEARCH_REF}" in config
     assert "autoresearch-batch:${_IMAGE_TAG}" in config
     assert "autoresearch-airflow:${_IMAGE_TAG}" in config

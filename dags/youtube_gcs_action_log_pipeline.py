@@ -1,7 +1,7 @@
-"""YouTube API -> GCS -> action log daily pipeline.
+"""YouTube API -> GCS -> sharded action log daily pipeline.
 
-KR YouTube trending partition을 매일 GCS에 먼저 적재한 뒤, 같은 날짜의 virtual user
-action log partition이 없을 때만 batch pod를 실행해 생성한다.
+KR YouTube trending partition을 적재한 뒤 action-log shard를 독립 KPO task로
+fan-out하고, 모든 shard 성공 후 단일 merge task가 최종 partition을 게시한다.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ _YOUTUBE_SETTINGS = YouTubeTrendingDagSettings(
 )
 _ACTION_LOG_SETTINGS = ActionLogDagSettings(
     partition_date_template=_PARTITION_DATE_TEMPLATE,
-    max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '15') }}",
+    max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '2') }}",
     chunk_size_template="{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
 )
 _KPO_SERVICE_ACCOUNT = Variable.get(
@@ -45,6 +45,16 @@ _BATCH_IMAGE_PULL_POLICY = Variable.get(
 _API_SECRET_NAME = Variable.get(
     "AUTORESEARCH_API_SECRET_NAME", default_var="autoresearch-airflow-env"
 )
+_OPENROUTER_POOL = Variable.get(
+    "ACTION_LOG_OPENROUTER_POOL", default_var="action_log_openrouter"
+)
+_OPENROUTER_ENV_DEFAULTS = {
+    "OPENROUTER_TIMEOUT_SEC": "60",
+    "OPENROUTER_MAX_RETRIES": "2",
+    "OPENROUTER_TIMEOUT_MAX_RETRIES": "1",
+    "OPENROUTER_RETRY_BACKOFF_BASE_SEC": "1",
+    "OPENROUTER_RETRY_BACKOFF_MAX_SEC": "30",
+}
 
 
 def _positive_int_variable(name: str, default: int) -> int:
@@ -60,10 +70,10 @@ def _positive_int_variable(name: str, default: int) -> int:
     return value
 
 
-_ACTION_LOG_SHARD_COUNT = _positive_int_variable("ACTION_LOG_SHARD_COUNT", 8)
+_ACTION_LOG_SHARD_COUNT = _positive_int_variable("ACTION_LOG_SHARD_COUNT", 5)
 
 
-def _secret_env_vars(*keys: str) -> list[k8s.V1EnvVar]:
+def _secret_env_vars(*keys: str, optional: bool = True) -> list[k8s.V1EnvVar]:
     """Expose Kubernetes Secret keys to a KPO pod without putting them in args."""
 
     return [
@@ -73,12 +83,30 @@ def _secret_env_vars(*keys: str) -> list[k8s.V1EnvVar]:
                 secret_key_ref=k8s.V1SecretKeySelector(
                     name=_API_SECRET_NAME,
                     key=key,
-                    optional=True,
+                    optional=optional,
                 )
             ),
         )
         for key in keys
     ]
+
+
+def _openrouter_runtime_env_vars() -> list[k8s.V1EnvVar]:
+    """Expose non-secret OpenRouter resilience settings to shard pods."""
+
+    env_vars = [
+        k8s.V1EnvVar(name=name, value=Variable.get(name, default_var=default))
+        for name, default in _OPENROUTER_ENV_DEFAULTS.items()
+    ]
+    for name in (
+        "OPENROUTER_PROVIDER_SORT",
+        "OPENROUTER_ALLOW_FALLBACKS",
+        "OPENROUTER_REQUIRE_PARAMETERS",
+    ):
+        value = Variable.get(name, default_var="")
+        if value:
+            env_vars.append(k8s.V1EnvVar(name=name, value=value))
+    return env_vars
 
 
 with DAG(
@@ -109,6 +137,7 @@ with DAG(
         in_cluster=True,
         get_logs=True,
         is_delete_operator_pod=True,
+        do_xcom_push=False,
         execution_timeout=timedelta(minutes=30),
         startup_timeout_seconds=600,
         labels={"app": "autoresearch", "pipeline": "youtube-collection"},
@@ -129,12 +158,20 @@ with DAG(
                 _ACTION_LOG_SETTINGS,
                 shard_index=shard_index,
             ),
-            env_vars=_secret_env_vars("OPENROUTER_API_KEY"),
+            env_vars=[
+                *_secret_env_vars("OPENROUTER_API_KEY", optional=False),
+                *_openrouter_runtime_env_vars(),
+            ],
             service_account_name=_KPO_SERVICE_ACCOUNT,
             image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
+            pool=_OPENROUTER_POOL,
+            pool_slots=1,
             in_cluster=True,
             get_logs=True,
             is_delete_operator_pod=True,
+            do_xcom_push=False,
+            retries=1,
+            retry_delay=timedelta(minutes=10),
             execution_timeout=timedelta(hours=2, minutes=30),
             startup_timeout_seconds=600,
             labels={
@@ -163,6 +200,9 @@ with DAG(
         in_cluster=True,
         get_logs=True,
         is_delete_operator_pod=True,
+        do_xcom_push=False,
+        retries=0,
+        trigger_rule="all_success",
         execution_timeout=timedelta(minutes=30),
         startup_timeout_seconds=600,
         labels={"app": "autoresearch", "pipeline": "youtube-action-log"},
@@ -172,4 +212,8 @@ with DAG(
         ),
     )
 
-    collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition
+    (
+        collect_youtube_trending_partition
+        >> ensure_action_log_shards
+        >> merge_action_log_partition
+    )
