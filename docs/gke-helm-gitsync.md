@@ -108,9 +108,20 @@ Shard app concurrency: 2
 ```
 
 초기값은 `ACTION_LOG_SHARD_COUNT=5`이지만 Pool 때문에 동시에 실행되는 shard는
-2개입니다. shard KPO timeout은 2시간 30분, Airflow retry는 1회이고 앱 내부
+2개입니다. shard KPO timeout은 6시간 30분, Airflow retry는 1회이고 앱 내부
 OpenRouter 전체 retry 상한은 2회(timeout retry 상한 1회)입니다. Pool slots,
 shard별 concurrency, 두 retry 계층을 함께 상향하지 않습니다.
+
+6시간 30분 timeout은 운영에서 약 5시간 걸린 shard의 조기 종료를 막기 위한
+보호 상한일 뿐 성능 개선이 아닙니다. 실제 end-to-end 경과시간은 별도 benchmark로
+확인합니다. 이 timeout은 git-sync가 전달하는 DAG 코드에 있으므로 이 값만 바꾸는
+경우 Helm values 변경이나 image 재빌드는 필요하지 않습니다. `main` 반영 후
+git-sync commit과 scheduler DAG 재파싱을 확인합니다.
+
+Shard KPO의 `get_logs=True`는 batch pod stdout을 Airflow task log로 전달합니다.
+Application이 구조화된 timing/progress event를 stdout에 기록하면 shard별 진행률,
+처리율, ETA와 OpenRouter/checkpoint 구간을 task log에서 확인할 수 있습니다.
+별도 remote logging은 이 저장소 변경 범위에 포함하지 않습니다.
 
 ## 운영 확인
 

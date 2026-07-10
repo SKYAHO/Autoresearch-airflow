@@ -59,10 +59,20 @@ not present in task arguments or rendered values.
 The initial dev limit is five shards, two in-process calls per shard, and an
 `action_log_openrouter` Airflow Pool with two slots. At most two shard pods run at
 once, so the effective OpenRouter request concurrency is `2 × 2 = 4`. A shard
-task has one Airflow retry after ten minutes and a 2h30m timeout; the application
+task has one Airflow retry after ten minutes and a 6h30m timeout; the application
 has at most two request retries (one timeout retry). A timeout resumes from the
 durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`
 task with no automatic retry.
+
+The 6h30m shard timeout only prevents Airflow from terminating a still-progressing
+shard before the observed roughly five-hour runtime. It does not improve throughput
+or demonstrate the pipeline latency target; end-to-end elapsed time must be measured
+separately. Pool slots, in-process concurrency, and retry limits are unchanged.
+
+Every KPO task uses `get_logs=True`, so structured timing and progress events written
+by the application to pod stdout are visible in the corresponding Airflow task log.
+This repository does not enable durable remote logging; log retention remains an
+environment-level concern.
 
 Manual re-run example:
 

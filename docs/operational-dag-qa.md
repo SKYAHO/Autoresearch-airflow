@@ -158,11 +158,22 @@ part만 사용하며, fingerprint가 달라지면 기존 part를 재사용하지
 - Candidates per user: 24
 - Max concurrency: QA에서는 shard당 1, 운영 초기값은 shard당 2 / 총 4
 
-Shard KPO는 `execution_timeout=2h30m`, Airflow retry 1회, retry delay 10분을
+Shard KPO는 `execution_timeout=6h30m`, Airflow retry 1회, retry delay 10분을
 사용합니다. 앱 내부에서는 요청당 전체 retry 상한 2회와 timeout retry 상한
 1회를 적용합니다. 두 retry 계층을 합산하면 한 work item의 호출 시도가 커질 수
 있으므로 Pool slots·`ACTION_LOG_MAX_CONCURRENCY`·Airflow retry를 함께 올리지
 않습니다. Merge KPO는 모든 shard 성공 후 하나만 실행하며 자동 retry는 0회입니다.
+
+6시간 30분은 운영에서 약 5시간 걸린 shard가 처리 중 Airflow timeout으로 조기
+종료되지 않게 하는 보호 상한입니다. 처리율을 높이는 변경이 아니며, 6시간
+end-to-end 목표 달성을 증명하지 않습니다. 전체 경과시간과 shard 처리율은 별도
+benchmark로 판정합니다.
+
+모든 KPO는 `get_logs=True`를 사용합니다. 따라서 Application이 pod stdout에
+구조화된 micro work timing과 진행률을 출력하면 해당 shard의 Airflow task log에서
+OpenRouter 요청, JSON/schema 처리, checkpoint/progress 쓰기, 처리율과 ETA를 확인할
+수 있습니다. 이 계약은 stdout 전달 범위이며 durable remote logging을 활성화하지
+않습니다.
 
 Shard 000은 시작 시 기존 final parquet을 무효화합니다. Merge도 시작 전에 final을
 삭제하고, 앱 merge 호출 중 어떤 예외가 발생해도 부분 게시된 final parquet을 다시
