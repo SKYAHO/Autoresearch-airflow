@@ -245,6 +245,17 @@ python .\scripts\check_action_log_data_quality.py `
 - output `video_id`가 방금 수집한 YouTube snapshot 안에 존재한다.
 - output `user_id`가 QA virtual user sample 안에 존재한다.
 - timestamp가 대상 KST `dt` partition 안에 있다.
+- shard pod stdout에 `openrouter_attempt_complete`,
+  `openrouter_request_complete`, `action_log_micro_work_complete`,
+  `action_log_shard_progress` 중 현재 실행 크기와 결과에 해당하는 JSON event가
+  prefix 없는 한 줄로 1개 이상 존재한다.
+- telemetry line에 API key, prompt, raw request/response, user/persona 식별자가
+  존재하지 않는다. root logger는 INFO로 변경되지 않아 unrelated library의 INFO
+  로그가 함께 출력되지 않는다.
+
+100-user QA에서는 shard task log에서 JSON event line을 확인하고, event별 timing과
+진행률을 checkpoint 증가와 함께 비교한다. `event` 필드가 없는 일반 로그와 기존
+`action-log-progress` 출력은 structured telemetry 개수에 포함하지 않는다.
 
 ## 2026-07-08 one-off smoke evidence
 

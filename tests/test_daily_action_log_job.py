@@ -1,10 +1,15 @@
+import json
+import logging
 from datetime import date
+from io import StringIO
 
 import pytest
 
 from autoresearch_airflow_jobs.daily_action_log import (
+    ACTION_LOG_TELEMETRY_LOGGERS,
     DailyActionLogConfig,
     build_config,
+    configure_action_log_telemetry_logging,
     main,
 )
 
@@ -25,6 +30,107 @@ class _FakeGcsFileSystem:
 
     def delete_file(self, path: str) -> None:
         self.existing_paths.remove(path)
+
+
+@pytest.fixture
+def restore_action_log_loggers():
+    root_logger = logging.getLogger()
+    root_level = root_logger.level
+    states = {}
+    for logger_name in ACTION_LOG_TELEMETRY_LOGGERS:
+        logger = logging.getLogger(logger_name)
+        states[logger_name] = (list(logger.handlers), logger.level, logger.propagate)
+
+    yield
+
+    root_logger.setLevel(root_level)
+    for logger_name, (handlers, level, propagate) in states.items():
+        logger = logging.getLogger(logger_name)
+        for handler in logger.handlers:
+            if handler not in handlers:
+                handler.close()
+        logger.handlers = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate
+
+
+def test_action_log_telemetry_logging_is_idempotent_and_prefix_free(
+    capsys,
+    restore_action_log_loggers,
+) -> None:
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.ERROR)
+
+    configure_action_log_telemetry_logging()
+    configure_action_log_telemetry_logging()
+
+    for logger_name in ACTION_LOG_TELEMETRY_LOGGERS:
+        logging.getLogger(logger_name).info(
+            json.dumps({"event": "safe_event", "logger": logger_name})
+        )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == len(ACTION_LOG_TELEMETRY_LOGGERS)
+    assert [json.loads(line)["event"] for line in lines] == [
+        "safe_event",
+        "safe_event",
+    ]
+    assert all(line.startswith('{"event":') for line in lines)
+    assert root_logger.level == logging.ERROR
+
+
+def test_action_log_telemetry_logging_replaces_existing_target_handlers(
+    capsys,
+    restore_action_log_loggers,
+) -> None:
+    logger = logging.getLogger(ACTION_LOG_TELEMETRY_LOGGERS[0])
+    previous_output = StringIO()
+    previous_handler = logging.StreamHandler(previous_output)
+    previous_handler.setFormatter(logging.Formatter("PREFIX %(message)s"))
+    logger.addHandler(previous_handler)
+
+    configure_action_log_telemetry_logging()
+    logger.info(json.dumps({"event": "safe_event"}))
+    logger.info(json.dumps({"event": "unsafe", "api_key": "test-secret-key"}))
+
+    assert previous_output.getvalue() == ""
+    assert capsys.readouterr().out.splitlines() == ['{"event":"safe_event"}']
+
+
+def test_action_log_telemetry_logging_suppresses_unrelated_and_non_json_logs(
+    capsys,
+    restore_action_log_loggers,
+) -> None:
+    configure_action_log_telemetry_logging()
+
+    logging.getLogger(ACTION_LOG_TELEMETRY_LOGGERS[0]).info("not-json")
+    logging.getLogger("unrelated.library").info(
+        json.dumps({"event": "unrelated_event"})
+    )
+
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "sensitive_payload",
+    [
+        {"event": "unsafe", "api_key": "test-secret-key"},
+        {"event": "unsafe", "user_id": "vu-private"},
+        {"event": "unsafe", "details": {"raw_response": "private-response"}},
+    ],
+)
+def test_action_log_telemetry_logging_rejects_sensitive_json(
+    capsys,
+    restore_action_log_loggers,
+    sensitive_payload,
+) -> None:
+    configure_action_log_telemetry_logging()
+
+    logging.getLogger(ACTION_LOG_TELEMETRY_LOGGERS[0]).info(
+        json.dumps(sensitive_payload)
+    )
+
+    assert capsys.readouterr().out == ""
 
 
 def test_build_config_uses_default_gcs_paths() -> None:
