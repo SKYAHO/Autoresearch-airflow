@@ -103,8 +103,8 @@ helm upgrade airflow apache-airflow/airflow \
 Pool: action_log_openrouter
 Slots: 5
 Shard task pool_slots: 1
-Shard app concurrency: 2
-실질 OpenRouter 동시성: 5 × 2 = 10
+Shard app concurrency: 3
+실질 OpenRouter 동시성: 5 × 3 = 15
 ```
 
 초기값 `ACTION_LOG_SHARD_COUNT=5`와 Pool 5 slots가 일치하므로 5개 shard가

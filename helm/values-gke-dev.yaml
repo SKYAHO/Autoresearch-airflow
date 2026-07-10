@@ -133,7 +133,7 @@ env:
   - name: AIRFLOW_VAR_ACTION_LOG_SEED
     value: "42"
   - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
-    value: "2"
+    value: "3"
   - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE
     value: "24"
   - name: AIRFLOW_VAR_ACTION_LOG_MAX_QUARANTINE_RATIO
