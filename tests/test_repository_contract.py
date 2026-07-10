@@ -105,8 +105,16 @@ def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() ->
         "OPENROUTER_RETRY_BACKOFF_MAX_SEC",
     ):
         assert f"AIRFLOW_VAR_{variable_name}" in values
-    assert "airflow pools set action_log_openrouter 2" in values
+    assert "airflow pools set action_log_openrouter 5" in values
     assert "OPENROUTER_API_KEY" not in values
+
+    for relative_path in (
+        "helm/values-dev.yaml",
+        "charts/autoresearch-airflow/values.yaml",
+    ):
+        pool_values = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert "airflow pools set action_log_openrouter 5" in pool_values
+        assert "airflow pools set action_log_openrouter 2" not in pool_values
 
 
 def test_cloudbuild_builds_airflow_and_batch_images_from_configured_ref() -> None:

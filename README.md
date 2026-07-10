@@ -57,8 +57,8 @@ are non-secret environment variables; the API key remains a `secretKeyRef` and i
 not present in task arguments or rendered values.
 
 The initial dev limit is five shards, two in-process calls per shard, and an
-`action_log_openrouter` Airflow Pool with two slots. At most two shard pods run at
-once, so the effective OpenRouter request concurrency is `2 × 2 = 4`. A shard
+`action_log_openrouter` Airflow Pool with five slots. At most five shard pods run at
+once, so the effective OpenRouter request concurrency is `5 × 2 = 10`. A shard
 task has one Airflow retry after ten minutes and a 2h30m timeout; the application
 has at most two request retries (one timeout retry). A timeout resumes from the
 durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`
@@ -112,7 +112,7 @@ asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresea
    배포합니다.
 3. 새 image가 배포된 뒤에만 DAG 커밋을 `main`에 반영하여 git-sync가
    동기화하게 합니다. 1~2단계 전에는 새 DAG를 live로 간주하지 않습니다.
-4. scheduler의 DAG import error가 없고 Pool이 2 slots인지 확인한 뒤 수동 run을
+4. scheduler의 DAG import error가 없고 Pool이 5 slots인지 확인한 뒤 수동 run을
    수행합니다.
 
 ## GKE Helm Deployment with git-sync

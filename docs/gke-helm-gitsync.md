@@ -58,7 +58,7 @@ gcloud builds submit \
    `org.opencontainers.image.revision=6db0728...`를 확인합니다.
 2. `helm/values-gke-dev.yaml`의 Airflow/batch image tag를 새 tag로 바꾸고 Helm
    upgrade를 수행합니다. 이 단계에서 action-log Variable과 Pool도 반영합니다.
-3. scheduler와 webserver rollout, `action_log_openrouter=2 slots`를 확인합니다.
+3. scheduler와 webserver rollout, `action_log_openrouter=5 slots`를 확인합니다.
 4. 그 후에만 DAG 변경을 `main`에 반영하고 git-sync의 새 commit 동기화와 DAG
    import 상태를 확인합니다.
 5. 수동 run으로 shard fan-out과 단일 merge를 확인합니다.
@@ -101,14 +101,14 @@ helm upgrade airflow apache-airflow/airflow \
 
 ```text
 Pool: action_log_openrouter
-Slots: 2
+Slots: 5
 Shard task pool_slots: 1
 Shard app concurrency: 2
-실질 OpenRouter 동시성: 2 × 2 = 4
+실질 OpenRouter 동시성: 5 × 2 = 10
 ```
 
-초기값은 `ACTION_LOG_SHARD_COUNT=5`이지만 Pool 때문에 동시에 실행되는 shard는
-2개입니다. shard KPO timeout은 2시간 30분, Airflow retry는 1회이고 앱 내부
+초기값 `ACTION_LOG_SHARD_COUNT=5`와 Pool 5 slots가 일치하므로 5개 shard가
+동시에 실행됩니다. shard KPO timeout은 2시간 30분, Airflow retry는 1회이고 앱 내부
 OpenRouter 전체 retry 상한은 2회(timeout retry 상한 1회)입니다. Pool slots,
 shard별 concurrency, 두 retry 계층을 함께 상향하지 않습니다.
 

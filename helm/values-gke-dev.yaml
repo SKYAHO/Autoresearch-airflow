@@ -302,7 +302,7 @@ migrateDatabaseJob:
     - |
       airflow db migrate
       airflow sync-perm
-      airflow pools set action_log_openrouter 2 "Action log OpenRouter shard fan-out"
+      airflow pools set action_log_openrouter 5 "Action log OpenRouter shard fan-out"
   nodeSelector:
     cloud.google.com/gke-nodepool: airflow-dev
   resources:
