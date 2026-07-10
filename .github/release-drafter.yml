@@ -1,0 +1,34 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+categories:
+  - title: '🚀 Enhancements'
+    semver-increment: minor
+    when:
+      labels:
+        - 'enhancement'
+  - title: '🐛 Bug Fixes'
+    semver-increment: patch
+    when:
+      labels:
+        - 'bug'
+  - title: '📚 Documentation'
+    when:
+      labels:
+        - 'documentation'
+  - title: '🧰 Other Changes'
+  - type: 'version-resolver'
+    semver-increment: major
+    when:
+      label: 'breaking'
+
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
+change-title-escapes: '\<*_&'
+template: |
+  ## What's Changed
+
+  $CHANGES
+
+  ## Contributors
+
+  $CONTRIBUTORS
