@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
+import logging
+import sys
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal, Sequence
@@ -18,6 +21,110 @@ ACTION_LOG_CHECKPOINT_DIR = "data_lake/action_log_checkpoints"
 DEFAULT_VIRTUAL_USERS_PATH = "asset/virtual_user/vu_1000.parquet"
 PARTITION_FILE = "part-0.parquet"
 QUARANTINE_FILE = "quarantine.jsonl"
+
+ACTION_LOG_TELEMETRY_LOGGERS = (
+    "autoresearch.action_logs.pipeline",
+    "autoresearch.action_logs.llm_generator",
+)
+_TELEMETRY_HANDLER_MARKER = "_autoresearch_action_log_stdout"
+_SENSITIVE_TELEMETRY_FIELDS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "content",
+        "judgments",
+        "messages",
+        "password",
+        "persona",
+        "persona_id",
+        "prompt",
+        "raw_prompt",
+        "raw_request",
+        "raw_response",
+        "refresh_token",
+        "request_body",
+        "request_payload",
+        "response_body",
+        "response_payload",
+        "secret",
+        "token",
+        "user",
+        "user_id",
+    }
+)
+
+
+def _contains_sensitive_telemetry_field(value: object) -> bool:
+    """Return whether a JSON value contains a forbidden sensitive field."""
+
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            if str(key).casefold() in _SENSITIVE_TELEMETRY_FIELDS:
+                return True
+            if _contains_sensitive_telemetry_field(nested_value):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_sensitive_telemetry_field(item) for item in value)
+    return False
+
+
+class _ActionLogTelemetryFilter(logging.Filter):
+    """Allow only one-line, non-sensitive action-log JSON event objects."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            payload = json.loads(record.getMessage())
+        except (TypeError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        if not isinstance(payload.get("event"), str) or not payload["event"]:
+            return False
+        if _contains_sensitive_telemetry_field(payload):
+            return False
+        record.msg = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        record.args = ()
+        return True
+
+
+def configure_action_log_telemetry_logging() -> None:
+    """Forward action-log JSON events at INFO or above to prefix-free stdout."""
+
+    for logger_name in ACTION_LOG_TELEMETRY_LOGGERS:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+        configured_handlers = [
+            candidate
+            for candidate in logger.handlers
+            if getattr(candidate, _TELEMETRY_HANDLER_MARKER, False)
+        ]
+        if configured_handlers:
+            handler = configured_handlers[0]
+            handler.setStream(sys.stdout)
+        else:
+            handler = logging.StreamHandler(sys.stdout)
+            setattr(handler, _TELEMETRY_HANDLER_MARKER, True)
+            handler.addFilter(_ActionLogTelemetryFilter())
+
+        for existing_handler in list(logger.handlers):
+            logger.removeHandler(existing_handler)
+            if (
+                existing_handler is not handler
+                and getattr(existing_handler, _TELEMETRY_HANDLER_MARKER, False)
+            ):
+                existing_handler.close()
+        logger.addHandler(handler)
+
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("%(message)s"))
 
 
 @dataclass(frozen=True)
@@ -280,6 +387,7 @@ def merge_daily_action_log_shards(**kwargs):
 def main(argv: Sequence[str] | None = None) -> int:
     """Check inputs and create the action log partition when needed."""
 
+    configure_action_log_telemetry_logging()
     config = build_config(argv)
     filesystem = make_gcs_filesystem()
 
