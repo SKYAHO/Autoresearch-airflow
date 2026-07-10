@@ -106,6 +106,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     spec.loader.exec_module(module)
 
     dag = module.dag
+    assert dag.kwargs["schedule"] is None
+    assert dag.kwargs["catchup"] is False
+    assert dag.kwargs["max_active_runs"] == 1
     shards = [
         task
         for task_id, task in dag.task_dict.items()

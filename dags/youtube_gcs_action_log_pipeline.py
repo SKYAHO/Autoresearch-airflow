@@ -1,7 +1,8 @@
-"""YouTube API -> GCS -> sharded action log daily pipeline.
+"""YouTube API -> GCS -> sharded action log manual pipeline.
 
-KR YouTube trending partition을 적재한 뒤 action-log shard를 독립 KPO task로
-fan-out하고, 모든 shard 성공 후 단일 merge task가 최종 partition을 게시한다.
+수동 trigger로 KR YouTube trending partition을 적재한 뒤 action-log shard를
+독립 KPO task로 fan-out하고, 모든 shard 성공 후 단일 merge task가 최종
+partition을 게시한다.
 """
 
 from __future__ import annotations
@@ -111,7 +112,7 @@ def _openrouter_runtime_env_vars() -> list[k8s.V1EnvVar]:
 
 with DAG(
     dag_id="youtube_gcs_action_log_pipeline",
-    schedule="0 6 * * *",  # KST 06:00; GCS partitions should be ready before KST 10:00.
+    schedule=None,
     start_date=datetime(2026, 7, 1, tzinfo=_KST),
     catchup=False,
     max_active_runs=1,

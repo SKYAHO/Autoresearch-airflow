@@ -1,12 +1,12 @@
 # Operational DAG QA for YouTube API and Mistral Nemo
 
 이 문서는 dev GKE Airflow에서 실제 YouTube API 수집과 Mistral Nemo 기반
-action log 생성을 운영 DAG로 실행하고, 데이터품질 QA는 1회 수동 검증으로
-진행하기 위한 조건과 2026-07-08 one-off smoke 결과를 정리한다.
+action log 생성을 manual-only 운영 DAG로 실행하고, 데이터품질 QA를 수동으로
+검증하기 위한 조건과 2026-07-08 one-off smoke 결과를 정리합니다.
 
 ## 목표
 
-운영 DAG는 아래 흐름을 매일 실행한다.
+운영 DAG를 수동 trigger하면 아래 흐름을 실행합니다.
 
 ```text
 YouTube Data API v3
@@ -15,9 +15,9 @@ YouTube Data API v3
   -> GCS action log parquet
 ```
 
-데이터품질 QA는 DAG 태스크로 매일 넣지 않는다. 운영 DAG 배포 후 특정
-`partition_date`를 한 번 수동 trigger하고, 생성된 parquet을
-`scripts/check_action_log_data_quality.py`로 읽어 품질을 확인한다.
+데이터품질 QA는 DAG 태스크에 포함하지 않습니다. 운영 DAG 배포 후 특정
+`partition_date`를 수동 trigger하고, 생성된 parquet을
+`scripts/check_action_log_data_quality.py`로 읽어 품질을 확인합니다.
 
 ## 현재 충족된 조건
 
@@ -72,11 +72,12 @@ collect_youtube_trending_partition
   -> merge_action_log_partition (all_success)
 ```
 
-스케줄은 KST 06:00이고, 운영 목표는 KST 10:00에 YouTube partition과
-action log partition을 모두 GCS에서 확인할 수 있게 하는 것이다. 기본
-partition date는 `data_interval_end`를 KST로 변환한 날짜다. 수동 실행
-시에는 `dag_run.conf.partition_date`로 덮어쓸 수 있고, 값이 비어 있거나
-null이면 기본 partition date로 fallback한다.
+배치 시각은 아직 확정되지 않았고 현재 DAG는 `schedule=None`인 manual-only
+상태입니다. `catchup=False`이므로 과거 partition 예약 실행을 생성하지 않으며,
+`max_active_runs=1`은 수동 run끼리 겹치지 않게 유지합니다. 기본 partition date는
+`data_interval_end`를 KST로 변환한 날짜입니다. 수동 실행 시에는 오실행을 막기 위해
+`dag_run.conf.partition_date`를 명시하는 것을 원칙으로 하며, 값이 비어 있거나
+null이면 기본 partition date로 fallback합니다.
 
 ### 3. 1회 QA 전용 GCS prefix
 
@@ -141,8 +142,9 @@ Secret의 `secretKeyRef`로 주입합니다.
 
 ### 5. QA 입력 크기
 
-운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_SHARD_COUNT=5`,
-`ACTION_LOG_MAX_CONCURRENCY=2`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
+현재 수동 실행은 `ACTION_LOG_SHARD_COUNT=5`, `ACTION_LOG_MAX_CONCURRENCY=2`,
+`ACTION_LOG_CHUNK_SIZE=24`를 사용합니다. 고정된 완료 시각 대신 trigger부터 최종
+Parquet 게시까지의 총 경과시간을 측정합니다.
 Airflow Pool `action_log_openrouter`는 2 slots이므로 동시에 실행되는 shard는
 최대 2개이고, 실질 OpenRouter 동시 호출 상한은 `2 × 2 = 4`이다. Pool을
 적용하지 않았을 때의 이론상 상한 `5 × 2 = 10`과 혼동하지 않는다.
@@ -177,6 +179,20 @@ parquet은 성공 산출물로 남지 않습니다.
   "overwrite": true
 }
 ```
+
+### 6. 정기 schedule 재도입 조건
+
+정기 schedule은 다음 항목이 모두 결정되고 별도 PR의 테스트와 운영 검토를 통과한
+뒤에만 다시 설정합니다.
+
+- 실행 시각과 timezone, 6시간 목표의 기준 시점
+- 이전 run이 완료되지 않았을 때 overlap, skip 또는 지연 실행 정책
+- 오래된 queued/running run을 판정하고 종료하는 기준
+- 운영 GCS prefix와 검증된 batch/Airflow image 및 DAG revision
+- 첫 예약 실행 전 수동 QA 결과와 rollback 대상 release
+
+schedule을 다시 설정할 때도 `catchup=False`와 `max_active_runs=1`의 유지 여부를
+명시적으로 검토하고 DAG parse/contract test를 함께 갱신합니다.
 
 ## 1회 데이터품질 체크
 

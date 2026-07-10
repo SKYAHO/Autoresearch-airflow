@@ -24,12 +24,13 @@ gs://<bucket>/data_lake/action_log_checkpoints/dt=YYYY-MM-DD/shard=000/fingerpri
 gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 ```
 
-## Daily Pipeline
+## Manual Pipeline
 
-`dags/youtube_gcs_action_log_pipeline.py` runs every day at KST 06:00. The
-operational target is that both the YouTube and action-log GCS partitions are
-ready for inspection by KST 10:00. It launches KubernetesPodOperator batch pods
-using `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
+`dags/youtube_gcs_action_log_pipeline.py`의 배치 시각은 아직 확정되지 않았습니다.
+현재 `schedule=None`인 manual-only DAG이므로 scheduler가 예약 DagRun을 만들지
+않습니다. 실행 담당자가 `partition_date`를 확인한 뒤 Web UI 또는 API에서 명시적으로
+trigger하며, trigger부터 최종 action-log Parquet 게시까지의 총 경과시간을
+측정합니다. Batch pod는 `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`를 사용합니다.
 
 The DAG:
 
@@ -64,7 +65,7 @@ has at most two request retries (one timeout retry). A timeout resumes from the
 durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`
 task with no automatic retry.
 
-Manual re-run example:
+현재 수동 trigger 예시:
 
 ```json
 {
@@ -72,6 +73,14 @@ Manual re-run example:
   "overwrite": true
 }
 ```
+
+정기 schedule은 다음 조건이 모두 정해진 뒤 별도 변경으로 다시 도입합니다.
+
+- 실행 시각과 timezone, 6시간 처리 목표의 기준 시점
+- `max_active_runs=1`에서 이전 run이 끝나지 않았을 때의 overlap·skip 정책
+- queued/running stale run의 판정과 종료 절차
+- 운영 GCS prefix 및 검증된 image/DAG release 조합
+- schedule·catchup 계약 테스트와 배포 후 첫 예약 실행 확인 절차
 
 ## Local Verification
 

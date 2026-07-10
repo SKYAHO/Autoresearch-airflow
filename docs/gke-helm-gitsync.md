@@ -114,6 +114,12 @@ shard별 concurrency, 두 retry 계층을 함께 상향하지 않습니다.
 
 ## 운영 확인
 
+`youtube_gcs_action_log_pipeline`의 배치 시각은 아직 확정되지 않았으며 현재
+`schedule=None`인 manual-only DAG입니다. git-sync 후 Web UI의 Schedule 항목이
+`None`이고 `catchup=False`, `max_active_runs=1` 계약이 유지되는지 확인합니다.
+자동으로 생성되는 DagRun은 없어야 하며, 검증 실행은 `partition_date`를 명시한
+수동 trigger로만 시작합니다.
+
 ```bash
 kubectl get pods -n airflow
 kubectl logs -n airflow airflow-scheduler-0 -c git-sync
@@ -124,6 +130,23 @@ kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-im
 
 `git-sync` 로그에서 새 commit hash가 sync되는지 확인하고, Airflow scheduler가
 DAG를 파싱하는지 `airflow dags list` 또는 Web UI에서 확인합니다.
+
+manual-only 변경을 반영한 직후에는 이전 cron schedule이 생성한 run을 다음 순서로
+정리합니다.
+
+1. Web UI 또는 `airflow dags list-runs -d youtube_gcs_action_log_pipeline`에서
+   queued/running run의 `run_id`, logical date, 상태와 task 상태를 별도 운영 기록에
+   남깁니다.
+2. 의도적으로 실행한 수동 run과 현재 쓰기 작업이 없는지 확인합니다.
+3. 이전 schedule이 만든 stale queued/running run만 Web UI 또는 승인된 Airflow
+   API로 failed 처리합니다.
+4. DagRun 상태만 정리하며 운영 GCS 데이터, shard work, progress와 활성 checkpoint
+   part는 삭제하지 않습니다. Pod 강제 삭제도 이 절차에 포함하지 않습니다.
+
+정기 schedule은 실행 시각/timezone, 6시간 목표 기준, overlap·skip 정책,
+stale-run 처리, 운영 GCS prefix, 검증된 image/DAG release와 rollback 절차가 모두
+확정된 뒤 별도 PR로 재도입합니다. 이때 schedule·catchup·`max_active_runs` 계약
+테스트도 함께 갱신합니다.
 
 dev GKE의 `helm/values-gke-dev.yaml`은 Airflow CLI와 scheduler heartbeat가 같은
 컨테이너에서 동작해도 OOM kill이 나지 않도록 scheduler memory limit을 `1536Mi`,

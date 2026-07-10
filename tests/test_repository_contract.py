@@ -19,7 +19,9 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "ensure_action_log_shards" in source
     assert "ensure_action_log_shard_" in source
     assert "merge_action_log_partition" in source
-    assert "schedule='0 6 * * *'" in source
+    assert "schedule=None" in source
+    assert "schedule='0 6 * * *'" not in source
+    assert "catchup=False" in source
     assert "max_active_runs=1" in source
     assert "execution_timeout=timedelta(hours=2, minutes=30)" in source
     assert "execution_timeout=timedelta(minutes=30)" in source
