@@ -268,6 +268,7 @@ def test_provider_ab_qa_shards_isolate_paths_and_provider_arguments(
         assert labels["slot"] == slot
         assert labels["arm"] == arm
         assert task.kwargs["is_delete_operator_pod"] is False
+        assert task.kwargs["on_finish_action"] == "keep_pod"
         assert task.kwargs["get_logs"] is True
         assert task.kwargs["do_xcom_push"] is False
         assert task.kwargs["pool"] == "action_log_openrouter"
@@ -347,5 +348,6 @@ def test_provider_ab_qa_merges_remain_arm_isolated_and_provider_free(
         assert task.kwargs["labels"]["slot"] == slot
         assert task.kwargs["labels"]["arm"] == arm
         assert task.kwargs["is_delete_operator_pod"] is False
+        assert task.kwargs["on_finish_action"] == "keep_pod"
         assert task.kwargs["trigger_rule"] == "all_success"
         assert task.kwargs["retries"] == 0

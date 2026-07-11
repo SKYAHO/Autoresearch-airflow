@@ -75,8 +75,8 @@ hyphen/slash-segment slug여야 합니다.
 
 현재 환경은 Airflow log persistence와 remote logging이 모두 비활성화되어 완료된
 task/KPO pod 로그를 복구할 수 없습니다. 따라서 이 전용 DAG의 KPO만
-`is_delete_operator_pod=False`로 유지합니다. 모든 QA pod에는 아래 안전한 label이
-붙습니다.
+`is_delete_operator_pod=False`, `on_finish_action="keep_pod"`로 유지합니다. 모든 QA
+pod에는 아래 안전한 label이 붙습니다.
 
 ```text
 experiment=provider-routing-ab
