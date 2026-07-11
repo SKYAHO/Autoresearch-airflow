@@ -166,6 +166,9 @@ def test_build_config_uses_default_gcs_paths() -> None:
         shard_count=1,
         generator_name="rule_based",
         model_name=None,
+        provider_routing_mode="default",
+        provider_slug=None,
+        expected_user_count=None,
         candidates_per_user=24,
         target_ctr=0.02,
         personalized_ratio=0.7,
@@ -176,6 +179,141 @@ def test_build_config_uses_default_gcs_paths() -> None:
         chunk_size=0,
         max_quarantine_ratio=0.5,
     )
+
+
+@pytest.mark.parametrize(
+    ("routing_args", "expected_mode", "expected_slug"),
+    [
+        (["--provider-routing-mode", "auto"], "auto", None),
+        (
+            [
+                "--provider-routing-mode",
+                "fixed",
+                "--provider-slug",
+                "deepinfra",
+            ],
+            "fixed",
+            "deepinfra",
+        ),
+        (
+            [
+                "--provider-routing-mode",
+                "fixed",
+                "--provider-slug",
+                "deepinfra/turbo",
+            ],
+            "fixed",
+            "deepinfra/turbo",
+        ),
+    ],
+)
+def test_build_config_accepts_valid_provider_routing_modes(
+    routing_args,
+    expected_mode,
+    expected_slug,
+) -> None:
+    config = build_config(
+        [
+            "--partition-date",
+            "2026-07-10",
+            "--bucket",
+            "autoresearch-dev-lake",
+            "--expected-user-count",
+            "100",
+            *routing_args,
+        ]
+    )
+
+    assert config.provider_routing_mode == expected_mode
+    assert config.provider_slug == expected_slug
+    assert config.expected_user_count == 100
+
+
+@pytest.mark.parametrize(
+    ("routing_args", "message"),
+    [
+        (
+            ["--provider-slug", "deepinfra"],
+            "only valid when --provider-routing-mode=fixed",
+        ),
+        (
+            [
+                "--provider-routing-mode",
+                "auto",
+                "--provider-slug",
+                "deepinfra",
+            ],
+            "only valid when --provider-routing-mode=fixed",
+        ),
+        (
+            ["--provider-routing-mode", "fixed"],
+            "required when --provider-routing-mode=fixed",
+        ),
+        (
+            [
+                "--provider-routing-mode",
+                "fixed",
+                "--provider-slug",
+                "Deep Infra",
+            ],
+            "must be a lowercase OpenRouter provider slug",
+        ),
+        (
+            [
+                "--provider-routing-mode",
+                "fixed",
+                "--provider-slug",
+                " deepinfra ",
+            ],
+            "must be a lowercase OpenRouter provider slug",
+        ),
+        (
+            [
+                "--provider-routing-mode",
+                "fixed",
+                "--provider-slug",
+                "deepinfra.turbo",
+            ],
+            "must be a lowercase OpenRouter provider slug",
+        ),
+    ],
+)
+def test_build_config_rejects_invalid_provider_mode_slug_combinations(
+    routing_args,
+    message,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        build_config(
+            [
+                "--partition-date",
+                "2026-07-10",
+                "--bucket",
+                "autoresearch-dev-lake",
+                *routing_args,
+            ]
+        )
+
+
+def test_build_config_rejects_invalid_expected_user_count_and_merge_scope() -> None:
+    common = [
+        "--partition-date",
+        "2026-07-10",
+        "--bucket",
+        "autoresearch-dev-lake",
+    ]
+
+    with pytest.raises(ValueError, match="must be at least 1"):
+        build_config([*common, "--expected-user-count", "0"])
+    with pytest.raises(ValueError, match="not valid when --mode=merge"):
+        build_config(
+            [
+                "--mode",
+                "merge",
+                *common,
+                "--expected-user-count",
+                "100",
+            ]
+        )
 
 
 def test_build_config_shard_mode_uses_default_work_paths() -> None:
@@ -236,6 +374,10 @@ def test_main_shard_passes_index_count_and_resume_paths(monkeypatch) -> None:
                 "2",
                 "--shard-count",
                 "5",
+                "--provider-routing-mode",
+                "auto",
+                "--expected-user-count",
+                "100",
             ]
         )
         == 0
@@ -250,6 +392,9 @@ def test_main_shard_passes_index_count_and_resume_paths(monkeypatch) -> None:
         "autoresearch-dev-lake/data_lake/action_log_checkpoints"
     )
     assert received["max_quarantine_ratio"] == 0.5
+    assert received["provider_routing_mode"] == "auto"
+    assert received["provider_slug"] is None
+    assert received["expected_user_count"] == 100
     assert set(received) == {
         "partition_date",
         "shard_index",
@@ -270,9 +415,53 @@ def test_main_shard_passes_index_count_and_resume_paths(monkeypatch) -> None:
         "max_quarantine_ratio",
         "generator_name",
         "model_name",
+        "provider_routing_mode",
+        "provider_slug",
+        "expected_user_count",
         "progress_base_path",
         "checkpoint_base_path",
     }
+
+
+def test_main_single_passes_fixed_provider_and_expected_user_count(monkeypatch) -> None:
+    fake_fs = _FakeGcsFileSystem(
+        {
+            "autoresearch-dev-lake/data_lake/youtube_trending_kr/dt=2026-07-10/part-0.parquet",
+            "autoresearch-dev-lake/asset/virtual_user/vu_1000.parquet",
+        }
+    )
+    received: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "autoresearch_airflow_jobs.daily_action_log.make_gcs_filesystem",
+        lambda: fake_fs,
+    )
+    monkeypatch.setattr(
+        "autoresearch_airflow_jobs.daily_action_log.run_daily_action_log",
+        lambda **kwargs: received.update(kwargs) or {"status": "ok"},
+    )
+
+    assert (
+        main(
+            [
+                "--partition-date",
+                "2026-07-10",
+                "--bucket",
+                "autoresearch-dev-lake",
+                "--provider-routing-mode",
+                "fixed",
+                "--provider-slug",
+                "deepinfra",
+                "--expected-user-count",
+                "100",
+            ]
+        )
+        == 0
+    )
+
+    assert received["provider_routing_mode"] == "fixed"
+    assert received["provider_slug"] == "deepinfra"
+    assert received["expected_user_count"] == 100
 
 
 def test_main_merge_uses_only_merge_contract_and_removes_stale_outputs(

@@ -65,6 +65,9 @@ class ActionLogDagSettings:
     model_name_template: str = (
         "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}"
     )
+    provider_routing_mode_template: str = "default"
+    provider_slug_template: str = ""
+    expected_user_count_template: str | None = None
     candidates_per_user_template: str = (
         "{{ var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24') }}"
     )
@@ -117,7 +120,7 @@ def _build_action_log_common_arguments(
 ) -> list[str]:
     """Build shared CLI arguments for action log batch containers."""
 
-    return [
+    arguments = [
         "--partition-date",
         settings.partition_date_template,
         "--bucket",
@@ -136,6 +139,10 @@ def _build_action_log_common_arguments(
         settings.generator_name_template,
         "--model-name",
         settings.model_name_template,
+        "--provider-routing-mode",
+        settings.provider_routing_mode_template,
+        "--provider-slug",
+        settings.provider_slug_template,
         "--candidates-per-user",
         settings.candidates_per_user_template,
         "--target-ctr",
@@ -155,6 +162,11 @@ def _build_action_log_common_arguments(
         "--max-quarantine-ratio",
         settings.max_quarantine_ratio_template,
     ]
+    if settings.expected_user_count_template is not None:
+        arguments.extend(
+            ["--expected-user-count", settings.expected_user_count_template]
+        )
+    return arguments
 
 
 def build_action_log_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:

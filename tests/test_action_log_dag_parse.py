@@ -106,6 +106,8 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     spec.loader.exec_module(module)
 
     dag = module.dag
+    assert dag.kwargs["dag_id"] == "youtube_gcs_action_log_pipeline"
+    assert dag.kwargs["schedule"] == "0 6 * * *"
     shards = [
         task
         for task_id, task in dag.task_dict.items()
@@ -126,9 +128,15 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         assert arguments[count_position] == (
             "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}"
         )
+        routing_position = arguments.index("--provider-routing-mode") + 1
+        slug_position = arguments.index("--provider-slug") + 1
+        assert arguments[routing_position] == "default"
+        assert arguments[slug_position] == ""
+        assert "--expected-user-count" not in arguments
         assert task.kwargs["pool"] == "action_log_openrouter"
         assert task.kwargs["pool_slots"] == 1
         assert task.kwargs["retries"] == 1
+        assert task.kwargs["is_delete_operator_pod"] is True
         assert task.kwargs["do_xcom_push"] is False
         assert "OPENROUTER_API_KEY" not in " ".join(arguments)
         secret_env = task.kwargs["env_vars"][0]

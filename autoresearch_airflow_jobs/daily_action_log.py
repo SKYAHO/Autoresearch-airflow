@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from dataclasses import dataclass
 from datetime import date
@@ -52,6 +53,9 @@ _SENSITIVE_TELEMETRY_FIELDS = frozenset(
         "user",
         "user_id",
     }
+)
+_PROVIDER_SLUG_PATTERN = re.compile(
+    r"[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*"
 )
 
 
@@ -149,6 +153,9 @@ class DailyActionLogConfig:
     shard_count: int
     generator_name: str
     model_name: str | None
+    provider_routing_mode: Literal["default", "auto", "fixed"]
+    provider_slug: str | None
+    expected_user_count: int | None
     candidates_per_user: int
     target_ctr: float
     personalized_ratio: float
@@ -242,6 +249,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--shard-count", type=int, default=1)
     parser.add_argument("--generator-name", default="rule_based")
     parser.add_argument("--model-name", default="")
+    parser.add_argument(
+        "--provider-routing-mode",
+        choices=("default", "auto", "fixed"),
+        default="default",
+    )
+    parser.add_argument("--provider-slug", default="")
+    parser.add_argument("--expected-user-count", type=int, default=None)
     parser.add_argument("--candidates-per-user", type=int, default=24)
     parser.add_argument("--target-ctr", type=float, default=0.02)
     parser.add_argument("--personalized-ratio", type=float, default=0.7)
@@ -269,6 +283,35 @@ def build_config(argv: Sequence[str] | None = None) -> DailyActionLogConfig:
             raise ValueError("--shard-index is required when --mode=shard")
         if not 0 <= args.shard_index < args.shard_count:
             raise ValueError("--shard-index must satisfy 0 <= index < shard-count")
+    provider_slug = args.provider_slug or None
+    if provider_slug is not None and (
+        len(provider_slug) > 128
+        or not _PROVIDER_SLUG_PATTERN.fullmatch(provider_slug)
+    ):
+        raise ValueError(
+            "--provider-slug must be a lowercase OpenRouter provider slug "
+            "containing hyphenated segments with optional slash separators"
+        )
+    if args.provider_routing_mode == "fixed":
+        if provider_slug is None:
+            raise ValueError(
+                "--provider-slug is required when --provider-routing-mode=fixed"
+            )
+    elif provider_slug is not None:
+        raise ValueError(
+            "--provider-slug is only valid when --provider-routing-mode=fixed"
+        )
+    if args.expected_user_count is not None and args.expected_user_count < 1:
+        raise ValueError("--expected-user-count must be at least 1")
+    if args.mode == "merge" and (
+        args.provider_routing_mode != "default"
+        or provider_slug is not None
+        or args.expected_user_count is not None
+    ):
+        raise ValueError(
+            "provider routing and expected user count arguments are not valid "
+            "when --mode=merge"
+        )
     default_output_dir = (
         ACTION_LOG_WORK_DIR if args.mode == "shard" else ACTION_LOG_LAKE_DIR
     )
@@ -316,6 +359,9 @@ def build_config(argv: Sequence[str] | None = None) -> DailyActionLogConfig:
         shard_count=args.shard_count,
         generator_name=args.generator_name,
         model_name=args.model_name or None,
+        provider_routing_mode=args.provider_routing_mode,
+        provider_slug=provider_slug,
+        expected_user_count=args.expected_user_count,
         candidates_per_user=args.candidates_per_user,
         target_ctr=args.target_ctr,
         personalized_ratio=args.personalized_ratio,
@@ -420,6 +466,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_quarantine_ratio=config.max_quarantine_ratio,
             generator_name=config.generator_name,
             model_name=config.model_name,
+            provider_routing_mode=config.provider_routing_mode,
+            provider_slug=config.provider_slug,
+            expected_user_count=config.expected_user_count,
         )
     elif config.mode == "shard":
         if config.shard_index is None:
@@ -456,6 +505,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_quarantine_ratio=config.max_quarantine_ratio,
             generator_name=config.generator_name,
             model_name=config.model_name,
+            provider_routing_mode=config.provider_routing_mode,
+            provider_slug=config.provider_slug,
+            expected_user_count=config.expected_user_count,
             progress_base_path=config.progress_base_path,
             checkpoint_base_path=config.checkpoint_base_path,
         )

@@ -39,6 +39,10 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "{{ var.value.get('ACTION_LOG_GENERATOR', 'openrouter') }}",
         "--model-name",
         "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
+        "--provider-routing-mode",
+        "default",
+        "--provider-slug",
+        "",
         "--candidates-per-user",
         "{{ var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24') }}",
         "--target-ctr",
@@ -64,11 +68,27 @@ def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
     settings = ActionLogDagSettings(
         bucket_template="{{ var.value.YOUTUBE_LAKE_BUCKET }}",
         overwrite_template="{{ dag_run.conf.get('overwrite', false) }}",
+        provider_routing_mode_template="fixed",
+        provider_slug_template="{{ params.fixed_provider_slug }}",
+        expected_user_count_template="100",
     )
 
     args = build_action_log_shard_kpo_arguments(settings, shard_index=3)
 
     assert args[:3] == ["--mode", "shard", "--partition-date"]
+    routing_position = args.index("--provider-routing-mode")
+    assert args[routing_position : routing_position + 4] == [
+        "--provider-routing-mode",
+        "fixed",
+        "--provider-slug",
+        "{{ params.fixed_provider_slug }}",
+    ]
+    expected_count_position = args.index("--expected-user-count")
+    assert args[expected_count_position : expected_count_position + 2] == [
+        "--expected-user-count",
+        "100",
+    ]
+    assert expected_count_position < args.index("--shard-index")
     assert "--output-base-path" in args
     assert "{{ var.value.get('ACTION_LOG_SHARD_WORK_DIR', '') }}" in args
     assert "--quarantine-base-path" in args
@@ -80,7 +100,8 @@ def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
         "--shard-count",
         "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}",
     ]
-    assert args[-8:] == [
+    final_output_position = args.index("--final-output-base-path")
+    assert args[final_output_position - 4 : final_output_position + 4] == [
         "--progress-base-path",
         "{{ var.value.get('ACTION_LOG_PROGRESS_DIR', '') }}",
         "--checkpoint-base-path",
@@ -117,6 +138,9 @@ def test_build_action_log_merge_kpo_arguments_uses_final_and_work_paths() -> Non
     ]
     assert "--model-name" not in args
     assert "--seed" not in args
+    assert "--provider-routing-mode" not in args
+    assert "--provider-slug" not in args
+    assert "--expected-user-count" not in args
 
 
 def test_build_youtube_trending_kpo_arguments_uses_airflow_templates() -> None:

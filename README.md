@@ -73,10 +73,37 @@ Manual re-run example:
 }
 ```
 
+## Provider Routing A/B QA
+
+`dags/action_log_provider_ab_qa.py`는 `schedule=None`인 100-user 전용 수동 DAG입니다.
+기존 YouTube snapshot과 virtual-user parquet을 읽고, 5-shard auto arm을 merge한 뒤
+5-shard fixed arm을 merge하여 두 arm이 동시에 OpenRouter를 호출하지 않게 합니다.
+`arm_order=fixed-auto`이면 순서만 반대로 바뀌며 GCS path와 provider 인자는 runtime
+실제 arm을 따릅니다.
+
+```json
+{
+  "experiment_id": "provider-ab-20260710-a",
+  "partition_date": "2026-07-10",
+  "youtube_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-c3-20260710T144700Z/youtube",
+  "virtual_users_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-c3-20260710T144700Z/input/virtual-users-100.parquet",
+  "fixed_provider_slug": "deepinfra",
+  "arm_order": "auto-fixed"
+}
+```
+
+입력 path와 날짜는 trigger 예시일 뿐 Param 기본값이 아닙니다. 모든 결과는
+`gs://<YOUTUBE_LAKE_BUCKET>/qa/action-log-provider-ab/experiment=<id>/arm=<actual-arm>/`
+아래에만 기록합니다. 현재 Airflow 로그가 비영속이므로 이 QA DAG의 pod만 완료 후
+보존하며, `experiment=provider-routing-ab`, `slot`, `arm` label로 즉시 export한 뒤
+명시적으로 정리합니다. Metric 집계, 민감정보 검사, pod cleanup과 rollback 절차는
+[docs/action-log-provider-ab-qa.md](docs/action-log-provider-ab-qa.md)에 있습니다.
+
 ## Local Verification
 
 ```bash
 python -m pytest
+python -m ruff check .
 python -m compileall autoresearch_airflow autoresearch_airflow_jobs dags
 ```
 
