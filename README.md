@@ -86,6 +86,14 @@ python -m compileall autoresearch_airflow autoresearch_airflow_jobs dags
 검증하기 위한 준비 항목, 수동 데이터품질 체크 명령, one-off smoke evidence는
 [docs/operational-dag-qa.md](docs/operational-dag-qa.md)에 정리되어 있습니다.
 
+Action-log shard batch entrypoint는
+`autoresearch.action_logs.pipeline`과
+`autoresearch.action_logs.llm_generator`의 INFO 이상 JSON event만 prefix 없는
+한 줄로 stdout에 전달합니다. root logger의 레벨은 변경하지 않으므로 타
+라이브러리의 INFO 로그가 함께 활성화되지 않습니다. API key, prompt, raw
+request/response, user/persona 식별 필드가 포함된 JSON event는 stdout 경계에서
+차단합니다.
+
 ## Build Images
 
 Local Docker is not required. Build and push both images with Cloud Build:
