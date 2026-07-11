@@ -56,9 +56,9 @@ Kubernetes Secret named by `AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME`.
 are non-secret environment variables; the API key remains a `secretKeyRef` and is
 not present in task arguments or rendered values.
 
-The initial dev limit is five shards, two in-process calls per shard, and an
+The initial dev limit is five shards, three in-process calls per shard, and an
 `action_log_openrouter` Airflow Pool with five slots. At most five shard pods run at
-once, so the effective OpenRouter request concurrency is `5 × 2 = 10`. A shard
+once, so the effective OpenRouter request concurrency is `5 × 3 = 15`. A shard
 task has one Airflow retry after ten minutes and a 2h30m timeout; the application
 has at most two request retries (one timeout retry). A timeout resumes from the
 durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`

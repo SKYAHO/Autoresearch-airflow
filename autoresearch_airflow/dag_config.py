@@ -80,7 +80,7 @@ class ActionLogDagSettings:
     )
     seed_template: str = "{{ var.value.get('ACTION_LOG_SEED', '42') }}"
     max_concurrency_template: str = (
-        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '2') }}"
+        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '3') }}"
     )
     chunk_size_template: str = "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}"
     max_quarantine_ratio_template: str = (
