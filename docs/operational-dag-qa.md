@@ -1,5 +1,12 @@
 # Operational DAG QA for YouTube API and Mistral Nemo
 
+반복 수동 QA는 `youtube_gcs_action_log_pipeline_qa` DAG를 사용한다. 이 DAG는
+운영 DAG와 동일한 factory/task graph를 사용하지만 `schedule=None`이며, 운영 DAG를
+unpause하지 않아도 수동 trigger할 수 있다. 운영 DAG는
+`youtube_gcs_action_log_pipeline`로 유지한다. QA DAG는 입력 parquet의 앞 1,000명만
+결정론적으로 처리하지만, 운영 DAG는 configured virtual-user parquet의 전체 행을
+처리한다.
+
 이 문서는 dev GKE Airflow에서 실제 YouTube API 수집과 Mistral Nemo 기반
 action log 생성을 운영 DAG로 실행하고, 데이터품질 QA는 1회 수동 검증으로
 진행하기 위한 조건과 2026-07-08 one-off smoke 결과를 정리한다.

@@ -144,6 +144,7 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
             arguments.index("--candidates-per-user") + 1
         ]
         assert "resolve_candidates_per_user(dag_run.conf" in candidates_template
+        assert "--max-users" not in arguments
         expected_path_keys = {
             "--youtube-base-path": "youtube_base_path",
             "--virtual-users-path": "virtual_users_path",

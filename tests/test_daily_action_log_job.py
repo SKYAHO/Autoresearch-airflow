@@ -340,6 +340,7 @@ def test_main_shard_passes_index_count_and_resume_paths(monkeypatch) -> None:
         "quarantine_base_path",
         "filesystem",
         "candidates_per_user",
+        "max_users",
         "target_ctr",
         "personalized_ratio",
         "popular_ratio",

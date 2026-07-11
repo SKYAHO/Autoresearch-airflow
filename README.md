@@ -74,6 +74,12 @@ by the application to pod stdout are visible in the corresponding Airflow task l
 This repository does not enable durable remote logging; log retention remains an
 environment-level concern.
 
+The scheduled production DAG intentionally processes every row in the configured
+virtual-user parquet. The current `vu_1000.parquet` contains 6,983 rows, so the
+default 24 candidates permit up to 167,592 impressions and approximately 6,983
+OpenRouter work items. The separate manual QA DAG applies a deterministic
+1,000-user ceiling and never changes the production input contract.
+
 Manual production-path re-run example (path keys omitted, so Airflow
 Variable/default paths remain in effect):
 
