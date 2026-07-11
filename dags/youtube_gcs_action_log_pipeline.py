@@ -6,6 +6,7 @@ fan-out하고, 모든 shard 성공 후 단일 merge task가 최종 partition을 
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -20,8 +21,7 @@ from autoresearch_airflow.dag_config import (
     build_action_log_merge_kpo_arguments,
     build_action_log_shard_kpo_arguments,
     build_youtube_trending_kpo_arguments,
-    resolve_candidates_per_user,
-    resolve_dag_run_path,
+    resolve_dag_run_path as _resolve_dag_run_path,
 )
 
 
@@ -30,11 +30,73 @@ _PARTITION_DATE_TEMPLATE = (
     "{{ dag_run.conf.get('partition_date') "
     "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
 )
+_CANDIDATES_PER_USER_CONF_KEY = "candidates_per_user"
+_QA_PREFIX_CONF_KEY = "qa_prefix"
+
+
+def _path_conf(conf: Mapping[str, object] | None) -> dict[str, object]:
+    """Remove the scalar QA override before calling the image-bundled helper."""
+
+    path_conf = dict(conf or {})
+    path_conf.pop(_CANDIDATES_PER_USER_CONF_KEY, None)
+    return path_conf
+
+
+def resolve_dag_run_path(
+    conf: Mapping[str, object] | None,
+    conf_key: str,
+    fallback: str,
+) -> str:
+    """Keep path rendering compatible with the currently deployed helper image."""
+
+    return _resolve_dag_run_path(_path_conf(conf), conf_key, fallback)
+
+
+def resolve_candidates_per_user(
+    conf: Mapping[str, object] | None,
+    fallback: str,
+) -> str:
+    """Allow a bounded candidate count only with a complete isolated QA path set."""
+
+    run_conf = dict(conf or {})
+    if _CANDIDATES_PER_USER_CONF_KEY in run_conf:
+        qa_prefix = run_conf.get(_QA_PREFIX_CONF_KEY)
+        if not isinstance(qa_prefix, str) or not qa_prefix.strip():
+            raise ValueError(
+                "QA candidates override requires dag_run.conf.qa_prefix and the "
+                "complete QA path set"
+            )
+        _resolve_dag_run_path(
+            _path_conf(run_conf),
+            "youtube_base_path",
+            "",
+        )
+
+    raw_value = run_conf.get(_CANDIDATES_PER_USER_CONF_KEY, fallback)
+    if isinstance(raw_value, bool):
+        raise ValueError("dag_run.conf.candidates_per_user must be an integer")
+    if isinstance(raw_value, int):
+        value = raw_value
+    elif isinstance(raw_value, str) and raw_value.strip().isdecimal():
+        value = int(raw_value.strip())
+    else:
+        raise ValueError("dag_run.conf.candidates_per_user must be an integer")
+    if not 1 <= value <= 200:
+        raise ValueError(
+            "dag_run.conf.candidates_per_user must be between 1 and 200"
+        )
+    return str(value)
+
+
 _YOUTUBE_SETTINGS = YouTubeTrendingDagSettings(
     partition_date_template=_PARTITION_DATE_TEMPLATE,
 )
 _ACTION_LOG_SETTINGS = ActionLogDagSettings(
     partition_date_template=_PARTITION_DATE_TEMPLATE,
+    candidates_per_user_template=(
+        "{{ resolve_candidates_per_user(dag_run.conf, "
+        "var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24')) }}"
+    ),
     max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '2') }}",
     chunk_size_template="{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
 )
