@@ -1,4 +1,4 @@
-"""Production YouTube API -> GCS -> sharded action-log pipeline."""
+"""Production Airflow DAG for the YouTube -> GCS -> action-log pipeline."""
 
 from youtube_gcs_action_log_pipeline_factory import (
     build_youtube_gcs_action_log_pipeline,
