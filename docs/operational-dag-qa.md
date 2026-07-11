@@ -133,6 +133,7 @@ git-sync DAG commit만 먼저 반영하면 안 됩니다. 동일 commit으로 Ai
 ```text
 YOUTUBE_LAKE_BUCKET=ar-infra-501607-autoresearch-dev-raw-data
 AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
+AUTORESEARCH_BATCH_IMAGE_OVERRIDE=<optional immutable digest override>
 AIRFLOW_KPO_NAMESPACE=airflow
 AIRFLOW_KPO_SERVICE_ACCOUNT=autoresearch-batch
 AUTORESEARCH_API_SECRET_NAME=autoresearch-airflow-env

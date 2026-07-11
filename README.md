@@ -31,6 +31,10 @@ operational target is that both the YouTube and action-log GCS partitions are
 ready for inspection by KST 10:00. It launches KubernetesPodOperator batch pods
 using `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
 
+For an explicitly coordinated release, the DAG may temporarily use the Airflow
+DB Variable `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` with an immutable image digest.
+Removing that Variable restores the environment-provided image immediately.
+
 The DAG:
 
 1. Calls the YouTube Data API and writes the KR trending partition to GCS.

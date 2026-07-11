@@ -129,6 +129,10 @@ def _positive_int_variable(name: str, default: int) -> int:
 
 
 _ACTION_LOG_SHARD_COUNT = _positive_int_variable("ACTION_LOG_SHARD_COUNT", 5)
+_BATCH_IMAGE_TEMPLATE = (
+    "{{ var.value.get('AUTORESEARCH_BATCH_IMAGE_OVERRIDE', "
+    "var.value.AUTORESEARCH_BATCH_IMAGE) }}"
+)
 
 
 def _secret_env_vars(*keys: str, optional: bool = True) -> list[k8s.V1EnvVar]:
@@ -211,7 +215,7 @@ def build_youtube_gcs_action_log_pipeline(
             task_id="collect_youtube_trending_partition",
             name="collect-youtube-trending-partition",
             namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
-            image="{{ var.value.AUTORESEARCH_BATCH_IMAGE }}",
+            image=_BATCH_IMAGE_TEMPLATE,
             cmds=["python", "-m", "autoresearch_airflow_jobs.daily_youtube_trending"],
             arguments=build_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS),
             env_vars=_secret_env_vars("YOUTUBE_API_KEYS", "YOUTUBE_API_KEY", "YOUTUBE_PROXY_URL"),
@@ -235,7 +239,7 @@ def build_youtube_gcs_action_log_pipeline(
                 task_id=f"ensure_action_log_shard_{shard_index:03d}",
                 name=f"ensure-action-log-shard-{shard_index:03d}",
                 namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
-                image="{{ var.value.AUTORESEARCH_BATCH_IMAGE }}",
+                image=_BATCH_IMAGE_TEMPLATE,
                 cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
                 arguments=shard_arguments(shard_index),
                 env_vars=[
@@ -271,7 +275,7 @@ def build_youtube_gcs_action_log_pipeline(
             task_id="merge_action_log_partition",
             name="merge-action-log-partition",
             namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
-            image="{{ var.value.AUTORESEARCH_BATCH_IMAGE }}",
+            image=_BATCH_IMAGE_TEMPLATE,
             cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
             arguments=build_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS),
             env_vars=_secret_env_vars(),
