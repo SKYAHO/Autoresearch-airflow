@@ -123,7 +123,7 @@ ACTION_LOG_CHECKPOINT_DIR=<QA durable checkpoint base path>
 ACTION_LOG_SHARD_COUNT=5
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
-ACTION_LOG_MAX_CONCURRENCY=2
+ACTION_LOG_MAX_CONCURRENCY=3
 ACTION_LOG_CHUNK_SIZE=24
 ACTION_LOG_MAX_QUARANTINE_RATIO=0.5
 ACTION_LOG_OPENROUTER_POOL=action_log_openrouter
@@ -142,10 +142,10 @@ Secret의 `secretKeyRef`로 주입합니다.
 ### 5. QA 입력 크기
 
 운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_SHARD_COUNT=5`,
-`ACTION_LOG_MAX_CONCURRENCY=2`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
-Airflow Pool `action_log_openrouter`는 2 slots이므로 동시에 실행되는 shard는
-최대 2개이고, 실질 OpenRouter 동시 호출 상한은 `2 × 2 = 4`이다. Pool을
-적용하지 않았을 때의 이론상 상한 `5 × 2 = 10`과 혼동하지 않는다.
+`ACTION_LOG_MAX_CONCURRENCY=3`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
+Airflow Pool `action_log_openrouter`는 5 slots이므로 5개 shard를 동시에
+실행하고, 실질 OpenRouter 동시 호출 상한은 `5 × 3 = 15`이다. 각 shard는
+`pool_slots=1`을 사용하므로 Pool 상한과 shard 수가 일치한다.
 Shard work parquet은 최종 event log가 아니라 LLM judgment draft이며, merge
 태스크가 모든 shard를 읽어 전역 CTR 정규화와 `event_id` 부여를 수행한다.
 `progress.json`은 관측용 snapshot일 뿐 재개 입력이 아니다. 재시도와 timeout
@@ -156,7 +156,7 @@ part만 사용하며, fingerprint가 달라지면 기존 part를 재사용하지
 - YouTube API: KR trending `max_results=30`
 - Virtual users: 5명 또는 10명 sample parquet
 - Candidates per user: 24
-- Max concurrency: QA에서는 shard당 1, 운영 초기값은 shard당 2 / 총 4
+- Max concurrency: 운영 초기값은 shard당 3 / 총 15
 
 Shard KPO는 `execution_timeout=2h30m`, Airflow retry 1회, retry delay 10분을
 사용합니다. 앱 내부에서는 요청당 전체 retry 상한 2회와 timeout retry 상한

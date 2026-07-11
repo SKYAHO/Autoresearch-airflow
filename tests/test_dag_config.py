@@ -52,7 +52,7 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "--seed",
         "{{ var.value.get('ACTION_LOG_SEED', '42') }}",
         "--max-concurrency",
-        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '2') }}",
+        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '3') }}",
         "--chunk-size",
         "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
         "--max-quarantine-ratio",
