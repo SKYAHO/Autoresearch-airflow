@@ -108,8 +108,10 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
 
     dag = module.dag
     assert dag.kwargs["user_defined_macros"] == {
-        "resolve_dag_run_path": module.resolve_dag_run_path
+        "resolve_dag_run_path": module.resolve_dag_run_path,
+        "resolve_candidates_per_user": module.resolve_candidates_per_user,
     }
+    assert dag.kwargs["params"]["candidates_per_user"] == 24
     shards = [
         task
         for task_id, task in dag.task_dict.items()
@@ -138,6 +140,10 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
             "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}"
         )
         assert "dag_run.conf" not in arguments[arguments.index("--model-name") + 1]
+        candidates_template = arguments[
+            arguments.index("--candidates-per-user") + 1
+        ]
+        assert "resolve_candidates_per_user(dag_run.conf" in candidates_template
         expected_path_keys = {
             "--youtube-base-path": "youtube_base_path",
             "--virtual-users-path": "virtual_users_path",

@@ -106,8 +106,10 @@ gs://<bucket>/qa/action-log/run=<run_id>/final-quarantine/dt=<yyyy-mm-dd>/quaran
 - `qa_prefix`는 반드시 `qa/action-log/<run-id>` 아래여야 하며, 8개 경로는 서로
   달라야 하고 모두 그 prefix의 하위여야 합니다.
 - 경로 key를 하나도 제공하지 않으면 기존 Airflow Variable/default로 fallback합니다.
-- 지원하는 다른 run-conf key는 `partition_date`, `overwrite`뿐입니다. 알 수 없는
-  key와 `shard_count`, model/generator, bucket, API key/Secret key는 거부합니다.
+- 지원하는 다른 run-conf key는 `partition_date`, `overwrite`,
+  `candidates_per_user`입니다. `candidates_per_user`는 전체 QA 경로 세트와 함께
+  1~200 정수로만 사용할 수 있습니다. 알 수 없는 key와 `shard_count`,
+  model/generator, bucket, API key/Secret key는 거부합니다.
 - `ACTION_LOG_SHARD_COUNT`는 DAG parse 시 task topology를 결정하므로 실행별로
   바꾸지 않습니다. model/generator와 Secret도 기존 Airflow Variable 및
   Kubernetes Secret 계약을 유지합니다.
@@ -175,7 +177,7 @@ part만 사용하며, fingerprint가 달라지면 기존 part를 재사용하지
 
 - YouTube API: KR trending `max_results=30`
 - Virtual users: 100명 sample parquet
-- Candidates per user: 24
+- Candidates per user: 기본 24, QA run-conf에서 1~200 범위로 축소 가능
 - Max concurrency: 기존 Airflow Variable 값인 shard당 2 / 총 4
 
 Shard KPO는 `execution_timeout=6h30m`, Airflow retry 1회, retry delay 10분을
@@ -206,6 +208,7 @@ parquet은 성공 산출물로 남지 않습니다.
 {
   "partition_date": "2026-07-10",
   "overwrite": true,
+  "candidates_per_user": 20,
   "qa_prefix": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z",
   "youtube_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/youtube",
   "virtual_users_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",

@@ -93,6 +93,7 @@ set:
 {
   "partition_date": "2026-07-10",
   "overwrite": true,
+  "candidates_per_user": 20,
   "qa_prefix": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z",
   "youtube_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/youtube",
   "virtual_users_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",
@@ -107,9 +108,11 @@ set:
 
 QA path overrides are all-or-nothing. Every path must be distinct and below the
 same run-specific `qa_prefix`; a partial set, a production prefix, or an unknown
-run-conf key fails during task template rendering. `shard_count`, model/generator,
-bucket, API keys, and Secret configuration cannot be supplied through
-`dag_run.conf`; they remain parse-time Airflow Variables or Kubernetes Secrets.
+run-conf key fails during task template rendering. QA runs may set
+`candidates_per_user` to an integer from 1 through 200 only when the complete QA
+path set is present. `shard_count`, model/generator, bucket, API keys, and Secret
+configuration cannot be supplied through `dag_run.conf`; they remain parse-time
+Airflow Variables or Kubernetes Secrets.
 See [docs/operational-dag-qa.md](docs/operational-dag-qa.md) for the full contract.
 
 ## Local Verification

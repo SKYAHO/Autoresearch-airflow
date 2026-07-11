@@ -12,6 +12,7 @@ PARTITION_DATE_TEMPLATE = (
 )
 
 QA_PREFIX_CONF_KEY = "qa_prefix"
+CANDIDATES_PER_USER_CONF_KEY = "candidates_per_user"
 QA_PATH_CONF_KEYS = frozenset(
     {
         "youtube_base_path",
@@ -29,6 +30,7 @@ _ALLOWED_DAG_RUN_CONF_KEYS = frozenset(
         "partition_date",
         "overwrite",
         QA_PREFIX_CONF_KEY,
+        CANDIDATES_PER_USER_CONF_KEY,
         *QA_PATH_CONF_KEYS,
     }
 )
@@ -80,20 +82,10 @@ def _validate_qa_prefix(qa_prefix: str) -> None:
         raise ValueError("dag_run.conf.qa_prefix must be below qa/action-log/<run-id>")
 
 
-def resolve_dag_run_path(
+def _resolve_qa_paths(
     conf: Mapping[str, object] | None,
-    conf_key: str,
-    fallback: str,
-) -> str:
-    """Resolve an all-or-nothing, run-scoped QA path override.
-
-    Scheduled runs and manual runs without path overrides keep the existing Airflow
-    Variable/default value. A QA run must provide every path under one reserved,
-    run-specific prefix so a partial override cannot mix QA and production artifacts.
-    """
-
-    if conf_key not in QA_PATH_CONF_KEYS:
-        raise ValueError(f"unsupported QA path key: {conf_key}")
+) -> dict[str, str] | None:
+    """Validate and return one complete run-scoped QA path set when requested."""
 
     run_conf = conf or {}
     unsupported_keys = sorted(set(run_conf) - _ALLOWED_DAG_RUN_CONF_KEYS)
@@ -103,10 +95,10 @@ def resolve_dag_run_path(
         )
 
     qa_override_requested = QA_PREFIX_CONF_KEY in run_conf or bool(
-        QA_PATH_CONF_KEYS.intersection(run_conf)
+        (QA_PATH_CONF_KEYS | {CANDIDATES_PER_USER_CONF_KEY}).intersection(run_conf)
     )
     if not qa_override_requested:
-        return fallback
+        return None
 
     qa_prefix = _required_string(run_conf, QA_PREFIX_CONF_KEY)
     _validate_qa_prefix(qa_prefix)
@@ -131,7 +123,50 @@ def resolve_dag_run_path(
                 f"dag_run.conf.{key} must be inside dag_run.conf.qa_prefix"
             )
 
-    return qa_paths[conf_key]
+    return qa_paths
+
+
+def resolve_dag_run_path(
+    conf: Mapping[str, object] | None,
+    conf_key: str,
+    fallback: str,
+) -> str:
+    """Resolve an all-or-nothing, run-scoped QA path override.
+
+    Scheduled runs and manual runs without QA overrides keep the existing Airflow
+    Variable/default value. A QA run must provide every path under one reserved,
+    run-specific prefix so a partial override cannot mix QA and production artifacts.
+    """
+
+    if conf_key not in QA_PATH_CONF_KEYS:
+        raise ValueError(f"unsupported QA path key: {conf_key}")
+
+    qa_paths = _resolve_qa_paths(conf)
+    return fallback if qa_paths is None else qa_paths[conf_key]
+
+
+def resolve_candidates_per_user(
+    conf: Mapping[str, object] | None,
+    fallback: str,
+) -> str:
+    """Resolve a bounded QA candidate count while preserving scheduled defaults."""
+
+    run_conf = conf or {}
+    _resolve_qa_paths(run_conf)
+    raw_value = run_conf.get(CANDIDATES_PER_USER_CONF_KEY, fallback)
+    if isinstance(raw_value, bool):
+        raise ValueError("dag_run.conf.candidates_per_user must be an integer")
+    if isinstance(raw_value, int):
+        value = raw_value
+    elif isinstance(raw_value, str) and raw_value.strip().isdecimal():
+        value = int(raw_value.strip())
+    else:
+        raise ValueError("dag_run.conf.candidates_per_user must be an integer")
+    if not 1 <= value <= 200:
+        raise ValueError(
+            "dag_run.conf.candidates_per_user must be between 1 and 200"
+        )
+    return str(value)
 
 
 @dataclass(frozen=True)
@@ -200,7 +235,8 @@ class ActionLogDagSettings:
         "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}"
     )
     candidates_per_user_template: str = (
-        "{{ var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24') }}"
+        "{{ resolve_candidates_per_user(dag_run.conf, "
+        "var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24')) }}"
     )
     target_ctr_template: str = "{{ var.value.get('ACTION_LOG_TARGET_CTR', '0.02') }}"
     personalized_ratio_template: str = (

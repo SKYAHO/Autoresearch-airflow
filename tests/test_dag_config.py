@@ -1,6 +1,7 @@
 import pytest
 
 from autoresearch_airflow.dag_config import (
+    CANDIDATES_PER_USER_CONF_KEY,
     QA_PATH_CONF_KEYS,
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
@@ -8,6 +9,7 @@ from autoresearch_airflow.dag_config import (
     build_action_log_kpo_arguments,
     build_action_log_shard_kpo_arguments,
     build_youtube_trending_kpo_arguments,
+    resolve_candidates_per_user,
     resolve_dag_run_path,
 )
 
@@ -31,6 +33,7 @@ def _qa_conf() -> dict[str, object]:
     return {
         "partition_date": "2026-07-10",
         "overwrite": True,
+        CANDIDATES_PER_USER_CONF_KEY: 20,
         "qa_prefix": prefix,
         "youtube_base_path": f"{prefix}/youtube",
         "virtual_users_path": f"{prefix}/input/virtual-users-100.parquet",
@@ -59,6 +62,28 @@ def test_resolve_dag_run_path_returns_isolated_complete_qa_override() -> None:
 
     for key in QA_PATH_CONF_KEYS:
         assert resolve_dag_run_path(conf, key, "production/fallback") == conf[key]
+
+
+def test_resolve_candidates_per_user_preserves_fallback_without_qa_override() -> None:
+    assert resolve_candidates_per_user({}, "24") == "24"
+
+
+def test_resolve_candidates_per_user_accepts_bounded_qa_override() -> None:
+    assert resolve_candidates_per_user(_qa_conf(), "24") == "20"
+
+
+@pytest.mark.parametrize("value", [0, 201, True, "1.5", "many"])
+def test_resolve_candidates_per_user_rejects_invalid_values(value: object) -> None:
+    conf = _qa_conf()
+    conf[CANDIDATES_PER_USER_CONF_KEY] = value
+
+    with pytest.raises(ValueError, match="candidates_per_user"):
+        resolve_candidates_per_user(conf, "24")
+
+
+def test_candidates_override_requires_complete_qa_paths() -> None:
+    with pytest.raises(ValueError, match="qa_prefix"):
+        resolve_candidates_per_user({CANDIDATES_PER_USER_CONF_KEY: 20}, "24")
 
 
 def test_resolve_dag_run_path_rejects_partial_qa_override() -> None:
@@ -147,6 +172,7 @@ def test_qa_path_templates_have_balanced_jinja_delimiters() -> None:
         action_log_settings.shard_quarantine_base_path_template,
         action_log_settings.progress_base_path_template,
         action_log_settings.checkpoint_base_path_template,
+        action_log_settings.candidates_per_user_template,
     ]
 
     for template in templates:
@@ -185,7 +211,8 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         "--model-name",
         "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
         "--candidates-per-user",
-        "{{ var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24') }}",
+        "{{ resolve_candidates_per_user(dag_run.conf, "
+        "var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24')) }}",
         "--target-ctr",
         "{{ var.value.get('ACTION_LOG_TARGET_CTR', '0.02') }}",
         "--personalized-ratio",
