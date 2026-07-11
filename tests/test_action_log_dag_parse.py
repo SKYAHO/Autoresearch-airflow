@@ -99,6 +99,7 @@ def _install_airflow_stubs(monkeypatch) -> None:
 
 def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     _install_airflow_stubs(monkeypatch)
+    monkeypatch.syspath_prepend(str(DAG_PATH.parent))
     spec = importlib.util.spec_from_file_location(
         "_action_log_dag_under_test", DAG_PATH
     )

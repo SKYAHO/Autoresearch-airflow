@@ -1,6 +1,6 @@
 """Manual QA surface for the shared YouTube action-log pipeline."""
 
-from dags.youtube_gcs_action_log_pipeline_factory import (
+from youtube_gcs_action_log_pipeline_factory import (
     build_youtube_gcs_action_log_pipeline,
 )
 
