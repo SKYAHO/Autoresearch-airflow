@@ -8,7 +8,15 @@ from dataclasses import dataclass
 
 PARTITION_DATE_TEMPLATE = (
     "{{ dag_run.conf.get('partition_date') "
-    "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
+    "or data_interval_start.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
+)
+INTERVAL_START_TEMPLATE = (
+    "{{ dag_run.conf.get('interval_start') "
+    "or data_interval_start.in_timezone('Asia/Seoul').isoformat() }}"
+)
+INTERVAL_END_TEMPLATE = (
+    "{{ dag_run.conf.get('interval_end') "
+    "or data_interval_start.in_timezone('Asia/Seoul').add(hours=1).isoformat() }}"
 )
 
 QA_PREFIX_CONF_KEY = "qa_prefix"
@@ -29,6 +37,8 @@ _ALLOWED_DAG_RUN_CONF_KEYS = frozenset(
     {
         "partition_date",
         "overwrite",
+        "interval_start",
+        "interval_end",
         QA_PREFIX_CONF_KEY,
         CANDIDATES_PER_USER_CONF_KEY,
         *QA_PATH_CONF_KEYS,
@@ -193,6 +203,8 @@ class ActionLogDagSettings:
     """Templates used by the action log KubernetesPodOperator task."""
 
     partition_date_template: str = PARTITION_DATE_TEMPLATE
+    interval_start_template: str = INTERVAL_START_TEMPLATE
+    interval_end_template: str = INTERVAL_END_TEMPLATE
     bucket_template: str = "{{ var.value.YOUTUBE_LAKE_BUCKET }}"
     youtube_base_path_template: str = _qa_path_template(
         "youtube_base_path",
@@ -256,6 +268,7 @@ class ActionLogDagSettings:
     max_quarantine_ratio_template: str = (
         "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}"
     )
+    max_users_template: str = "{{ var.value.get('ACTION_LOG_HOURLY_MAX_USERS', '300') }}"
 
 
 def build_youtube_trending_kpo_arguments(
@@ -290,8 +303,10 @@ def _build_action_log_common_arguments(
     return [
         "--partition-date",
         settings.partition_date_template,
-        "--bucket",
-        settings.bucket_template,
+        "--interval-start",
+        settings.interval_start_template,
+        "--interval-end",
+        settings.interval_end_template,
         "--youtube-base-path",
         settings.youtube_base_path_template,
         "--virtual-users-path",
@@ -300,8 +315,8 @@ def _build_action_log_common_arguments(
         output_base_path_template,
         "--quarantine-base-path",
         quarantine_base_path_template,
-        "--overwrite",
-        settings.overwrite_template,
+        "--max-users",
+        settings.max_users_template,
         "--generator-name",
         settings.generator_name_template,
         "--model-name",
@@ -330,11 +345,15 @@ def _build_action_log_common_arguments(
 def build_action_log_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
     """Build CLI arguments for the legacy single-pod daily action log container."""
 
-    return _build_action_log_common_arguments(
-        settings,
-        output_base_path_template=settings.output_base_path_template,
-        quarantine_base_path_template=settings.quarantine_base_path_template,
-    )
+    return [
+        "--mode",
+        "single",
+        *_build_action_log_common_arguments(
+            settings,
+            output_base_path_template=settings.output_base_path_template,
+            quarantine_base_path_template=settings.quarantine_base_path_template,
+        ),
+    ]
 
 
 def build_action_log_shard_kpo_arguments(
@@ -349,9 +368,11 @@ def build_action_log_shard_kpo_arguments(
         "shard",
         *_build_action_log_common_arguments(
             settings,
-            output_base_path_template=settings.shard_output_base_path_template,
+            output_base_path_template=settings.output_base_path_template,
             quarantine_base_path_template=settings.shard_quarantine_base_path_template,
         ),
+        "--shard-output-base-path",
+        settings.shard_output_base_path_template,
         "--shard-index",
         str(shard_index),
         "--shard-count",
@@ -360,10 +381,6 @@ def build_action_log_shard_kpo_arguments(
         settings.progress_base_path_template,
         "--checkpoint-base-path",
         settings.checkpoint_base_path_template,
-        "--final-output-base-path",
-        settings.output_base_path_template,
-        "--final-quarantine-base-path",
-        settings.quarantine_base_path_template,
     ]
 
 
@@ -375,8 +392,10 @@ def build_action_log_merge_kpo_arguments(settings: ActionLogDagSettings) -> list
         "merge",
         "--partition-date",
         settings.partition_date_template,
-        "--bucket",
-        settings.bucket_template,
+        "--interval-start",
+        settings.interval_start_template,
+        "--interval-end",
+        settings.interval_end_template,
         "--output-base-path",
         settings.output_base_path_template,
         "--quarantine-base-path",

@@ -12,31 +12,35 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     production_source = (ROOT / "dags" / "youtube_gcs_action_log_pipeline.py").read_text(
         encoding="utf-8"
     )
+    youtube_daily_source = (ROOT / "dags" / "youtube_trending_kr_daily.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "KubernetesPodOperator" in source
     assert "autoresearch_airflow_jobs.daily_youtube_trending" in source
-    assert "autoresearch_airflow_jobs.daily_action_log" in source
+    assert "autoresearch.action_logs.cli" in source
+    assert "GCSObjectExistenceSensor" in source
     assert "AUTORESEARCH_BATCH_IMAGE" in source
     assert "youtube_gcs_action_log_pipeline" in production_source
     assert "collect_youtube_trending_partition" in source
     assert "ensure_action_log_shards" in source
     assert "ensure_action_log_shard_" in source
     assert "merge_action_log_partition" in source
-    assert "schedule=\"0 0 * * *\"" in production_source
-    assert "datetime(2026, 7, 12" in production_source
+    assert "schedule=\"0 * * * *\"" in production_source
+    assert "datetime(2026, 7, 13" in production_source
+    assert "wait_for_youtube_partition=True" in production_source
+    assert 'dag_id="youtube_trending_kr_daily"' in youtube_daily_source
+    assert 'schedule="0 0 * * *"' in youtube_daily_source
     assert "max_users=" not in production_source
     assert "max_active_runs=1" in source
-    assert "execution_timeout=timedelta(hours=6, minutes=30)" in source
+    assert "execution_timeout=timedelta(minutes=50)" in source
     assert "execution_timeout=timedelta(minutes=30)" in source
     assert "get_logs=True" in source
     assert "pool=_OPENROUTER_POOL" in source
     assert "pool_slots=1" in source
     assert "do_xcom_push=False" in source
     assert "trigger_rule='all_success'" in source
-    assert (
-        "collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition"
-        in source
-    )
+    assert "upstream >> ensure_action_log_shards >> merge_action_log_partition" in source
     assert "--api-key" not in source
 
 
@@ -92,7 +96,8 @@ def test_batch_dockerfile_uses_uv_and_autoresearch_source() -> None:
 
 def test_astro_airflow_image_has_required_build_context_files() -> None:
     assert (ROOT / "packages.txt").read_text(encoding="utf-8").strip() == ""
-    assert (ROOT / "requirements.txt").read_text(encoding="utf-8").strip() == ""
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    assert "apache-airflow-providers-google" in requirements
 
 
 def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
@@ -150,7 +155,7 @@ def test_cloudbuild_builds_airflow_and_batch_images_from_configured_ref() -> Non
 
     assert "docker/batch/Dockerfile" in config
     assert "docker/airflow/Dockerfile" in config
-    assert "_AUTORESEARCH_REF: 6db0728da32ac2da6a1997e1e44389fa0bddf3cd" in config
+    assert "_AUTORESEARCH_REF: 6d3b67f73963bed1faf8f82d331f40d720b2680c" in config
     assert "AUTORESEARCH_REF=${_AUTORESEARCH_REF}" in config
     assert "autoresearch-batch:${_IMAGE_TAG}" in config
     assert "autoresearch-airflow:${_IMAGE_TAG}" in config

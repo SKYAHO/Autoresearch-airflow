@@ -61,4 +61,4 @@ WORKDIR /opt/autoresearch
 RUN adduser --disabled-password --gecos "" appuser
 USER appuser
 
-ENTRYPOINT ["python", "-m", "autoresearch_airflow_jobs.daily_action_log"]
+ENTRYPOINT ["python", "-m", "autoresearch.action_logs.cli"]

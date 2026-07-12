@@ -17,35 +17,34 @@ The source of truth for data is GCS:
 ```text
 gs://<bucket>/data_lake/youtube_trending_kr/dt=YYYY-MM-DD/part-0.parquet
 gs://<bucket>/asset/virtual_user/vu_1000.parquet
-gs://<bucket>/data_lake/action_log_work/dt=YYYY-MM-DD/shard=000/part-0.parquet
-gs://<bucket>/data_lake/action_log_work/dt=YYYY-MM-DD/shard=000/manifest.json
-gs://<bucket>/data_lake/action_log_progress/dt=YYYY-MM-DD/shard=000/progress.json
-gs://<bucket>/data_lake/action_log_checkpoints/dt=YYYY-MM-DD/shard=000/fingerprint=<sha256>/parts/*.parquet
-gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
+gs://<bucket>/data_lake/action_log_work/dt=YYYY-MM-DD/hour=HH/shard=000/part-0.parquet
+gs://<bucket>/data_lake/action_log_work/dt=YYYY-MM-DD/hour=HH/shard=000/manifest.json
+gs://<bucket>/data_lake/action_log_progress/dt=YYYY-MM-DD/hour=HH/shard=000/progress.json
+gs://<bucket>/data_lake/action_log_checkpoints/dt=YYYY-MM-DD/hour=HH/shard=000/fingerprint=<sha256>/parts/*.parquet
+gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/hour=HH/part-0.parquet
 ```
 
-## Daily Pipeline
+## Daily Collection and Hourly Action Log
 
-`dags/youtube_gcs_action_log_pipeline.py` runs every day at KST 00:00 beginning
-2026-07-13. The
-operational target is that both the YouTube and action-log GCS partitions are
-ready for inspection by KST 10:00. It launches KubernetesPodOperator batch pods
-using `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
+`dags/youtube_trending_kr_daily.py` collects the daily YouTube partition at KST
+00:00. `dags/youtube_gcs_action_log_pipeline.py` runs hourly, waits for that
+partition with a deferrable GCS sensor, and processes a deterministic subset of
+300 personas by default. Both DAGs launch KubernetesPodOperator batch pods using
+`AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
 
 For an explicitly coordinated release, the DAG may temporarily use the Airflow
 DB Variable `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` with an immutable image digest.
 Removing that Variable restores the environment-provided image immediately.
 
-The DAG:
+The hourly action-log DAG:
 
-1. Calls the YouTube Data API and writes the KR trending partition to GCS.
-2. Checks the virtual user parquet in GCS.
-3. Fans out action-log generation into `ACTION_LOG_SHARD_COUNT` shard pods.
+1. Waits for the daily KR trending partition in GCS.
+2. Fans out action-log generation into `ACTION_LOG_SHARD_COUNT` shard pods.
    Each shard writes LLM judgment draft parquet under `data_lake/action_log_work`.
-4. Fans in through one merge pod. The merge pod applies global CTR normalization,
+3. Fans in through one merge pod. The merge pod applies global CTR normalization,
    validates every manifest/config fingerprint and the global quarantine ratio,
    then assigns final `event_id` values and writes the final partition.
-5. Reuses only immutable checkpoint parts in the matching fingerprint namespace.
+4. Reuses only immutable checkpoint parts in the matching fingerprint namespace.
    `progress.json` is observability state and is never used as a checkpoint.
 
 Shard task 000 invalidates any stale final partition before generation starts. The
@@ -79,11 +78,9 @@ by the application to pod stdout are visible in the corresponding Airflow task l
 This repository does not enable durable remote logging; log retention remains an
 environment-level concern.
 
-The scheduled production DAG intentionally processes every row in the configured
-virtual-user parquet. The current `vu_1000.parquet` contains 6,983 rows, so the
-default 24 candidates permit up to 167,592 impressions and approximately 6,983
-OpenRouter work items. The separate manual QA DAG applies a deterministic
-1,000-user ceiling and never changes the production input contract.
+The scheduled production DAG selects 300 personas per hourly interval by default.
+The application selection is deterministic for the same interval and rotates for
+the next interval. Configure the bound with `ACTION_LOG_HOURLY_MAX_USERS`.
 
 Manual production-path re-run example (path keys omitted, so Airflow
 Variable/default paths remain in effect):
@@ -155,7 +152,7 @@ Local Docker is not required. Build and push both images with Cloud Build:
 gcloud builds submit \
   --project ar-infra-501607 \
   --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=<tag>,_AUTORESEARCH_REF=6db0728da32ac2da6a1997e1e44389fa0bddf3cd
+  --substitutions _IMAGE_TAG=<tag>,_AUTORESEARCH_REF=6d3b67f73963bed1faf8f82d331f40d720b2680c
 ```
 
 This builds:

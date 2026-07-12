@@ -1,5 +1,11 @@
 # Operational DAG QA for YouTube API and Mistral Nemo
 
+> 2026-07-13 운영 계약: `youtube_trending_kr_daily`는 KST 00:00에 일별
+> YouTube 파티션을 생성합니다. `youtube_gcs_action_log_pipeline`은 매시간
+> GCS Sensor로 입력을 확인한 후 기본 300명의 Persona를 처리하고
+> `dt=YYYY-MM-DD/hour=HH` 파티션을 생성합니다. 실행 구간은 Airflow의
+> `data_interval_start/end`를 애플리케이션 CLI에 전달합니다.
+
 반복 수동 QA는 `youtube_gcs_action_log_pipeline_qa` DAG를 사용한다. 이 DAG는
 운영 DAG와 동일한 factory/task graph를 사용하지만 `schedule=None`이며, 운영 DAG를
 unpause하지 않아도 수동 trigger할 수 있다. 운영 DAG는
@@ -151,6 +157,7 @@ ACTION_LOG_SHARD_QUARANTINE_DIR=<empty for default or production quarantine work
 ACTION_LOG_PROGRESS_DIR=<empty for default or production progress base path>
 ACTION_LOG_CHECKPOINT_DIR=<empty for default or production checkpoint base path>
 ACTION_LOG_SHARD_COUNT=5
+ACTION_LOG_HOURLY_MAX_USERS=300
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
 ACTION_LOG_MAX_CONCURRENCY=3

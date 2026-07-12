@@ -68,6 +68,11 @@ def _install_airflow_stubs(monkeypatch) -> None:
     airflow_operators = ModuleType("airflow.providers.cncf.kubernetes.operators")
     airflow_pod = ModuleType("airflow.providers.cncf.kubernetes.operators.pod")
     airflow_pod.KubernetesPodOperator = _FakeKubernetesPodOperator
+    airflow_google = ModuleType("airflow.providers.google")
+    airflow_google_cloud = ModuleType("airflow.providers.google.cloud")
+    airflow_google_sensors = ModuleType("airflow.providers.google.cloud.sensors")
+    airflow_gcs_sensor = ModuleType("airflow.providers.google.cloud.sensors.gcs")
+    airflow_gcs_sensor.GCSObjectExistenceSensor = _FakeKubernetesPodOperator
 
     kubernetes = ModuleType("kubernetes")
     kubernetes_client = ModuleType("kubernetes.client")
@@ -89,6 +94,10 @@ def _install_airflow_stubs(monkeypatch) -> None:
         "airflow.providers.cncf.kubernetes": airflow_kubernetes,
         "airflow.providers.cncf.kubernetes.operators": airflow_operators,
         "airflow.providers.cncf.kubernetes.operators.pod": airflow_pod,
+        "airflow.providers.google": airflow_google,
+        "airflow.providers.google.cloud": airflow_google_cloud,
+        "airflow.providers.google.cloud.sensors": airflow_google_sensors,
+        "airflow.providers.google.cloud.sensors.gcs": airflow_gcs_sensor,
         "kubernetes": kubernetes,
         "kubernetes.client": kubernetes_client,
         "kubernetes.client.models": kubernetes_models,
@@ -108,9 +117,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     spec.loader.exec_module(module)
 
     dag = module.dag
-    assert dag.kwargs["user_defined_macros"] == {
-        "resolve_dag_run_path": module.resolve_dag_run_path,
-        "resolve_candidates_per_user": module.resolve_candidates_per_user,
+    assert set(dag.kwargs["user_defined_macros"]) == {
+        "resolve_dag_run_path",
+        "resolve_candidates_per_user",
     }
     assert dag.kwargs["params"]["candidates_per_user"] == 24
     shards = [
@@ -120,15 +129,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     ]
     assert len(shards) == 5
 
-    collect = dag.task_dict["collect_youtube_trending_partition"]
+    collect = dag.task_dict["wait_for_youtube_trending_partition"]
     merge = dag.task_dict["merge_action_log_partition"]
-    collect_arguments = collect.kwargs["arguments"]
-    collect_youtube_path_position = collect_arguments.index("--youtube-base-path") + 1
-    assert (
-        "resolve_dag_run_path(dag_run.conf"
-        in collect_arguments[collect_youtube_path_position]
-    )
-    assert "'youtube_base_path'" in collect_arguments[collect_youtube_path_position]
+    assert "data_lake/youtube_trending_kr/dt=" in collect.kwargs["object"]
     assert collect.downstream_task_ids == {task.task_id for task in shards}
     assert all(task.downstream_task_ids == {merge.task_id} for task in shards)
 
@@ -145,16 +148,22 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
             arguments.index("--candidates-per-user") + 1
         ]
         assert "resolve_candidates_per_user(dag_run.conf" in candidates_template
-        assert "--max-users" not in arguments
+        assert arguments[arguments.index("--max-users") + 1] == (
+            "{{ var.value.get('ACTION_LOG_HOURLY_MAX_USERS', '300') }}"
+        )
+        assert task.kwargs["cmds"] == [
+            "python",
+            "-m",
+            "autoresearch.action_logs.cli",
+        ]
         expected_path_keys = {
             "--youtube-base-path": "youtube_base_path",
             "--virtual-users-path": "virtual_users_path",
-            "--output-base-path": "action_log_shard_output_base_path",
+            "--output-base-path": "action_log_output_base_path",
             "--quarantine-base-path": "action_log_shard_quarantine_base_path",
+            "--shard-output-base-path": "action_log_shard_output_base_path",
             "--progress-base-path": "action_log_progress_base_path",
             "--checkpoint-base-path": "action_log_checkpoint_base_path",
-            "--final-output-base-path": "action_log_output_base_path",
-            "--final-quarantine-base-path": "action_log_quarantine_base_path",
         }
         for argument_name, conf_key in expected_path_keys.items():
             path_template = arguments[arguments.index(argument_name) + 1]
@@ -164,7 +173,7 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         assert task.kwargs["pool_slots"] == 1
         assert task.kwargs["retries"] == 1
         assert task.kwargs["retry_delay"] == timedelta(minutes=10)
-        assert task.kwargs["execution_timeout"] == timedelta(hours=6, minutes=30)
+        assert task.kwargs["execution_timeout"] == timedelta(minutes=50)
         assert task.kwargs["get_logs"] is True
         assert task.kwargs["do_xcom_push"] is False
         assert "OPENROUTER_API_KEY" not in " ".join(arguments)

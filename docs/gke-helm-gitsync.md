@@ -1,5 +1,13 @@
 # GKE Helm + git-sync DAG 운영 가이드
 
+## Hourly 액션 로그 의존성
+
+운영 액션 로그 DAG는 `apache-airflow-providers-google`의 deferrable
+`GCSObjectExistenceSensor`로 일별 YouTube 파티션을 확인합니다. Airflow 이미지를
+갱신한 뒤 Sensor import와 `google_cloud_default` Workload Identity 연결을 먼저
+검증해야 합니다. 액션 로그 KPO는 `autoresearch.action_logs.cli`를 실행하므로
+배치 이미지는 Hourly 계약이 포함된 `Autoresearch` 커밋으로 빌드해야 합니다.
+
 ## 목표
 
 Airflow 배포와 DAG 운영 표면은 `Autoresearch-airflow` 저장소가 관리합니다.
@@ -49,7 +57,7 @@ IMAGE_TAG=action-log-shard-6db0728-<yyyymmdd-hhmmss>
 gcloud builds submit \
   --project ar-infra-501607 \
   --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=${IMAGE_TAG},_AUTORESEARCH_REF=6db0728da32ac2da6a1997e1e44389fa0bddf3cd
+  --substitutions _IMAGE_TAG=${IMAGE_TAG},_AUTORESEARCH_REF=6d3b67f73963bed1faf8f82d331f40d720b2680c
 ```
 
 배포 순서는 반드시 다음과 같습니다.

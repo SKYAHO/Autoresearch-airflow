@@ -73,6 +73,8 @@ env:
     value: "0.1"
   - name: AIRFLOW_VAR_ACTION_LOG_SEED
     value: "42"
+  - name: AIRFLOW_VAR_ACTION_LOG_HOURLY_MAX_USERS
+    value: "300"
   - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
     value: "3"
   - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE

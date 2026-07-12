@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 from airflow.models import Variable
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 from kubernetes.client import models as k8s
 
 from autoresearch_airflow.dag_config import (
@@ -28,7 +29,19 @@ from autoresearch_airflow.dag_config import (
 _KST = ZoneInfo("Asia/Seoul")
 _PARTITION_DATE_TEMPLATE = (
     "{{ dag_run.conf.get('partition_date') "
+    "or data_interval_start.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
+)
+_YOUTUBE_PARTITION_DATE_TEMPLATE = (
+    "{{ dag_run.conf.get('partition_date') "
     "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
+)
+_INTERVAL_START_TEMPLATE = (
+    "{{ dag_run.conf.get('interval_start') "
+    "or data_interval_start.in_timezone('Asia/Seoul').isoformat() }}"
+)
+_INTERVAL_END_TEMPLATE = (
+    "{{ dag_run.conf.get('interval_end') "
+    "or data_interval_start.in_timezone('Asia/Seoul').add(hours=1).isoformat() }}"
 )
 _CANDIDATES_PER_USER_CONF_KEY = "candidates_per_user"
 _QA_PREFIX_CONF_KEY = "qa_prefix"
@@ -83,10 +96,12 @@ def resolve_candidates_per_user(
 
 
 _YOUTUBE_SETTINGS = YouTubeTrendingDagSettings(
-    partition_date_template=_PARTITION_DATE_TEMPLATE,
+    partition_date_template=_YOUTUBE_PARTITION_DATE_TEMPLATE,
 )
 _ACTION_LOG_SETTINGS = ActionLogDagSettings(
     partition_date_template=_PARTITION_DATE_TEMPLATE,
+    interval_start_template=_INTERVAL_START_TEMPLATE,
+    interval_end_template=_INTERVAL_END_TEMPLATE,
     candidates_per_user_template=(
         "{{ resolve_candidates_per_user(dag_run.conf, "
         "var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24')) }}"
@@ -178,6 +193,7 @@ def build_youtube_gcs_action_log_pipeline(
     start_date: datetime | None = None,
     tags: list[str] | None = None,
     max_users: int | None = None,
+    wait_for_youtube_partition: bool = False,
 ) -> DAG:
     """Build the shared production/QA YouTube action-log DAG."""
 
@@ -212,28 +228,48 @@ def build_youtube_gcs_action_log_pipeline(
         },
         doc_md=__doc__,
     ) as dag:
-        collect_youtube_trending_partition = KubernetesPodOperator(
-            task_id="collect_youtube_trending_partition",
-            name="collect-youtube-trending-partition",
-            namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
-            image=_BATCH_IMAGE_TEMPLATE,
-            cmds=["python", "-m", "autoresearch_airflow_jobs.daily_youtube_trending"],
-            arguments=build_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS),
-            env_vars=_secret_env_vars("YOUTUBE_API_KEYS", "YOUTUBE_API_KEY", "YOUTUBE_PROXY_URL"),
-            service_account_name=_KPO_SERVICE_ACCOUNT,
-            image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
-            in_cluster=True,
-            get_logs=True,
-            is_delete_operator_pod=True,
-            do_xcom_push=False,
-            execution_timeout=timedelta(minutes=30),
-            startup_timeout_seconds=600,
-            labels={"app": "autoresearch", "pipeline": "youtube-collection"},
-            container_resources=k8s.V1ResourceRequirements(
-                requests={"cpu": "500m", "memory": "1Gi"},
-                limits={"cpu": "2", "memory": "4Gi"},
-            ),
-        )
+        if wait_for_youtube_partition:
+            upstream = GCSObjectExistenceSensor(
+                task_id="wait_for_youtube_trending_partition",
+                bucket="{{ var.value.YOUTUBE_LAKE_BUCKET | replace('gs://', '') }}",
+                object=(
+                    "data_lake/youtube_trending_kr/dt="
+                    f"{_PARTITION_DATE_TEMPLATE}/part-0.parquet"
+                ),
+                google_cloud_conn_id="google_cloud_default",
+                deferrable=True,
+                poke_interval=60,
+                timeout=timedelta(minutes=30).total_seconds(),
+            )
+        else:
+            upstream = KubernetesPodOperator(
+                task_id="collect_youtube_trending_partition",
+                name="collect-youtube-trending-partition",
+                namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
+                image=_BATCH_IMAGE_TEMPLATE,
+                cmds=[
+                    "python",
+                    "-m",
+                    "autoresearch_airflow_jobs.daily_youtube_trending",
+                ],
+                arguments=build_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS),
+                env_vars=_secret_env_vars(
+                    "YOUTUBE_API_KEYS", "YOUTUBE_API_KEY", "YOUTUBE_PROXY_URL"
+                ),
+                service_account_name=_KPO_SERVICE_ACCOUNT,
+                image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
+                in_cluster=True,
+                get_logs=True,
+                is_delete_operator_pod=True,
+                do_xcom_push=False,
+                execution_timeout=timedelta(minutes=30),
+                startup_timeout_seconds=600,
+                labels={"app": "autoresearch", "pipeline": "youtube-collection"},
+                container_resources=k8s.V1ResourceRequirements(
+                    requests={"cpu": "500m", "memory": "1Gi"},
+                    limits={"cpu": "2", "memory": "4Gi"},
+                ),
+            )
 
         ensure_action_log_shards = [
             KubernetesPodOperator(
@@ -241,7 +277,7 @@ def build_youtube_gcs_action_log_pipeline(
                 name=f"ensure-action-log-shard-{shard_index:03d}",
                 namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
                 image=_BATCH_IMAGE_TEMPLATE,
-                cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
+                cmds=["python", "-m", "autoresearch.action_logs.cli"],
                 arguments=shard_arguments(shard_index),
                 env_vars=[
                     *_secret_env_vars("OPENROUTER_API_KEY", optional=False),
@@ -257,7 +293,7 @@ def build_youtube_gcs_action_log_pipeline(
                 do_xcom_push=False,
                 retries=1,
                 retry_delay=timedelta(minutes=10),
-                execution_timeout=timedelta(hours=6, minutes=30),
+                execution_timeout=timedelta(minutes=50),
                 startup_timeout_seconds=600,
                 labels={
                     "app": "autoresearch",
@@ -277,7 +313,7 @@ def build_youtube_gcs_action_log_pipeline(
             name="merge-action-log-partition",
             namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
             image=_BATCH_IMAGE_TEMPLATE,
-            cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
+            cmds=["python", "-m", "autoresearch.action_logs.cli"],
             arguments=build_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS),
             env_vars=_secret_env_vars(),
             service_account_name=_KPO_SERVICE_ACCOUNT,
@@ -296,6 +332,50 @@ def build_youtube_gcs_action_log_pipeline(
                 limits={"cpu": "2", "memory": "4Gi"},
             ),
         )
-        collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition
+        upstream >> ensure_action_log_shards >> merge_action_log_partition
 
+    return dag
+
+
+def build_youtube_trending_pipeline(
+    *,
+    dag_id: str,
+    schedule: str,
+    start_date: datetime,
+) -> DAG:
+    """YouTube 일별 파티션만 수집하는 독립 DAG를 구성합니다."""
+
+    with DAG(
+        dag_id=dag_id,
+        schedule=schedule,
+        start_date=start_date,
+        catchup=False,
+        max_active_runs=1,
+        default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
+        tags=["youtube", "collection", "gcs", "kubernetes"],
+    ) as dag:
+        KubernetesPodOperator(
+            task_id="collect_youtube_trending_partition",
+            name="collect-youtube-trending-partition",
+            namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
+            image=_BATCH_IMAGE_TEMPLATE,
+            cmds=["python", "-m", "autoresearch_airflow_jobs.daily_youtube_trending"],
+            arguments=build_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS),
+            env_vars=_secret_env_vars(
+                "YOUTUBE_API_KEYS", "YOUTUBE_API_KEY", "YOUTUBE_PROXY_URL"
+            ),
+            service_account_name=_KPO_SERVICE_ACCOUNT,
+            image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
+            in_cluster=True,
+            get_logs=True,
+            is_delete_operator_pod=True,
+            do_xcom_push=False,
+            execution_timeout=timedelta(minutes=30),
+            startup_timeout_seconds=600,
+            labels={"app": "autoresearch", "pipeline": "youtube-collection"},
+            container_resources=k8s.V1ResourceRequirements(
+                requests={"cpu": "500m", "memory": "1Gi"},
+                limits={"cpu": "2", "memory": "4Gi"},
+            ),
+        )
     return dag

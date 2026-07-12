@@ -16,7 +16,7 @@ from autoresearch_airflow.dag_config import (
 
 PARTITION_DATE_TEMPLATE = (
     "{{ dag_run.conf.get('partition_date') "
-    "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
+    "or data_interval_start.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
 )
 
 
@@ -188,48 +188,17 @@ def test_build_action_log_kpo_arguments_uses_airflow_templates() -> None:
         overwrite_template="{{ dag_run.conf.get('overwrite', false) }}",
     )
 
-    assert build_action_log_kpo_arguments(settings) == [
-        "--partition-date",
-        PARTITION_DATE_TEMPLATE,
-        "--bucket",
-        "{{ var.value.YOUTUBE_LAKE_BUCKET }}",
-        "--youtube-base-path",
-        _path_template("youtube_base_path", "ACTION_LOG_YOUTUBE_BASE_PATH"),
-        "--virtual-users-path",
-        _path_template("virtual_users_path", "ACTION_LOG_VIRTUAL_USERS_PATH"),
-        "--output-base-path",
-        _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"),
-        "--quarantine-base-path",
-        _path_template(
-            "action_log_quarantine_base_path",
-            "ACTION_LOG_QUARANTINE_DIR",
-        ),
-        "--overwrite",
-        "{{ dag_run.conf.get('overwrite', false) }}",
-        "--generator-name",
-        "{{ var.value.get('ACTION_LOG_GENERATOR', 'openrouter') }}",
-        "--model-name",
-        "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
-        "--candidates-per-user",
-        "{{ resolve_candidates_per_user(dag_run.conf, "
-        "var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24')) }}",
-        "--target-ctr",
-        "{{ var.value.get('ACTION_LOG_TARGET_CTR', '0.02') }}",
-        "--personalized-ratio",
-        "{{ var.value.get('ACTION_LOG_PERSONALIZED_RATIO', '0.7') }}",
-        "--popular-ratio",
-        "{{ var.value.get('ACTION_LOG_POPULAR_RATIO', '0.2') }}",
-        "--exploration-ratio",
-        "{{ var.value.get('ACTION_LOG_EXPLORATION_RATIO', '0.1') }}",
-        "--seed",
-        "{{ var.value.get('ACTION_LOG_SEED', '42') }}",
-        "--max-concurrency",
-        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '3') }}",
-        "--chunk-size",
-        "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
-        "--max-quarantine-ratio",
-        "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}",
-    ]
+    args = build_action_log_kpo_arguments(settings)
+
+    assert args[:4] == ["--mode", "single", "--partition-date", PARTITION_DATE_TEMPLATE]
+    assert "--bucket" not in args
+    assert "--overwrite" not in args
+    assert args[args.index("--interval-start") + 1] == settings.interval_start_template
+    assert args[args.index("--interval-end") + 1] == settings.interval_end_template
+    assert args[args.index("--max-users") + 1] == settings.max_users_template
+    assert args[args.index("--output-base-path") + 1] == _path_template(
+        "action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"
+    )
 
 
 def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
@@ -243,10 +212,7 @@ def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
     assert args[:3] == ["--mode", "shard", "--partition-date"]
     assert "--output-base-path" in args
     assert (
-        _path_template(
-            "action_log_shard_output_base_path",
-            "ACTION_LOG_SHARD_WORK_DIR",
-        )
+        _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR")
         in args
     )
     assert "--quarantine-base-path" in args
@@ -264,7 +230,7 @@ def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
         "--shard-count",
         "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}",
     ]
-    assert args[-8:] == [
+    assert args[-4:] == [
         "--progress-base-path",
         _path_template("action_log_progress_base_path", "ACTION_LOG_PROGRESS_DIR"),
         "--checkpoint-base-path",
@@ -272,14 +238,10 @@ def test_build_action_log_shard_kpo_arguments_uses_work_paths() -> None:
             "action_log_checkpoint_base_path",
             "ACTION_LOG_CHECKPOINT_DIR",
         ),
-        "--final-output-base-path",
-        _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"),
-        "--final-quarantine-base-path",
-        _path_template(
-            "action_log_quarantine_base_path",
-            "ACTION_LOG_QUARANTINE_DIR",
-        ),
     ]
+    assert args[args.index("--shard-output-base-path") + 1] == _path_template(
+        "action_log_shard_output_base_path", "ACTION_LOG_SHARD_WORK_DIR"
+    )
 
 
 def test_build_action_log_merge_kpo_arguments_uses_final_and_work_paths() -> None:
