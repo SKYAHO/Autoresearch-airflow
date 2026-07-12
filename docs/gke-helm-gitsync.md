@@ -57,7 +57,7 @@ IMAGE_TAG=action-log-shard-6db0728-<yyyymmdd-hhmmss>
 gcloud builds submit \
   --project ar-infra-501607 \
   --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=${IMAGE_TAG},_AUTORESEARCH_REF=6d3b67f73963bed1faf8f82d331f40d720b2680c
+  --substitutions _IMAGE_TAG=${IMAGE_TAG},_AUTORESEARCH_REF=984a3d3827e97e3091c98c46714ff61c7caaa351
 ```
 
 배포 순서는 반드시 다음과 같습니다.

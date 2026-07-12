@@ -155,7 +155,7 @@ def test_cloudbuild_builds_airflow_and_batch_images_from_configured_ref() -> Non
 
     assert "docker/batch/Dockerfile" in config
     assert "docker/airflow/Dockerfile" in config
-    assert "_AUTORESEARCH_REF: 6d3b67f73963bed1faf8f82d331f40d720b2680c" in config
+    assert "_AUTORESEARCH_REF: 984a3d3827e97e3091c98c46714ff61c7caaa351" in config
     assert "AUTORESEARCH_REF=${_AUTORESEARCH_REF}" in config
     assert "autoresearch-batch:${_IMAGE_TAG}" in config
     assert "autoresearch-airflow:${_IMAGE_TAG}" in config

@@ -152,7 +152,7 @@ Local Docker is not required. Build and push both images with Cloud Build:
 gcloud builds submit \
   --project ar-infra-501607 \
   --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=<tag>,_AUTORESEARCH_REF=6d3b67f73963bed1faf8f82d331f40d720b2680c
+  --substitutions _IMAGE_TAG=<tag>,_AUTORESEARCH_REF=984a3d3827e97e3091c98c46714ff61c7caaa351
 ```
 
 This builds:
