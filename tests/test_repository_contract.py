@@ -118,8 +118,11 @@ def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() ->
         "OPENROUTER_TIMEOUT_MAX_RETRIES",
         "OPENROUTER_RETRY_BACKOFF_BASE_SEC",
         "OPENROUTER_RETRY_BACKOFF_MAX_SEC",
+        "OPENROUTER_ALLOW_FALLBACKS",
+        "OPENROUTER_REQUIRE_PARAMETERS",
     ):
         assert f"AIRFLOW_VAR_{variable_name}" in values
+    assert "AIRFLOW_VAR_OPENROUTER_PROVIDER_SORT" not in values
     assert "airflow pools set action_log_openrouter 2" in values
     assert "OPENROUTER_API_KEY" not in values
 

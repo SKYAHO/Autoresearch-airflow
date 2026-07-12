@@ -162,12 +162,17 @@ OPENROUTER_MAX_RETRIES=2
 OPENROUTER_TIMEOUT_MAX_RETRIES=1
 OPENROUTER_RETRY_BACKOFF_BASE_SEC=1
 OPENROUTER_RETRY_BACKOFF_MAX_SEC=30
+OPENROUTER_ALLOW_FALLBACKS=true
+OPENROUTER_REQUIRE_PARAMETERS=true
 ```
 
-선택값 `OPENROUTER_PROVIDER_SORT`, `OPENROUTER_ALLOW_FALLBACKS`,
-`OPENROUTER_REQUIRE_PARAMETERS`는 명시적으로 설정한 경우에만 batch pod에
-주입합니다. 이 값들은 API key가 아니며, `OPENROUTER_API_KEY`만 Kubernetes
-Secret의 `secretKeyRef`로 주입합니다.
+`OPENROUTER_REQUIRE_PARAMETERS=true`는 `response_format=json_object`를 포함한
+요청 파라미터를 모두 지원하는 provider만 사용하게 합니다.
+`OPENROUTER_ALLOW_FALLBACKS=true`는 이 조건을 만족하는 provider 사이의 장애
+전환을 유지합니다. `OPENROUTER_PROVIDER_SORT`는 비워 두어 기본 가격·가용성
+라우팅을 유지하며, throughput 정렬은 별도 A/B 검증 후 적용합니다. 이 값들은
+API key가 아니며, `OPENROUTER_API_KEY`만 Kubernetes Secret의 `secretKeyRef`로
+주입합니다.
 
 ### 5. QA 입력 크기
 
