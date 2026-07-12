@@ -26,10 +26,15 @@ gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 
 ## Daily Pipeline
 
-`dags/youtube_gcs_action_log_pipeline.py` runs every day at KST 06:00. The
+`dags/youtube_gcs_action_log_pipeline.py` runs every day at KST 00:00 beginning
+2026-07-13. The
 operational target is that both the YouTube and action-log GCS partitions are
 ready for inspection by KST 10:00. It launches KubernetesPodOperator batch pods
 using `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
+
+For an explicitly coordinated release, the DAG may temporarily use the Airflow
+DB Variable `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` with an immutable image digest.
+Removing that Variable restores the environment-provided image immediately.
 
 The DAG:
 
@@ -56,15 +61,32 @@ Kubernetes Secret named by `AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME`.
 are non-secret environment variables; the API key remains a `secretKeyRef` and is
 not present in task arguments or rendered values.
 
-The initial dev limit is five shards, three in-process calls per shard, and an
-`action_log_openrouter` Airflow Pool with five slots. At most five shard pods run at
-once, so the effective OpenRouter request concurrency is `5 × 3 = 15`. A shard
-task has one Airflow retry after ten minutes and a 2h30m timeout; the application
+The production limit is five shards, three in-process calls per shard, and an
+`action_log_openrouter` Airflow Pool with two slots. At most two shard pods run at
+once, so the effective OpenRouter request concurrency is `2 × 3 = 6`. A shard
+task has one Airflow retry after ten minutes and a 6h30m timeout; the application
 has at most two request retries (one timeout retry). A timeout resumes from the
 durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`
 task with no automatic retry.
 
-Manual re-run example:
+The 6h30m shard timeout only prevents Airflow from terminating a still-progressing
+shard before the observed roughly five-hour runtime. It does not improve throughput
+or demonstrate the pipeline latency target; end-to-end elapsed time must be measured
+separately. Pool slots, in-process concurrency, and retry limits are unchanged.
+
+Every KPO task uses `get_logs=True`, so structured timing and progress events written
+by the application to pod stdout are visible in the corresponding Airflow task log.
+This repository does not enable durable remote logging; log retention remains an
+environment-level concern.
+
+The scheduled production DAG intentionally processes every row in the configured
+virtual-user parquet. The current `vu_1000.parquet` contains 6,983 rows, so the
+default 24 candidates permit up to 167,592 impressions and approximately 6,983
+OpenRouter work items. The separate manual QA DAG applies a deterministic
+1,000-user ceiling and never changes the production input contract.
+
+Manual production-path re-run example (path keys omitted, so Airflow
+Variable/default paths remain in effect):
 
 ```json
 {
@@ -72,6 +94,37 @@ Manual re-run example:
   "overwrite": true
 }
 ```
+
+For an isolated 100-user QA, do not mutate global Airflow Variables or Helm
+environment values. Pre-stage the 100-user parquet below a unique
+`qa/action-log/<run-id>` prefix and trigger the same DAG with the complete path
+set:
+
+```json
+{
+  "partition_date": "2026-07-10",
+  "overwrite": true,
+  "candidates_per_user": 20,
+  "qa_prefix": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z",
+  "youtube_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/youtube",
+  "virtual_users_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",
+  "action_log_output_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/final",
+  "action_log_quarantine_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/final-quarantine",
+  "action_log_shard_output_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/shard-work",
+  "action_log_shard_quarantine_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/shard-quarantine",
+  "action_log_progress_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/progress",
+  "action_log_checkpoint_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/checkpoints"
+}
+```
+
+QA path overrides are all-or-nothing. Every path must be distinct and below the
+same run-specific `qa_prefix`; a partial set, a production prefix, or an unknown
+run-conf key fails during task template rendering. QA runs may set
+`candidates_per_user` to an integer from 1 through 200 only when the complete QA
+path set is present. `shard_count`, model/generator, bucket, API keys, and Secret
+configuration cannot be supplied through `dag_run.conf`; they remain parse-time
+Airflow Variables or Kubernetes Secrets.
+See [docs/operational-dag-qa.md](docs/operational-dag-qa.md) for the full contract.
 
 ## Local Verification
 
@@ -120,7 +173,7 @@ asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresea
    배포합니다.
 3. 새 image가 배포된 뒤에만 DAG 커밋을 `main`에 반영하여 git-sync가
    동기화하게 합니다. 1~2단계 전에는 새 DAG를 live로 간주하지 않습니다.
-4. scheduler의 DAG import error가 없고 Pool이 5 slots인지 확인한 뒤 수동 run을
+4. scheduler의 DAG import error가 없고 Pool이 2 slots인지 확인한 뒤 수동 run을
    수행합니다.
 
 ## GKE Helm Deployment with git-sync

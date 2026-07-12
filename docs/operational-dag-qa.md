@@ -1,5 +1,12 @@
 # Operational DAG QA for YouTube API and Mistral Nemo
 
+반복 수동 QA는 `youtube_gcs_action_log_pipeline_qa` DAG를 사용한다. 이 DAG는
+운영 DAG와 동일한 factory/task graph를 사용하지만 `schedule=None`이며, 운영 DAG를
+unpause하지 않아도 수동 trigger할 수 있다. 운영 DAG는
+`youtube_gcs_action_log_pipeline`로 유지한다. QA DAG는 입력 parquet의 앞 1,000명만
+결정론적으로 처리하지만, 운영 DAG는 configured virtual-user parquet의 전체 행을
+처리한다.
+
 이 문서는 dev GKE Airflow에서 실제 YouTube API 수집과 Mistral Nemo 기반
 action log 생성을 운영 DAG로 실행하고, 데이터품질 QA는 1회 수동 검증으로
 진행하기 위한 조건과 2026-07-08 one-off smoke 결과를 정리한다.
@@ -72,7 +79,7 @@ collect_youtube_trending_partition
   -> merge_action_log_partition (all_success)
 ```
 
-스케줄은 KST 06:00이고, 운영 목표는 KST 10:00에 YouTube partition과
+스케줄은 2026-07-13부터 KST 00:00이고, 운영 목표는 KST 10:00에 YouTube partition과
 action log partition을 모두 GCS에서 확인할 수 있게 하는 것이다. 기본
 partition date는 `data_interval_end`를 KST로 변환한 날짜다. 수동 실행
 시에는 `dag_run.conf.partition_date`로 덮어쓸 수 있고, 값이 비어 있거나
@@ -80,22 +87,44 @@ null이면 기본 partition date로 fallback한다.
 
 ### 3. 1회 QA 전용 GCS prefix
 
-1회 테스트에서 운영 partition을 덮어쓰지 않으려면 아래처럼 Airflow Variable을
-QA prefix로 임시 override한다.
+100-user 반복 테스트에서는 전역 Airflow Variable이나 Helm environment를 바꾸지
+않습니다. 실행마다 고유한 `qa/action-log/<run-id>` prefix를 만들고, 100-user
+sample parquet을 그 prefix 아래에 먼저 적재한 뒤 `dag_run.conf`의 전체 경로 세트를
+사용합니다.
 
-권장 prefix:
+권장 layout:
 
 ```text
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr_api_llm_smoke/run=<run_id>/dt=<yyyy-mm-dd>/part-0.parquet
-gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user_smoke/run=<run_id>/vu_5.parquet
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/part-0.parquet
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/manifest.json
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_progress/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/progress.json
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_checkpoints/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/fingerprint=<sha256>/parts/*.parquet
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_smoke/run=<run_id>/dt=<yyyy-mm-dd>/part-0.parquet
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_quarantine_work/run=<run_id>/dt=<yyyy-mm-dd>/shard=000/quarantine.jsonl
-gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo_quarantine/run=<run_id>/dt=<yyyy-mm-dd>/quarantine.jsonl
+gs://<bucket>/qa/action-log/run=<run_id>/youtube/dt=<yyyy-mm-dd>/part-0.parquet
+gs://<bucket>/qa/action-log/run=<run_id>/input/virtual-users-100.parquet
+gs://<bucket>/qa/action-log/run=<run_id>/shard-work/dt=<yyyy-mm-dd>/shard=000/part-0.parquet
+gs://<bucket>/qa/action-log/run=<run_id>/shard-work/dt=<yyyy-mm-dd>/shard=000/manifest.json
+gs://<bucket>/qa/action-log/run=<run_id>/progress/dt=<yyyy-mm-dd>/shard=000/progress.json
+gs://<bucket>/qa/action-log/run=<run_id>/checkpoints/dt=<yyyy-mm-dd>/shard=000/fingerprint=<sha256>/parts/*.parquet
+gs://<bucket>/qa/action-log/run=<run_id>/final/dt=<yyyy-mm-dd>/part-0.parquet
+gs://<bucket>/qa/action-log/run=<run_id>/shard-quarantine/dt=<yyyy-mm-dd>/shard=000/quarantine.jsonl
+gs://<bucket>/qa/action-log/run=<run_id>/final-quarantine/dt=<yyyy-mm-dd>/quarantine.jsonl
 ```
+
+경로 override 안전 가드:
+
+- `qa_prefix`와 8개 경로 key는 모두 함께 제공해야 합니다. 일부만 제공하면
+  운영 경로와 섞일 수 있으므로 template rendering이 실패합니다.
+- `qa_prefix`는 반드시 `qa/action-log/<run-id>` 아래여야 하며, 8개 경로는 서로
+  달라야 하고 모두 그 prefix의 하위여야 합니다.
+- 경로 key를 하나도 제공하지 않으면 기존 Airflow Variable/default로 fallback합니다.
+- 지원하는 다른 run-conf key는 `partition_date`, `overwrite`,
+  `candidates_per_user`입니다. `candidates_per_user`는 전체 QA 경로 세트와 함께
+  1~200 정수로만 사용할 수 있습니다. 알 수 없는 key와 `shard_count`,
+  model/generator, bucket, API key/Secret key는 거부합니다.
+- `ACTION_LOG_SHARD_COUNT`는 DAG parse 시 task topology를 결정하므로 실행별로
+  바꾸지 않습니다. model/generator와 Secret도 기존 Airflow Variable 및
+  Kubernetes Secret 계약을 유지합니다.
+
+이 기능은 DAG가 `autoresearch_airflow.dag_config`의 새 macro helper를 사용하므로
+git-sync DAG commit만 먼저 반영하면 안 됩니다. 동일 commit으로 Airflow image를
+빌드·배포한 뒤 그 commit의 DAG를 동기화하고 scheduler import error가 없는지
+확인합니다. Batch CLI의 기존 path argument 자체는 변경하지 않습니다.
 
 ### 4. Airflow variables
 
@@ -104,22 +133,23 @@ gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_mistral_nemo
 ```text
 YOUTUBE_LAKE_BUCKET=ar-infra-501607-autoresearch-dev-raw-data
 AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
+AUTORESEARCH_BATCH_IMAGE_OVERRIDE=<optional immutable digest override>
 AIRFLOW_KPO_NAMESPACE=airflow
 AIRFLOW_KPO_SERVICE_ACCOUNT=autoresearch-batch
 AUTORESEARCH_API_SECRET_NAME=autoresearch-airflow-env
-YOUTUBE_TRENDING_BASE_PATH=<empty for default or QA YouTube base path>
+YOUTUBE_TRENDING_BASE_PATH=<empty for default or production base path>
 YOUTUBE_TRENDING_REGION_CODE=KR
 YOUTUBE_TRENDING_MAX_RESULTS=200
 ACTION_LOG_GENERATOR=openrouter
 ACTION_LOG_MODEL_NAME=mistralai/mistral-nemo
-ACTION_LOG_YOUTUBE_BASE_PATH=<QA YouTube base path>
-ACTION_LOG_VIRTUAL_USERS_PATH=<QA virtual user parquet path>
-ACTION_LOG_OUTPUT_DIR=<QA action log base path>
-ACTION_LOG_QUARANTINE_DIR=<QA quarantine base path>
-ACTION_LOG_SHARD_WORK_DIR=<QA action log shard work base path>
-ACTION_LOG_SHARD_QUARANTINE_DIR=<QA quarantine shard work base path>
-ACTION_LOG_PROGRESS_DIR=<QA progress snapshot base path>
-ACTION_LOG_CHECKPOINT_DIR=<QA durable checkpoint base path>
+ACTION_LOG_YOUTUBE_BASE_PATH=<empty for default or production base path>
+ACTION_LOG_VIRTUAL_USERS_PATH=<empty for default or production parquet path>
+ACTION_LOG_OUTPUT_DIR=<empty for default or production action log base path>
+ACTION_LOG_QUARANTINE_DIR=<empty for default or production quarantine base path>
+ACTION_LOG_SHARD_WORK_DIR=<empty for default or production shard work base path>
+ACTION_LOG_SHARD_QUARANTINE_DIR=<empty for default or production quarantine work base path>
+ACTION_LOG_PROGRESS_DIR=<empty for default or production progress base path>
+ACTION_LOG_CHECKPOINT_DIR=<empty for default or production checkpoint base path>
 ACTION_LOG_SHARD_COUNT=5
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
@@ -132,20 +162,25 @@ OPENROUTER_MAX_RETRIES=2
 OPENROUTER_TIMEOUT_MAX_RETRIES=1
 OPENROUTER_RETRY_BACKOFF_BASE_SEC=1
 OPENROUTER_RETRY_BACKOFF_MAX_SEC=30
+OPENROUTER_ALLOW_FALLBACKS=true
+OPENROUTER_REQUIRE_PARAMETERS=true
 ```
 
-선택값 `OPENROUTER_PROVIDER_SORT`, `OPENROUTER_ALLOW_FALLBACKS`,
-`OPENROUTER_REQUIRE_PARAMETERS`는 명시적으로 설정한 경우에만 batch pod에
-주입합니다. 이 값들은 API key가 아니며, `OPENROUTER_API_KEY`만 Kubernetes
-Secret의 `secretKeyRef`로 주입합니다.
+`OPENROUTER_REQUIRE_PARAMETERS=true`는 `response_format=json_object`를 포함한
+요청 파라미터를 모두 지원하는 provider만 사용하게 합니다.
+`OPENROUTER_ALLOW_FALLBACKS=true`는 이 조건을 만족하는 provider 사이의 장애
+전환을 유지합니다. `OPENROUTER_PROVIDER_SORT`는 비워 두어 기본 가격·가용성
+라우팅을 유지하며, throughput 정렬은 별도 A/B 검증 후 적용합니다. 이 값들은
+API key가 아니며, `OPENROUTER_API_KEY`만 Kubernetes Secret의 `secretKeyRef`로
+주입합니다.
 
 ### 5. QA 입력 크기
 
 운영 스케줄은 KST 10:00 확인 목표에 맞춰 `ACTION_LOG_SHARD_COUNT=5`,
 `ACTION_LOG_MAX_CONCURRENCY=3`, `ACTION_LOG_CHUNK_SIZE=24`를 사용한다.
-Airflow Pool `action_log_openrouter`는 5 slots이므로 5개 shard를 동시에
-실행하고, 실질 OpenRouter 동시 호출 상한은 `5 × 3 = 15`이다. 각 shard는
-`pool_slots=1`을 사용하므로 Pool 상한과 shard 수가 일치한다.
+Airflow Pool `action_log_openrouter`는 2 slots이므로 최대 2개 shard를 동시에
+실행하고, 실질 OpenRouter 동시 호출 상한은 `2 × 3 = 6`이다. 각 shard는
+`pool_slots=1`을 사용한다.
 Shard work parquet은 최종 event log가 아니라 LLM judgment draft이며, merge
 태스크가 모든 shard를 읽어 전역 CTR 정규화와 `event_id` 부여를 수행한다.
 `progress.json`은 관측용 snapshot일 뿐 재개 입력이 아니다. 재시도와 timeout
@@ -154,15 +189,26 @@ part만 사용하며, fingerprint가 달라지면 기존 part를 재사용하지
 단, 일회성 QA는 실패 원인을 좁히기 위해 작은 입력으로 시작할 수 있다.
 
 - YouTube API: KR trending `max_results=30`
-- Virtual users: 5명 또는 10명 sample parquet
-- Candidates per user: 24
-- Max concurrency: 운영 초기값은 shard당 3 / 총 15
+- Virtual users: 100명 sample parquet
+- Candidates per user: 기본 24, QA run-conf에서 1~200 범위로 축소 가능
+- Max concurrency: shard당 3 / Pool 2 slots 기준 총 6
 
-Shard KPO는 `execution_timeout=2h30m`, Airflow retry 1회, retry delay 10분을
+Shard KPO는 `execution_timeout=6h30m`, Airflow retry 1회, retry delay 10분을
 사용합니다. 앱 내부에서는 요청당 전체 retry 상한 2회와 timeout retry 상한
 1회를 적용합니다. 두 retry 계층을 합산하면 한 work item의 호출 시도가 커질 수
 있으므로 Pool slots·`ACTION_LOG_MAX_CONCURRENCY`·Airflow retry를 함께 올리지
 않습니다. Merge KPO는 모든 shard 성공 후 하나만 실행하며 자동 retry는 0회입니다.
+
+6시간 30분은 운영에서 약 5시간 걸린 shard가 처리 중 Airflow timeout으로 조기
+종료되지 않게 하는 보호 상한입니다. 처리율을 높이는 변경이 아니며, 6시간
+end-to-end 목표 달성을 증명하지 않습니다. 전체 경과시간과 shard 처리율은 별도
+benchmark로 판정합니다.
+
+모든 KPO는 `get_logs=True`를 사용합니다. 따라서 Application이 pod stdout에
+구조화된 micro work timing과 진행률을 출력하면 해당 shard의 Airflow task log에서
+OpenRouter 요청, JSON/schema 처리, checkpoint/progress 쓰기, 처리율과 ETA를 확인할
+수 있습니다. 이 계약은 stdout 전달 범위이며 durable remote logging을 활성화하지
+않습니다.
 
 Shard 000은 시작 시 기존 final parquet을 무효화합니다. Merge도 시작 전에 final을
 삭제하고, 앱 merge 호출 중 어떤 예외가 발생해도 부분 게시된 final parquet을 다시
@@ -173,8 +219,18 @@ parquet은 성공 산출물로 남지 않습니다.
 
 ```json
 {
-  "partition_date": "2026-07-08",
-  "overwrite": true
+  "partition_date": "2026-07-10",
+  "overwrite": true,
+  "candidates_per_user": 20,
+  "qa_prefix": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z",
+  "youtube_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/youtube",
+  "virtual_users_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",
+  "action_log_output_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/final",
+  "action_log_quarantine_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/final-quarantine",
+  "action_log_shard_output_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/shard-work",
+  "action_log_shard_quarantine_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/shard-quarantine",
+  "action_log_progress_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/progress",
+  "action_log_checkpoint_base_path": "gs://ar-infra-501607-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/checkpoints"
 }
 ```
 

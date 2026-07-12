@@ -204,6 +204,86 @@ def test_build_config_shard_mode_uses_default_work_paths() -> None:
     )
 
 
+def test_build_config_accepts_all_run_scoped_shard_paths() -> None:
+    prefix = "gs://autoresearch-dev-lake/qa/action-log/run=qa-100"
+    config = build_config(
+        [
+            "--mode",
+            "shard",
+            "--partition-date",
+            "2026-07-10",
+            "--bucket",
+            "autoresearch-dev-lake",
+            "--youtube-base-path",
+            f"{prefix}/youtube",
+            "--virtual-users-path",
+            f"{prefix}/input/virtual-users-100.parquet",
+            "--output-base-path",
+            f"{prefix}/shard-work",
+            "--quarantine-base-path",
+            f"{prefix}/shard-quarantine",
+            "--progress-base-path",
+            f"{prefix}/progress",
+            "--checkpoint-base-path",
+            f"{prefix}/checkpoints",
+            "--final-output-base-path",
+            f"{prefix}/final",
+            "--final-quarantine-base-path",
+            f"{prefix}/final-quarantine",
+            "--shard-index",
+            "0",
+            "--shard-count",
+            "5",
+        ]
+    )
+
+    normalized_prefix = "autoresearch-dev-lake/qa/action-log/run=qa-100"
+    assert config.youtube_base_path == f"{normalized_prefix}/youtube"
+    assert config.virtual_users_path == (
+        f"{normalized_prefix}/input/virtual-users-100.parquet"
+    )
+    assert config.output_base_path == f"{normalized_prefix}/shard-work"
+    assert config.quarantine_base_path == f"{normalized_prefix}/shard-quarantine"
+    assert config.progress_base_path == f"{normalized_prefix}/progress"
+    assert config.checkpoint_base_path == f"{normalized_prefix}/checkpoints"
+    assert config.final_output_base_path == f"{normalized_prefix}/final"
+    assert config.final_quarantine_base_path == (
+        f"{normalized_prefix}/final-quarantine"
+    )
+
+
+def test_build_config_accepts_run_scoped_merge_paths() -> None:
+    prefix = "gs://autoresearch-dev-lake/qa/action-log/run=qa-100"
+    config = build_config(
+        [
+            "--mode",
+            "merge",
+            "--partition-date",
+            "2026-07-10",
+            "--bucket",
+            "autoresearch-dev-lake",
+            "--output-base-path",
+            f"{prefix}/final",
+            "--quarantine-base-path",
+            f"{prefix}/final-quarantine",
+            "--shard-output-base-path",
+            f"{prefix}/shard-work",
+            "--shard-quarantine-base-path",
+            f"{prefix}/shard-quarantine",
+            "--shard-count",
+            "5",
+        ]
+    )
+
+    normalized_prefix = "autoresearch-dev-lake/qa/action-log/run=qa-100"
+    assert config.output_base_path == f"{normalized_prefix}/final"
+    assert config.quarantine_base_path == f"{normalized_prefix}/final-quarantine"
+    assert config.shard_output_base_path == f"{normalized_prefix}/shard-work"
+    assert config.shard_quarantine_base_path == (
+        f"{normalized_prefix}/shard-quarantine"
+    )
+
+
 def test_main_shard_passes_index_count_and_resume_paths(monkeypatch) -> None:
     fake_fs = _FakeGcsFileSystem(
         {
@@ -260,6 +340,7 @@ def test_main_shard_passes_index_count_and_resume_paths(monkeypatch) -> None:
         "quarantine_base_path",
         "filesystem",
         "candidates_per_user",
+        "max_users",
         "target_ctr",
         "personalized_ratio",
         "popular_ratio",

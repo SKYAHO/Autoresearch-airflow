@@ -91,6 +91,10 @@ env:
     value: "1"
   - name: AIRFLOW_VAR_OPENROUTER_RETRY_BACKOFF_MAX_SEC
     value: "30"
+  - name: AIRFLOW_VAR_OPENROUTER_ALLOW_FALLBACKS
+    value: "true"
+  - name: AIRFLOW_VAR_OPENROUTER_REQUIRE_PARAMETERS
+    value: "true"
 
 migrateDatabaseJob:
   args:
