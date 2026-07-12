@@ -32,6 +32,23 @@ def test_build_config_uses_default_gcs_path() -> None:
     )
 
 
+def test_build_config_accepts_run_scoped_youtube_base_path() -> None:
+    config = build_config(
+        [
+            "--partition-date",
+            "2026-07-10",
+            "--bucket",
+            "autoresearch-dev-lake",
+            "--youtube-base-path",
+            "gs://autoresearch-dev-lake/qa/action-log/run=qa-100/youtube",
+        ]
+    )
+
+    assert config.youtube_base_path == (
+        "autoresearch-dev-lake/qa/action-log/run=qa-100/youtube"
+    )
+
+
 def test_main_collects_youtube_partition_with_injected_runtime(monkeypatch) -> None:
     fake_fs = _FakeFileSystem()
     calls: dict[str, object] = {}

@@ -158,6 +158,7 @@ class DailyActionLogConfig:
     max_concurrency: int
     chunk_size: int
     max_quarantine_ratio: float
+    max_users: int | None = None
 
 
 def _strip_gs(path: str) -> str:
@@ -219,6 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--youtube-base-path", default="")
     parser.add_argument("--virtual-users-path", default="")
+    parser.add_argument("--max-users", type=int, default=None)
     parser.add_argument("--output-base-path", default="")
     parser.add_argument("--quarantine-base-path", default="")
     parser.add_argument(
@@ -262,6 +264,8 @@ def build_config(argv: Sequence[str] | None = None) -> DailyActionLogConfig:
     partition_date = date.fromisoformat(args.partition_date)
     if args.shard_count < 1:
         raise ValueError("--shard-count must be at least 1")
+    if args.max_users is not None and args.max_users < 1:
+        raise ValueError("--max-users must be at least 1")
     if not 0 <= args.max_quarantine_ratio <= 1:
         raise ValueError("--max-quarantine-ratio must be between 0 and 1")
     if args.mode == "shard":
@@ -287,6 +291,7 @@ def build_config(argv: Sequence[str] | None = None) -> DailyActionLogConfig:
         virtual_users_path=_strip_gs(args.virtual_users_path)
         if args.virtual_users_path
         else _bucket_path(bucket, DEFAULT_VIRTUAL_USERS_PATH),
+        max_users=args.max_users,
         output_base_path=_strip_gs(args.output_base_path)
         if args.output_base_path
         else _bucket_path(bucket, default_output_dir),
@@ -406,6 +411,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             partition_date=config.partition_date,
             youtube_base_path=config.youtube_base_path,
             virtual_users_path=config.virtual_users_path,
+            max_users=config.max_users,
             output_base_path=config.output_base_path,
             quarantine_base_path=config.quarantine_base_path,
             filesystem=filesystem,
@@ -442,6 +448,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             shard_count=config.shard_count,
             youtube_base_path=config.youtube_base_path,
             virtual_users_path=config.virtual_users_path,
+            max_users=config.max_users,
             output_base_path=config.output_base_path,
             quarantine_base_path=config.quarantine_base_path,
             filesystem=filesystem,
