@@ -9,5 +9,5 @@ from youtube_gcs_action_log_pipeline_factory import (
 
 dag = build_youtube_gcs_action_log_pipeline(
     dag_id="youtube_gcs_action_log_pipeline",
-    schedule="0 6 * * *",  # KST 06:00; partitions should be ready before KST 10:00.
+    schedule=None,  # Final full-volume QA: prevent scheduled runs during validation.
 )
