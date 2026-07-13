@@ -11,7 +11,7 @@ Airflow 이미지를 다시 빌드하지 않고 `git-sync` sidecar가 DAG 파일
 
 ```text
 GKE Namespace: airflow
-Helm Release: autoresearch-airflow
+Helm Release: airflow (dev)
 Chart: charts/autoresearch-airflow
 Upstream: apache-airflow/airflow
 DAG source repo: https://github.com/SKYAHO/Autoresearch-airflow.git
@@ -19,7 +19,9 @@ DAG source path: dags/
 Sync interval: 30s
 ```
 
-`charts/autoresearch-airflow/values.yaml`의 핵심 값은 다음과 같습니다.
+`charts/autoresearch-airflow/values.yaml`은 운영 기본값을 두지 않습니다. git-sync와
+환경별 운영 설정은 `environments/gke-values.example.yaml` 또는
+`helm/values-gke-dev.yaml`의 `airflow:` 아래에서 관리합니다.
 
 ```yaml
 airflow:
@@ -88,15 +90,18 @@ helm dependency update charts/autoresearch-airflow
 helm upgrade --install autoresearch-airflow charts/autoresearch-airflow   --namespace airflow   --values environments/gke-values.example.yaml
 ```
 
-dev release는 upstream chart에 실제 values를 직접 적용하므로 다음 명령을
-사용합니다.
+dev release도 umbrella chart와 실제 dev values를 사용합니다.
 
 ```bash
-helm upgrade airflow apache-airflow/airflow \
-  --version 1.16.0 \
+helm upgrade airflow charts/autoresearch-airflow \
   --namespace airflow \
   --values helm/values-gke-dev.yaml
 ```
+
+`YOUTUBE_BACKFILL_SOURCE`는 기본 Airflow 배포 Secret에 포함하지 않습니다. 현재
+필요한 historical partition이 GCS에 정상 적재되어 있으므로 일일 운영을 위해 이
+값이 필요하지 않습니다. 누락·손상된 과거 partition을 백필해야 할 때만 격리된 전체
+`dag_run.conf` 경로 집합 또는 임시 Airflow Variable로 source URI를 제공합니다.
 
 `migrateDatabaseJob`은 DB migration 직후 다음 Pool을 idempotent하게 생성하거나
 갱신합니다.
@@ -266,13 +271,11 @@ kubectl create secret generic airflow-web-oauth -n airflow `
 Secret 생성 후 렌더링을 확인하고 dev release를 업그레이드합니다.
 
 ```powershell
-helm template airflow apache-airflow/airflow `
-  --version 1.16.0 `
+helm template airflow charts/autoresearch-airflow `
   --namespace airflow `
   --values helm/values-gke-dev.yaml > $env:TEMP\airflow-gke-dev.yaml
 
-helm upgrade airflow apache-airflow/airflow `
-  --version 1.16.0 `
+helm upgrade airflow charts/autoresearch-airflow `
   --namespace airflow `
   --values helm/values-gke-dev.yaml
 

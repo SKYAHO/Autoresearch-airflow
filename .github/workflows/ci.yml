@@ -30,3 +30,24 @@ jobs:
 
       - name: Compile Python files
         run: python -m compileall dags
+
+  airflow-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Build Airflow runtime image
+        run: |
+          docker build \
+            --file docker/airflow/Dockerfile \
+            --tag autoresearch-airflow-ci \
+            docker/airflow
+
+      - name: Check DAGs with the real Airflow runtime
+        run: |
+          docker run --rm \
+            --volume "${{ github.workspace }}/dags:/usr/local/airflow/dags:ro" \
+            --volume "${{ github.workspace }}/scripts/check_airflow_dagbag.py:/tmp/check_airflow_dagbag.py:ro" \
+            autoresearch-airflow-ci \
+            python /tmp/check_airflow_dagbag.py

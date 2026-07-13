@@ -4,7 +4,20 @@
 변환 로직을 포함하지 않고, `AUTORESEARCH_BATCH_IMAGE`의
 `autoresearch.jobs.youtube_backfill` 공개 명령만 실행한다.
 
-## Production 설정
+## 운영 정책
+
+현재 필요한 historical YouTube partition이 GCS에 정상 적재되어 있다면
+`YOUTUBE_BACKFILL_SOURCE`는 Airflow 기본 배포 조건이 아니다. 일일 YouTube API
+수집과 action-log 파이프라인은 이 값을 사용하지 않으며, 기존 partition을 다시
+저장하기 위해 백필을 반복 실행하지 않는다.
+
+다음 경우에만 source를 준비하고 백필을 실행한다.
+
+- 누락되거나 손상된 과거 partition을 복구할 때
+- 원본 데이터 또는 변환 로직 변경으로 과거 partition을 재생성할 때
+- 명시적인 운영 승인 후 기존 partition을 교체할 때
+
+## Production 실행 설정
 
 다음 Airflow Variable은 완전한 GCS URI여야 한다.
 
@@ -17,6 +30,12 @@ output Variable이 없으면 `YOUTUBE_TRENDING_BASE_PATH`를 사용한다. sourc
 `YOUTUBE_BACKFILL_SOURCE`를 임시 fallback으로 읽지만 새 설정에는
 `YOUTUBE_BACKFILL_SOURCE_PATH`를 사용한다. DAG는 matching 날짜 partition을
 교체하므로 `--overwrite=true`를 고정 전달하고 자동 retry는 하지 않는다.
+
+source URI는 values나 Git에 기록하지 않는다. 백필 재실행 시에는 격리 QA처럼
+`qa_prefix`, `source_path`, `youtube_base_path` 전체를 `dag_run.conf`로 전달하거나,
+실행 기간에만 `YOUTUBE_BACKFILL_SOURCE_PATH` Airflow Variable을 설정한다. 장기
+`YOUTUBE_BACKFILL_SOURCE` Secret key를 일반 Airflow 배포의 선행 조건으로 두지
+않는다.
 
 ## 격리 smoke
 

@@ -1,57 +1,323 @@
-# Concrete dev deployment values for apache-airflow/airflow chart 1.16.0.
+# Autoresearch Airflow umbrella chart의 실제 dev 배포 values입니다.
 # Target cluster: ar-infra-501607 / autoresearch-dev-gke.
 
-airflowVersion: "2.10.5"
-executor: LocalExecutor
+airflow:
+  airflowVersion: "2.10.5"
+  executor: LocalExecutor
 
-defaultAirflowRepository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
-defaultAirflowTag: "action-log-shard-6db0728-20260710T0452Z"
+  defaultAirflowRepository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+  defaultAirflowTag: "action-log-shard-6db0728-20260710T0452Z"
 
-images:
-  airflow:
-    repository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
-    tag: "action-log-shard-6db0728-20260710T0452Z"
-    pullPolicy: IfNotPresent
+  images:
+    airflow:
+      repository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+      tag: "action-log-shard-6db0728-20260710T0452Z"
+      pullPolicy: IfNotPresent
 
-webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
+  webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
 
-config:
-  logging:
-    base_log_folder: /tmp/airflow/logs
-    dag_processor_manager_log_location: /tmp/airflow/logs/dag_processor_manager/dag_processor_manager.log
+  config:
+    logging:
+      base_log_folder: /tmp/airflow/logs
+      dag_processor_manager_log_location: /tmp/airflow/logs/dag_processor_manager/dag_processor_manager.log
+    scheduler:
+      child_process_log_directory: /tmp/airflow/logs/scheduler
+    webserver:
+      workers: "2"
+      web_server_master_timeout: "300"
+      web_server_worker_timeout: "300"
+
+  redis:
+    enabled: false
+
+  flower:
+    enabled: false
+
+  statsd:
+    enabled: false
+
+  triggerer:
+    enabled: false
+
+  dagProcessor:
+    enabled: false
+
+  workers:
+    replicas: 0
+
+  postgresql:
+    enabled: true
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/postgresql
+      tag: 16.1.0-debian-11-r15
+      pullPolicy: IfNotPresent
+    primary:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: airflow-dev
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+
+  logs:
+    persistence:
+      enabled: false
+
+  dags:
+    persistence:
+      enabled: false
+    gitSync:
+      enabled: true
+      repo: https://github.com/SKYAHO/Autoresearch-airflow.git
+      branch: main
+      rev: HEAD
+      ref: main
+      depth: 1
+      subPath: dags
+      period: 30s
+
+  extraEnv: |
+    - name: AIRFLOW_VAR_YOUTUBE_BACKFILL_SOURCE_PATH
+      valueFrom:
+        secretKeyRef:
+          name: autoresearch-airflow-env
+          key: YOUTUBE_BACKFILL_SOURCE
+          optional: true
+
+  env:
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: "False"
+    - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
+      value: "ar-infra-501607-autoresearch-dev-raw-data"
+    - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
+      value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:d6648616ff25a32b9429f4020b70110b96c591ccefdfbbab561e7fee0959e8c9"
+    - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
+      value: "airflow"
+    - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
+      value: "autoresearch-batch"
+    - name: AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME
+      value: "autoresearch-airflow-env"
+    - name: AIRFLOW_VAR_YOUTUBE_TRENDING_BASE_PATH
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
+    - name: AIRFLOW_VAR_YOUTUBE_BACKFILL_OUTPUT_BASE_PATH
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
+    - name: AIRFLOW_VAR_YOUTUBE_TRENDING_REGION_CODE
+      value: "KR"
+    - name: AIRFLOW_VAR_YOUTUBE_TRENDING_MAX_RESULTS
+      value: "200"
+    - name: AIRFLOW_VAR_ACTION_LOG_GENERATOR
+      value: "openrouter"
+    - name: AIRFLOW_VAR_ACTION_LOG_MODEL_NAME
+      value: "mistralai/mistral-nemo"
+    - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
+    - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet"
+    - name: AIRFLOW_VAR_ACTION_LOG_OUTPUT_DIR
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log"
+    - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_quarantine"
+    - name: AIRFLOW_VAR_ACTION_LOG_SHARD_WORK_DIR
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_work"
+    - name: AIRFLOW_VAR_ACTION_LOG_SHARD_QUARANTINE_DIR
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_quarantine_work"
+    - name: AIRFLOW_VAR_ACTION_LOG_PROGRESS_DIR
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_progress"
+    - name: AIRFLOW_VAR_ACTION_LOG_CHECKPOINT_DIR
+      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_checkpoints"
+    - name: AIRFLOW_VAR_ACTION_LOG_SHARD_COUNT
+      value: "5"
+    - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
+      value: "24"
+    - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR
+      value: "0.02"
+    - name: AIRFLOW_VAR_ACTION_LOG_PERSONALIZED_RATIO
+      value: "0.7"
+    - name: AIRFLOW_VAR_ACTION_LOG_POPULAR_RATIO
+      value: "0.2"
+    - name: AIRFLOW_VAR_ACTION_LOG_EXPLORATION_RATIO
+      value: "0.1"
+    - name: AIRFLOW_VAR_ACTION_LOG_SEED
+      value: "42"
+    - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
+      value: "3"
+    - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE
+      value: "24"
+    - name: AIRFLOW_VAR_ACTION_LOG_MAX_QUARANTINE_RATIO
+      value: "0.5"
+    - name: AIRFLOW_VAR_ACTION_LOG_OPENROUTER_POOL
+      value: "action_log_openrouter"
+    - name: AIRFLOW_VAR_OPENROUTER_TIMEOUT_SEC
+      value: "60"
+    - name: AIRFLOW_VAR_OPENROUTER_MAX_RETRIES
+      value: "2"
+    - name: AIRFLOW_VAR_OPENROUTER_TIMEOUT_MAX_RETRIES
+      value: "1"
+    - name: AIRFLOW_VAR_OPENROUTER_RETRY_BACKOFF_BASE_SEC
+      value: "1"
+    - name: AIRFLOW_VAR_OPENROUTER_RETRY_BACKOFF_MAX_SEC
+      value: "30"
+    - name: AIRFLOW_VAR_OPENROUTER_ALLOW_FALLBACKS
+      value: "true"
+    - name: AIRFLOW_VAR_OPENROUTER_REQUIRE_PARAMETERS
+      value: "true"
+
   scheduler:
-    child_process_log_directory: /tmp/airflow/logs/scheduler
+    nodeSelector:
+      cloud.google.com/gke-nodepool: airflow-dev
+    logGroomerSidecar:
+      enabled: false
+    livenessProbe:
+      timeoutSeconds: 30
+    startupProbe:
+      failureThreshold: 30
+      periodSeconds: 10
+      timeoutSeconds: 30
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1536Mi
+
   webserver:
-    workers: "2"
-    web_server_master_timeout: "300"
-    web_server_worker_timeout: "300"
+    replicas: 2
+    nodeSelector:
+      cloud.google.com/gke-nodepool: airflow-dev
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+    podDisruptionBudget:
+      enabled: true
+      config:
+        maxUnavailable: 1
+    service:
+      type: LoadBalancer
+      loadBalancerIP: "10.10.0.12"
+      annotations:
+        networking.gke.io/load-balancer-type: "Internal"
+      ports:
+        - name: airflow-ui
+          port: 8080
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  component: webserver
+    args:
+      - bash
+      - -c
+      - exec airflow webserver --pid /tmp/airflow-webserver.pid
+    defaultUser:
+      enabled: false
+    env:
+      - name: GOOGLE_OAUTH_CLIENT_ID
+        valueFrom:
+          secretKeyRef:
+            name: airflow-web-oauth
+            key: GOOGLE_OAUTH_CLIENT_ID
+            optional: false
+      - name: GOOGLE_OAUTH_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: airflow-web-oauth
+            key: GOOGLE_OAUTH_CLIENT_SECRET
+            optional: false
+    webserverConfig: |
+      import os
 
-redis:
-  enabled: false
+      from airflow import configuration as conf
+      from airflow.providers.fab.auth_manager.security_manager.override import (
+          FabAirflowSecurityManagerOverride,
+      )
+      from flask_appbuilder.security.manager import AUTH_OAUTH
 
-flower:
-  enabled: false
+      SQLALCHEMY_DATABASE_URI = conf.get("database", "SQL_ALCHEMY_CONN")
+      CSRF_ENABLED = True
 
-statsd:
-  enabled: false
+      AUTH_TYPE = AUTH_OAUTH
+      AUTH_USER_REGISTRATION = True
+      AUTH_USER_REGISTRATION_ROLE = "Admin"
+      AUTH_ROLES_SYNC_AT_LOGIN = True
+      AUTH_ROLES_MAPPING = {
+          "Admin": ["Admin"],
+      }
 
-triggerer:
-  enabled: false
+      _GOOGLE_ALLOWED_EMAILS = {
+          "pjy154444@gmail.com",     # 박주용
+          "shc7657@gmail.com",       # 성효창
+          "youngjun3108@gmail.com",  # 이영준
+          "toastome@gmail.com",      # 유현서
+          "hyeongyu.data@gmail.com", # 최현규
+      }
 
-dagProcessor:
-  enabled: false
+      OAUTH_PROVIDERS = [
+          {
+              "name": "google",
+              "icon": "fa-google",
+              "token_key": "access_token",
+              "remote_app": {
+                  "client_id": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
+                  "client_secret": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
+                  "api_base_url": "https://www.googleapis.com/oauth2/v2/",
+                  "server_metadata_url": "https://accounts.google.com/.well-known/openid-configuration",
+                  "client_kwargs": {"scope": "openid email profile"},
+                  "request_token_url": None,
+                  "access_token_url": "https://oauth2.googleapis.com/token",
+                  "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+              },
+          },
+      ]
 
-workers:
-  replicas: 0
+      class GoogleOAuthSecurityManager(FabAirflowSecurityManagerOverride):
+          def get_oauth_user_info(self, provider, resp):
+              if provider != "google":
+                  return {}
 
-postgresql:
-  enabled: true
-  image:
-    registry: docker.io
-    repository: bitnamilegacy/postgresql
-    tag: 16.1.0-debian-11-r15
-    pullPolicy: IfNotPresent
-  primary:
+              user_info = super().get_oauth_user_info(provider, resp)
+              email = (user_info.get("email") or "").lower()
+              if email not in _GOOGLE_ALLOWED_EMAILS:
+                  return {}
+
+              user_info["role_keys"] = ["Admin"]
+              return user_info
+
+      SECURITY_MANAGER_CLASS = GoogleOAuthSecurityManager
+    startupProbe:
+      failureThreshold: 30
+      periodSeconds: 10
+      timeoutSeconds: 20
+    readinessProbe:
+      timeoutSeconds: 20
+    livenessProbe:
+      timeoutSeconds: 20
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+  migrateDatabaseJob:
+    args:
+      - bash
+      - -c
+      - |
+        airflow db migrate
+        airflow sync-perm
+        airflow pools set action_log_openrouter 2 "Action log OpenRouter shard fan-out"
     nodeSelector:
       cloud.google.com/gke-nodepool: airflow-dev
     resources:
@@ -62,274 +328,19 @@ postgresql:
         cpu: 250m
         memory: 256Mi
 
-logs:
-  persistence:
-    enabled: false
-
-dags:
-  persistence:
-    enabled: false
-  gitSync:
-    enabled: true
-    repo: https://github.com/SKYAHO/Autoresearch-airflow.git
-    branch: main
-    rev: HEAD
-    ref: main
-    depth: 1
-    subPath: dags
-    period: 30s
-
-env:
-  - name: AIRFLOW__CORE__LOAD_EXAMPLES
-    value: "False"
-  - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
-    value: "ar-infra-501607-autoresearch-dev-raw-data"
-  - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
-    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:d6648616ff25a32b9429f4020b70110b96c591ccefdfbbab561e7fee0959e8c9"
-  - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
-    value: "airflow"
-  - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
-    value: "autoresearch-batch"
-  - name: AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME
-    value: "autoresearch-airflow-env"
-  - name: AIRFLOW_VAR_YOUTUBE_TRENDING_BASE_PATH
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
-  - name: AIRFLOW_VAR_YOUTUBE_TRENDING_REGION_CODE
-    value: "KR"
-  - name: AIRFLOW_VAR_YOUTUBE_TRENDING_MAX_RESULTS
-    value: "200"
-  - name: AIRFLOW_VAR_ACTION_LOG_GENERATOR
-    value: "openrouter"
-  - name: AIRFLOW_VAR_ACTION_LOG_MODEL_NAME
-    value: "mistralai/mistral-nemo"
-  - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
-  - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet"
-  - name: AIRFLOW_VAR_ACTION_LOG_OUTPUT_DIR
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log"
-  - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_quarantine"
-  - name: AIRFLOW_VAR_ACTION_LOG_SHARD_WORK_DIR
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_work"
-  - name: AIRFLOW_VAR_ACTION_LOG_SHARD_QUARANTINE_DIR
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_quarantine_work"
-  - name: AIRFLOW_VAR_ACTION_LOG_PROGRESS_DIR
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_progress"
-  - name: AIRFLOW_VAR_ACTION_LOG_CHECKPOINT_DIR
-    value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_checkpoints"
-  - name: AIRFLOW_VAR_ACTION_LOG_SHARD_COUNT
-    value: "5"
-  - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
-    value: "24"
-  - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR
-    value: "0.02"
-  - name: AIRFLOW_VAR_ACTION_LOG_PERSONALIZED_RATIO
-    value: "0.7"
-  - name: AIRFLOW_VAR_ACTION_LOG_POPULAR_RATIO
-    value: "0.2"
-  - name: AIRFLOW_VAR_ACTION_LOG_EXPLORATION_RATIO
-    value: "0.1"
-  - name: AIRFLOW_VAR_ACTION_LOG_SEED
-    value: "42"
-  - name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY
-    value: "3"
-  - name: AIRFLOW_VAR_ACTION_LOG_CHUNK_SIZE
-    value: "24"
-  - name: AIRFLOW_VAR_ACTION_LOG_MAX_QUARANTINE_RATIO
-    value: "0.5"
-  - name: AIRFLOW_VAR_ACTION_LOG_OPENROUTER_POOL
-    value: "action_log_openrouter"
-  - name: AIRFLOW_VAR_OPENROUTER_TIMEOUT_SEC
-    value: "60"
-  - name: AIRFLOW_VAR_OPENROUTER_MAX_RETRIES
-    value: "2"
-  - name: AIRFLOW_VAR_OPENROUTER_TIMEOUT_MAX_RETRIES
-    value: "1"
-  - name: AIRFLOW_VAR_OPENROUTER_RETRY_BACKOFF_BASE_SEC
-    value: "1"
-  - name: AIRFLOW_VAR_OPENROUTER_RETRY_BACKOFF_MAX_SEC
-    value: "30"
-  - name: AIRFLOW_VAR_OPENROUTER_ALLOW_FALLBACKS
-    value: "true"
-  - name: AIRFLOW_VAR_OPENROUTER_REQUIRE_PARAMETERS
-    value: "true"
-
-scheduler:
-  nodeSelector:
-    cloud.google.com/gke-nodepool: airflow-dev
-  logGroomerSidecar:
-    enabled: false
-  livenessProbe:
-    timeoutSeconds: 30
-  startupProbe:
-    failureThreshold: 30
-    periodSeconds: 10
-    timeoutSeconds: 30
-  resources:
-    requests:
-      cpu: 100m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 1536Mi
-
-webserver:
-  replicas: 2
-  nodeSelector:
-    cloud.google.com/gke-nodepool: airflow-dev
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  podDisruptionBudget:
-    enabled: true
-    config:
-      maxUnavailable: 1
-  service:
-    type: LoadBalancer
-    loadBalancerIP: "10.10.0.12"
-    annotations:
-      networking.gke.io/load-balancer-type: "Internal"
-    ports:
-      - name: airflow-ui
-        port: 8080
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            topologyKey: kubernetes.io/hostname
-            labelSelector:
-              matchLabels:
-                component: webserver
-  args:
-    - bash
-    - -c
-    - exec airflow webserver --pid /tmp/airflow-webserver.pid
-  defaultUser:
-    enabled: false
-  env:
-    - name: GOOGLE_OAUTH_CLIENT_ID
-      valueFrom:
-        secretKeyRef:
-          name: airflow-web-oauth
-          key: GOOGLE_OAUTH_CLIENT_ID
-          optional: false
-    - name: GOOGLE_OAUTH_CLIENT_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: airflow-web-oauth
-          key: GOOGLE_OAUTH_CLIENT_SECRET
-          optional: false
-  webserverConfig: |
-    import os
-
-    from airflow import configuration as conf
-    from airflow.providers.fab.auth_manager.security_manager.override import (
-        FabAirflowSecurityManagerOverride,
-    )
-    from flask_appbuilder.security.manager import AUTH_OAUTH
-
-    SQLALCHEMY_DATABASE_URI = conf.get("database", "SQL_ALCHEMY_CONN")
-    CSRF_ENABLED = True
-
-    AUTH_TYPE = AUTH_OAUTH
-    AUTH_USER_REGISTRATION = True
-    AUTH_USER_REGISTRATION_ROLE = "Admin"
-    AUTH_ROLES_SYNC_AT_LOGIN = True
-    AUTH_ROLES_MAPPING = {
-        "Admin": ["Admin"],
-    }
-
-    _GOOGLE_ALLOWED_EMAILS = {
-        "pjy154444@gmail.com",     # 박주용
-        "shc7657@gmail.com",       # 성효창
-        "youngjun3108@gmail.com",  # 이영준
-        "toastome@gmail.com",      # 유현서
-        "hyeongyu.data@gmail.com", # 최현규
-    }
-
-    OAUTH_PROVIDERS = [
-        {
-            "name": "google",
-            "icon": "fa-google",
-            "token_key": "access_token",
-            "remote_app": {
-                "client_id": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
-                "client_secret": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
-                "api_base_url": "https://www.googleapis.com/oauth2/v2/",
-                "server_metadata_url": "https://accounts.google.com/.well-known/openid-configuration",
-                "client_kwargs": {"scope": "openid email profile"},
-                "request_token_url": None,
-                "access_token_url": "https://oauth2.googleapis.com/token",
-                "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
-            },
-        },
-    ]
-
-    class GoogleOAuthSecurityManager(FabAirflowSecurityManagerOverride):
-        def get_oauth_user_info(self, provider, resp):
-            if provider != "google":
-                return {}
-
-            user_info = super().get_oauth_user_info(provider, resp)
-            email = (user_info.get("email") or "").lower()
-            if email not in _GOOGLE_ALLOWED_EMAILS:
-                return {}
-
-            user_info["role_keys"] = ["Admin"]
-            return user_info
-
-    SECURITY_MANAGER_CLASS = GoogleOAuthSecurityManager
-  startupProbe:
-    failureThreshold: 30
-    periodSeconds: 10
-    timeoutSeconds: 20
-  readinessProbe:
-    timeoutSeconds: 20
-  livenessProbe:
-    timeoutSeconds: 20
-  resources:
-    requests:
-      cpu: 100m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
-
-migrateDatabaseJob:
-  args:
-    - bash
-    - -c
-    - |
-      airflow db migrate
-      airflow sync-perm
-      airflow pools set action_log_openrouter 2 "Action log OpenRouter shard fan-out"
-  nodeSelector:
-    cloud.google.com/gke-nodepool: airflow-dev
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      cpu: 250m
-      memory: 256Mi
-
-createUserJob:
-  command:
-    - bash
-    - -c
-  args:
-    - |
-      airflow sync-perm
-  nodeSelector:
-    cloud.google.com/gke-nodepool: airflow-dev
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      cpu: 250m
-      memory: 256Mi
+  createUserJob:
+    command:
+      - bash
+      - -c
+    args:
+      - |
+        airflow sync-perm
+    nodeSelector:
+      cloud.google.com/gke-nodepool: airflow-dev
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
