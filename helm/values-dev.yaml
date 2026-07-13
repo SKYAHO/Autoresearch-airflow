@@ -26,9 +26,7 @@ env:
   - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
     value: "<gcs-bucket-name-without-gs-prefix>"
   - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
-    value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch:replace-me"
-  - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE
-    value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch@sha256:<candidate-digest>"
+    value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch@sha256:<production-digest>"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
     value: "airflow"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT

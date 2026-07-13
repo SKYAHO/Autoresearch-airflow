@@ -10,5 +10,5 @@ dag = build_youtube_gcs_action_log_pipeline(
     schedule=None,
     tags=["youtube", "collection", "action-log", "gcs", "kubernetes", "qa"],
     max_users=1000,
-    public_batch_contract=True,
+    use_candidate_image=True,
 )

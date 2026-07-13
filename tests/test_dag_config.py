@@ -347,10 +347,7 @@ def test_public_youtube_arguments_use_canonical_full_path_contract() -> None:
     )
 
     assert "--bucket" not in args
-    assert args[-2:] == [
-        "--overwrite",
-        "{{ dag_run.conf.get('overwrite', false) }}",
-    ]
+    assert args[-1] == "--overwrite={{ dag_run.conf.get('overwrite', false) }}"
 
 
 def test_public_action_log_shard_arguments_exclude_legacy_final_paths() -> None:
@@ -376,6 +373,8 @@ def test_public_action_log_shard_arguments_exclude_legacy_final_paths() -> None:
         "--checkpoint-base-path",
     ):
         assert required_argument in args
+    assert "--overwrite" not in args
+    assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in args
 
 
 def test_public_action_log_merge_arguments_match_canonical_contract() -> None:
@@ -397,8 +396,7 @@ def test_public_action_log_merge_arguments_match_canonical_contract() -> None:
         _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"),
         "--max-quarantine-ratio",
         "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}",
-        "--overwrite",
-        "{{ dag_run.conf.get('overwrite', false) }}",
+        "--overwrite={{ dag_run.conf.get('overwrite', false) }}",
     ]
 
 

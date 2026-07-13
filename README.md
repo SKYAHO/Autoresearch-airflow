@@ -32,10 +32,11 @@ operational target is that both the YouTube and action-log GCS partitions are
 ready for inspection by KST 10:00. It launches KubernetesPodOperator batch pods
 using `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
 
-The scheduled production DAG reads only `AUTORESEARCH_BATCH_IMAGE` and remains
-on the rollback-safe legacy wrapper during QA. The unscheduled QA DAG reads
-`AUTORESEARCH_BATCH_IMAGE_OVERRIDE`, falling back to the production value only
-when the override is absent. The override must be an immutable GAR digest.
+The scheduled production DAG reads only the immutable GAR digest in
+`AUTORESEARCH_BATCH_IMAGE` and invokes the application-owned public batch CLI.
+The unscheduled QA DAG uses `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` only when an
+optional candidate is configured; otherwise it falls back to the promoted
+production digest.
 
 The DAG:
 
@@ -46,14 +47,15 @@ The DAG:
 4. Fans in through one merge pod. The merge pod applies global CTR normalization,
    validates every manifest/config fingerprint and the global quarantine ratio,
    then assigns final `event_id` values and writes the final partition.
-5. In the QA DAG, runs `autoresearch.jobs.action_log_quality` against the final
-   partition. A failed quality gate fails the QA run.
+5. Runs `autoresearch.jobs.action_log_quality` against the final partition. A
+   failed quality gate fails either the production or QA run.
 6. Reuses only immutable checkpoint parts in the matching fingerprint namespace.
    `progress.json` is observability state and is never used as a checkpoint.
 
-The legacy production wrapper retains its existing stale-final invalidation
-behavior. The public QA contract does not pass final-output paths to shard pods;
-publication is owned by merge and explicit `overwrite` controls replacement.
+The public contract does not pass final-output paths to shard pods; publication
+is owned by merge and explicit `overwrite` controls replacement. Legacy wrapper
+files and their previous image remain available for rollback but are not invoked
+by either active DAG.
 
 Secret values are not passed as CLI arguments. The KPO pods read
 `YOUTUBE_API_KEYS` or `YOUTUBE_API_KEY`, and `OPENROUTER_API_KEY`, from the
@@ -168,16 +170,19 @@ asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresea
 asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
 ```
 
-QA 공개 계약 반영 순서는 다음과 같습니다.
+검증된 공개 계약의 production 승격 순서는 다음과 같습니다.
 
-1. `Autoresearch` release workflow에서 공개 CLI가 포함된 batch image digest와
-   OCI `org.opencontainers.image.revision`을 확인합니다.
-2. `AUTORESEARCH_BATCH_IMAGE_OVERRIDE`에 그 digest를 설정하고 모든 GCS 경로를
-   완전한 `gs://...` URI로 Helm 배포합니다. 프로덕션 image 값은 바꾸지 않습니다.
-3. DAG 커밋을 `main`에 반영하여 `dags/youtube_gcs_action_log_dag_config.py`와 DAG가 같은
-   git-sync revision으로 동기화되게 합니다. Airflow image 재빌드는 필요 없습니다.
-4. scheduler import error와 Pool을 확인한 뒤 격리된 prefix로 QA DAG를 수동
-   실행하고 최종 quality task까지 성공하는지 확인합니다.
+1. `Autoresearch` release workflow에서 QA를 통과한 batch image digest와 OCI
+   `org.opencontainers.image.revision`을 확인하고 이전 production digest를 기록합니다.
+2. merge 전에 production DAG를 pause하고 진행 중인 run이 없음을 확인합니다.
+3. `AUTORESEARCH_BATCH_IMAGE`를 검증된 digest로 변경하고 기존 candidate용
+   `AUTORESEARCH_BATCH_IMAGE_OVERRIDE`를 제거합니다.
+4. DAG 커밋을 `main`에 반영한 직후 Helm upgrade를 수행하여 factory, helper,
+   production digest가 함께 전환되게 합니다. Airflow image 재빌드는 필요 없습니다.
+5. scheduler import error, 8-task topology, Pool을 확인한 뒤 production DAG를
+   unpause하고 수동 실행 또는 다음 예약 실행에서 final quality task까지 관찰합니다.
+6. 최소 한 번의 예약 실행이 성공할 때까지 이전 digest와 이전 DAG revision을
+   롤백 후보로 보존합니다.
 
 ## GKE Helm Deployment with git-sync
 

@@ -1,12 +1,10 @@
 # Operational DAG QA for YouTube API and Mistral Nemo
 
-반복 수동 QA는 `youtube_gcs_action_log_pipeline_qa` DAG를 사용한다. 이 DAG는
-운영 DAG와 같은 factory를 사용하지만 공개 application CLI와 최종 quality task를
-활성화하고 `schedule=None`이므로, 운영 DAG를 unpause하지 않아도 수동 trigger할 수
-있다. 운영 DAG는
-`youtube_gcs_action_log_pipeline`로 유지한다. QA DAG는 입력 parquet의 앞 1,000명만
-결정론적으로 처리하지만, 운영 DAG는 configured virtual-user parquet의 전체 행을
-처리한다.
+반복 수동 QA는 `youtube_gcs_action_log_pipeline_qa` DAG를 사용한다. 운영 DAG와
+QA DAG는 같은 factory, 공개 application CLI, 최종 quality task를 사용한다. QA
+DAG는 `schedule=None`이고 입력 parquet의 앞 1,000명만 결정론적으로 처리하지만,
+`youtube_gcs_action_log_pipeline` 운영 DAG는 configured virtual-user parquet의
+전체 행을 처리한다.
 
 이 문서는 dev GKE Airflow에서 실제 YouTube API 수집과 Mistral Nemo 기반
 action log 생성을 운영 DAG로 실행하고, 데이터품질 QA는 1회 수동 검증으로
@@ -23,10 +21,9 @@ YouTube Data API v3
   -> GCS action log parquet
 ```
 
-데이터품질 검사는 QA DAG의 `validate_action_log_partition` task가 공개
+데이터품질 검사는 두 DAG의 `validate_action_log_partition` task가 공개
 `autoresearch.jobs.action_log_quality` CLI로 수행한다. 기존 수동 검사 script는
-과거 증거 재현과 추가 진단용으로 유지하며, 예약 production DAG에는 아직 quality
-task를 추가하지 않는다.
+과거 증거 재현과 추가 진단용으로 유지한다.
 
 ## 현재 충족된 조건
 
@@ -73,12 +70,13 @@ OPENROUTER_API_KEY
 ### 2. DAG 태스크
 
 `youtube_gcs_action_log_pipeline`은 YouTube 수집 뒤 action-log shard KPO를
-fan-out하고, 마지막 merge KPO에서 최종 partition을 만든다.
+fan-out하고, merge KPO에서 최종 partition을 만든 뒤 quality gate를 실행한다.
 
 ```text
 collect_youtube_trending_partition
   -> ensure_action_log_shard_000 ... ensure_action_log_shard_NNN
   -> merge_action_log_partition (all_success)
+  -> validate_action_log_partition (all_success)
 ```
 
 `youtube_gcs_action_log_pipeline_qa`는 동일한 fan-out/fan-in 뒤 quality gate를
@@ -130,10 +128,13 @@ gs://<bucket>/qa/action-log/run=<run_id>/final-quarantine/dt=<yyyy-mm-dd>/quaran
   바꾸지 않습니다. model/generator와 Secret도 기존 Airflow Variable 및
   Kubernetes Secret 계약을 유지합니다.
 
-macro helper는 `dags/youtube_gcs_action_log_dag_config.py`에 있으므로 DAG와 동일한 git-sync
-commit으로 배포됩니다. Airflow image 재빌드는 필요하지 않습니다. QA batch
-image digest와 완전한 GCS URI를 Helm으로 먼저 반영한 뒤 git-sync commit과
-scheduler import error를 확인합니다.
+macro helper는 `dags/youtube_gcs_action_log_dag_config.py`에 있으므로 DAG와 동일한
+git-sync commit으로 배포됩니다. Airflow image 재빌드는 필요하지 않습니다.
+production batch image는 QA를 통과한 immutable digest로 고정하고, 완전한 GCS
+URI, git-sync commit, scheduler import error를 함께 확인합니다.
+Production 전환 때는 기존 DAG를 먼저 pause하여 새 git-sync DAG가 이전 image와
+조합되어 실행되는 구간을 막고, merge 직후 Helm upgrade와 import/topology 확인을
+마친 다음 unpause합니다.
 
 ### 4. Airflow variables
 
@@ -141,8 +142,7 @@ scheduler import error를 확인합니다.
 
 ```text
 YOUTUBE_LAKE_BUCKET=ar-infra-501607-autoresearch-dev-raw-data
-AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
-AUTORESEARCH_BATCH_IMAGE_OVERRIDE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<candidate-digest>
+AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<production-digest>
 AIRFLOW_KPO_NAMESPACE=airflow
 AIRFLOW_KPO_SERVICE_ACCOUNT=autoresearch-batch
 AUTORESEARCH_API_SECRET_NAME=autoresearch-airflow-env
@@ -219,9 +219,9 @@ OpenRouter 요청, JSON/schema 처리, checkpoint/progress 쓰기, 처리율과 
 수 있습니다. 이 계약은 stdout 전달 범위이며 durable remote logging을 활성화하지
 않습니다.
 
-기존 production wrapper의 stale-final 무효화 로직은 그대로 유지됩니다. 공개 QA
-shard에는 final 경로를 전달하지 않으며, final publication은 merge가 담당합니다.
-같은 partition을 교체하는 QA 실행은 `overwrite=true`를 명시해야 합니다.
+공개 production/QA shard에는 final 경로를 전달하지 않으며, final publication은
+merge가 담당합니다. 같은 partition을 교체하는 실행은 `overwrite=true`를
+명시해야 합니다. 기존 wrapper와 이전 image는 롤백 자산으로만 보존합니다.
 
 수동 trigger 예시:
 
