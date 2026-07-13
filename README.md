@@ -1,18 +1,54 @@
 # Autoresearch Airflow
 
-Airflow delivery repository for AutoResearch batch pipelines.
+Autoresearch 배치 파이프라인을 Airflow와 GKE에서 실행하기 위한 배포 저장소입니다.
+데이터 처리 로직은 애플리케이션 저장소
+[`SKYAHO/Autoresearch`](https://github.com/SKYAHO/Autoresearch)가 관리하며, 이
+저장소는 DAG, KubernetesPodOperator(KPO) 실행 계약, Airflow 런타임 이미지,
+Helm 배포 설정을 관리합니다.
 
-## Purpose
+## 저장소 역할
 
-This repository owns the Airflow-facing layer:
+이 저장소가 관리하는 범위는 다음과 같습니다.
 
-- DAG files synced into Airflow by git-sync
-- Airflow helper code used by DAGs
-- KubernetesPodOperator orchestration for application-owned public batch entrypoints
-- Airflow runtime image build and Helm deployment configuration
-- Helm values examples consumed by the infrastructure repository
+- `git-sync`로 Airflow에 전달하는 DAG와 DAG 전용 helper
+- 애플리케이션 공개 CLI를 실행하는 KubernetesPodOperator 구성
+- Airflow 런타임 Docker 이미지와 GAR push 설정
+- Apache Airflow 공식 Helm chart를 감싸는 umbrella chart
+- dev GKE 배포 values와 운영 문서
+- DAG 계약, 경로 격리, 저장소 구조를 검증하는 테스트
 
-The source of truth for data is GCS:
+애플리케이션 배치 구현은 이 저장소에 포함하지 않습니다. YouTube 수집,
+action-log 생성·병합·품질 검사, YouTube backfill은 모두
+`AUTORESEARCH_BATCH_IMAGE`가 제공하는 `autoresearch.jobs.*` 공개 명령으로
+실행합니다.
+
+## 디렉터리 구조
+
+| 경로 | 역할 |
+| --- | --- |
+| `dags/` | 운영·QA·backfill DAG와 DAG helper |
+| `docker/airflow/` | Airflow 런타임 이미지 빌드 컨텍스트 |
+| `charts/autoresearch-airflow/` | Apache Airflow chart 1.16.0 umbrella chart |
+| `helm/values-gke-dev.yaml` | 현재 dev GKE에 사용하는 umbrella chart values |
+| `helm/values-dev.yaml` | 인프라 저장소에서 구체화할 dev values 예제 |
+| `environments/` | umbrella chart용 비밀값 없는 환경 예제 |
+| `tests/` | DAG import, CLI 인자, 경로 격리, 저장소 계약 테스트 |
+| `docs/` | GKE 배포, 운영 QA, backfill 실행 절차 |
+| `scripts/` | GKE 진단과 Webserver Service 보정 스크립트 |
+
+## 데이터 흐름
+
+GCS가 파이프라인 데이터의 기준 저장소입니다.
+
+```text
+YouTube Data API
+  -> YouTube KR trending parquet
+  -> action-log shard 작업 파일과 checkpoint
+  -> action-log 병합 결과
+  -> 최종 품질 검사
+```
+
+기본 경로 구조는 다음과 같습니다.
 
 ```text
 gs://<bucket>/data_lake/youtube_trending_kr/dt=YYYY-MM-DD/part-0.parquet
@@ -24,205 +60,200 @@ gs://<bucket>/data_lake/action_log_checkpoints/dt=YYYY-MM-DD/shard=000/fingerpri
 gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 ```
 
-## Daily Pipeline
+`progress.json`은 관측용 상태이며 재시작 checkpoint로 사용하지 않습니다. 재실행은
+동일한 fingerprint 아래의 immutable checkpoint part만 재사용합니다.
 
-`dags/youtube_gcs_action_log_pipeline.py` runs every day at KST 00:00 beginning
-2026-07-13. The
-operational target is that both the YouTube and action-log GCS partitions are
-ready for inspection by KST 10:00. It launches KubernetesPodOperator batch pods
-using `AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`.
+## DAG 구성
 
-The dev production DAG is currently paused while full-volume capacity and cost
-are evaluated in issue #44. Functional cutover acceptance uses the isolated
-production canary recorded below; unpausing the daily full-volume run requires
-separate operational approval.
+### 일일 운영 파이프라인
 
-The scheduled production DAG reads only the immutable GAR digest in
-`AUTORESEARCH_BATCH_IMAGE` and invokes the application-owned public batch CLI.
-The unscheduled QA DAG uses `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` only when an
-optional candidate is configured; otherwise it falls back to the promoted
-production digest.
+`dags/youtube_gcs_action_log_pipeline.py`는 매일 KST 00:00에 실행됩니다.
+`start_date`는 2026-07-12 KST이고 첫 data interval은 2026-07-13 KST 00:00에
+종료됩니다. `catchup=False`, `max_active_runs=1`입니다.
 
-The DAG:
+기본 task topology는 다음과 같습니다.
 
-1. Calls the YouTube Data API and writes the KR trending partition to GCS.
-2. Checks the virtual user parquet in GCS.
-3. Fans out action-log generation into `ACTION_LOG_SHARD_COUNT` shard pods.
-   Each shard writes LLM judgment draft parquet under `data_lake/action_log_work`.
-4. Fans in through one merge pod. The merge pod applies global CTR normalization,
-   validates every manifest/config fingerprint and the global quarantine ratio,
-   then assigns final `event_id` values and writes the final partition.
-5. Runs `autoresearch.jobs.action_log_quality` against the final partition. A
-   failed quality gate fails either the production or QA run.
-6. Reuses only immutable checkpoint parts in the matching fingerprint namespace.
-   `progress.json` is observability state and is never used as a checkpoint.
-
-The public contract does not pass final-output paths to shard pods; publication
-is owned by merge and explicit `overwrite` controls replacement. Legacy wrapper
-source and duplicate batch build paths have been removed. Rollback uses a
-previous immutable application digest and DAG revision.
-
-Secret values are not passed as CLI arguments. The KPO pods read
-`YOUTUBE_API_KEYS` or `YOUTUBE_API_KEY`, and `OPENROUTER_API_KEY`, from the
-Kubernetes Secret named by `AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME`.
-`do_xcom_push=false` is explicit for every KPO task. OpenRouter resilience values
-are non-secret environment variables; the API key remains a `secretKeyRef` and is
-not present in task arguments or rendered values.
-
-The production limit is five shards, three in-process calls per shard, and an
-`action_log_openrouter` Airflow Pool with two slots. At most two shard pods run at
-once, so the effective OpenRouter request concurrency is `2 × 3 = 6`. A shard
-task has one Airflow retry after ten minutes and a 6h30m timeout; the application
-has at most two request retries (one timeout retry). A timeout resumes from the
-durable, fingerprint-scoped checkpoint parts. The merge is one `all_success`
-task with no automatic retry.
-
-The 6h30m shard timeout only prevents Airflow from terminating a still-progressing
-shard before the observed roughly five-hour runtime. It does not improve throughput
-or demonstrate the pipeline latency target; end-to-end elapsed time must be measured
-separately. Pool slots, in-process concurrency, and retry limits are unchanged.
-
-Every KPO task uses `get_logs=True`, so structured timing and progress events written
-by the application to pod stdout are visible in the corresponding Airflow task log.
-This repository does not enable durable remote logging; log retention remains an
-environment-level concern.
-
-The scheduled production DAG intentionally processes every row in the configured
-virtual-user parquet. The current `vu_1000.parquet` contains 6,983 rows, so the
-default 24 candidates permit up to 167,592 impressions and approximately 6,983
-OpenRouter work items. The separate manual QA DAG applies a deterministic
-1,000-user ceiling and never changes the production input contract.
-
-Manual production-path re-run example (path keys omitted, so Airflow
-Variable/default paths remain in effect):
-
-```json
-{
-  "partition_date": "2026-07-07",
-  "overwrite": true
-}
+```text
+collect_youtube_trending_partition
+  -> ensure_action_log_shard_000 ┐
+  -> ensure_action_log_shard_001 │
+  -> ensure_action_log_shard_002 ├-> merge_action_log_partition
+  -> ensure_action_log_shard_003 │      -> validate_action_log_partition
+  -> ensure_action_log_shard_004 ┘
 ```
 
-For an isolated 100-user QA, do not mutate global Airflow Variables or Helm
-environment values. Pre-stage the 100-user parquet below a unique
-`qa/action-log/<run-id>` prefix and trigger the same DAG with the complete path
-set:
+총 8개 task이며 처리 순서는 다음과 같습니다.
+
+1. YouTube Data API에서 KR trending 데이터를 수집해 GCS partition을 작성합니다.
+2. virtual-user parquet을 읽고 action-log 작업을 shard별로 분할합니다.
+3. 각 shard가 LLM 판정 결과, manifest, 진행 상태와 checkpoint를 작성합니다.
+4. merge task가 manifest와 fingerprint, quarantine 비율을 검증하고 최종 partition을
+   작성합니다.
+5. `autoresearch.jobs.action_log_quality`가 최종 partition을 검사합니다.
+
+운영 DAG는 `AUTORESEARCH_BATCH_IMAGE`의 immutable GAR digest만 사용합니다. shard
+task는 기본 5개이며 각 task는 Airflow retry 1회, 10분 retry delay, 6시간 30분
+timeout을 사용합니다. 실제 dev 배포는 `action_log_openrouter` Pool을 2 slots로
+설정하고 shard 내부 동시성을 3으로 설정하므로 최대 OpenRouter 요청 동시성은
+`2 × 3 = 6`입니다. merge와 품질 검사는 자동 retry 없이 `all_success` 조건으로
+실행됩니다.
+
+### 수동 QA 파이프라인
+
+`dags/youtube_gcs_action_log_pipeline_qa.py`는 `schedule=None`인 수동 DAG입니다.
+운영 DAG와 동일한 factory, 공개 CLI, 최종 품질 검사를 사용하되 입력 사용자를 최대
+1,000명으로 제한합니다.
+
+- `AUTORESEARCH_BATCH_IMAGE_OVERRIDE`가 있으면 후보 이미지를 사용합니다.
+- 후보 이미지가 없으면 운영 `AUTORESEARCH_BATCH_IMAGE`로 실행합니다.
+- QA 경로 override는 전체 경로를 한 번에 제공해야 합니다.
+- 모든 QA 경로는 하나의 `qa/action-log/<run-id>` 아래에 있어야 하며 서로 달라야
+  합니다.
+- `candidates_per_user`는 완전한 QA 경로 집합과 함께 사용할 때만 1~200 범위로
+  변경할 수 있습니다.
+
+격리 QA trigger 예시는 다음과 같습니다.
 
 ```json
 {
   "partition_date": "2026-07-10",
   "overwrite": true,
   "candidates_per_user": 20,
-  "qa_prefix": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z",
-  "youtube_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/youtube",
-  "virtual_users_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",
-  "action_log_output_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/final",
-  "action_log_quarantine_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/final-quarantine",
-  "action_log_shard_output_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/shard-work",
-  "action_log_shard_quarantine_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/shard-quarantine",
-  "action_log_progress_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/progress",
-  "action_log_checkpoint_base_path": "gs://<bucket>/qa/action-log/run=qa-100-20260710T010203Z/checkpoints"
+  "qa_prefix": "gs://<bucket>/qa/action-log/run=<run-id>",
+  "youtube_base_path": "gs://<bucket>/qa/action-log/run=<run-id>/youtube",
+  "virtual_users_path": "gs://<bucket>/qa/action-log/run=<run-id>/input/virtual-users.parquet",
+  "action_log_output_base_path": "gs://<bucket>/qa/action-log/run=<run-id>/final",
+  "action_log_quarantine_base_path": "gs://<bucket>/qa/action-log/run=<run-id>/final-quarantine",
+  "action_log_shard_output_base_path": "gs://<bucket>/qa/action-log/run=<run-id>/shard-work",
+  "action_log_shard_quarantine_base_path": "gs://<bucket>/qa/action-log/run=<run-id>/shard-quarantine",
+  "action_log_progress_base_path": "gs://<bucket>/qa/action-log/run=<run-id>/progress",
+  "action_log_checkpoint_base_path": "gs://<bucket>/qa/action-log/run=<run-id>/checkpoints"
 }
 ```
 
-QA path overrides are all-or-nothing. Every path must be distinct and below the
-same run-specific `qa_prefix`; a partial set, a production prefix, or an unknown
-run-conf key fails during task template rendering. QA runs may set
-`candidates_per_user` to an integer from 1 through 200 only when the complete QA
-path set is present. `shard_count`, model/generator, bucket, API keys, and Secret
-configuration cannot be supplied through `dag_run.conf`; they remain parse-time
-Airflow Variables or Kubernetes Secrets.
-See [docs/operational-dag-qa.md](docs/operational-dag-qa.md) for the full contract.
+지원하지 않는 `dag_run.conf` key, 일부만 지정한 QA 경로, production 경로와 섞인
+경로는 task template rendering 단계에서 거부됩니다. 자세한 계약은
+[`docs/operational-dag-qa.md`](docs/operational-dag-qa.md)를 참고하십시오.
 
-## Manual YouTube Backfill
+### YouTube 백필
 
-`dags/youtube_backfill_kr.py` is an unscheduled, single-task KPO DAG for the
-application-owned `autoresearch.jobs.youtube_backfill` command. It uses the same
-immutable `AUTORESEARCH_BATCH_IMAGE` as the daily pipeline and never imports
-application Python internals. Production Variables, isolated QA trigger examples,
-overwrite semantics, smoke checks, and rollback are documented in
-[docs/youtube-backfill.md](docs/youtube-backfill.md).
+`dags/youtube_backfill_kr.py`는 `schedule=None`인 단일 KPO DAG입니다.
+`autoresearch.jobs.youtube_backfill`을 실행하며 자동 retry 없이 최대 2시간 동안
+동작합니다. 일치하는 날짜 partition을 교체하도록 `--overwrite=true`를 항상
+전달합니다.
 
-## Local Verification
-
-```bash
-python -m pytest
-python -m compileall dags
-```
-
-## Operational QA
-
-운영 DAG에서 실제 YouTube API 호출과 Mistral Nemo action log 생성을 한 번
-검증하기 위한 준비 항목, 수동 데이터품질 체크 명령, one-off smoke evidence는
-[docs/operational-dag-qa.md](docs/operational-dag-qa.md)에 정리되어 있습니다.
-
-Action-log shard batch entrypoint는
-`autoresearch.action_logs.pipeline`과
-`autoresearch.action_logs.llm_generator`의 INFO 이상 JSON event만 prefix 없는
-한 줄로 stdout에 전달합니다. root logger의 레벨은 변경하지 않으므로 타
-라이브러리의 INFO 로그가 함께 활성화되지 않습니다. API key, prompt, raw
-request/response, user/persona 식별 필드가 포함된 JSON event는 stdout 경계에서
-차단합니다.
-
-## Build Images
-
-Application batch images are released from `SKYAHO/Autoresearch` and pinned here
-by immutable digest. This repository builds only the Airflow runtime image:
-
-```bash
-gcloud builds submit \
-  --project ar-infra-501607 \
-  --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=<tag>
-```
-
-This builds:
+백필을 실제로 다시 실행해야 할 때만 다음 Airflow Variable을 등록합니다.
 
 ```text
-asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
+YOUTUBE_BACKFILL_SOURCE_PATH=gs://<bucket>/<source>.parquet
+YOUTUBE_BACKFILL_OUTPUT_BASE_PATH=gs://<bucket>/data_lake/youtube_trending_kr
 ```
 
-DAG and helper changes are delivered by git-sync and do not require rebuilding
-the Airflow image. Application rollback selects a previously verified immutable
-digest; DAG rollback selects a prior git-sync revision.
+출력 Variable이 없으면 `YOUTUBE_TRENDING_BASE_PATH`를 사용하고, 원본 Variable은
+이전 이름인 `YOUTUBE_BACKFILL_SOURCE`를 대체값으로 지원합니다.
 
-검증된 공개 계약의 production 승격 순서는 다음과 같습니다.
+현재 필요한 historical partition이 GCS에 정상 적재되어 있다면
+`YOUTUBE_BACKFILL_SOURCE`는 기본 Airflow 배포의 필수 조건이 아닙니다. 일일 운영
+DAG와 action-log QA DAG도 이 값을 사용하지 않습니다. 누락·손상된 과거 partition을
+재생성해야 할 때만 `qa_prefix`, `source_path`, `youtube_base_path`를 모두 포함한 격리
+`dag_run.conf` 또는 임시 Airflow Variable로 source를 제공하며, 평상시 배포를 장기
+Secret key의 존재 여부에 의존시키지 않습니다.
 
-1. `Autoresearch` release workflow에서 QA를 통과한 batch image digest와 OCI
-   `org.opencontainers.image.revision`을 확인하고 이전 production digest를 기록합니다.
-2. merge 전에 production DAG를 pause하고 진행 중인 run이 없음을 확인합니다.
-3. `AUTORESEARCH_BATCH_IMAGE`를 검증된 digest로 변경하고 기존 candidate용
-   `AUTORESEARCH_BATCH_IMAGE_OVERRIDE`를 제거합니다.
-4. DAG 커밋을 `main`에 반영한 직후 Helm upgrade를 수행하여 factory, helper,
-   production digest가 함께 전환되게 합니다. Airflow image 재빌드는 필요 없습니다.
-5. scheduler import error, 8-task topology, Pool을 확인한 뒤 격리된 production
-   canary에서 final quality task까지 관찰합니다.
-6. 전체 입력 scheduled run은 issue #44의 단계별 capacity/SLA 승인 뒤 unpause하며,
-   그전까지 이전 digest와 이전 DAG revision을 롤백 후보로 보존합니다.
+격리 QA 실행은 아래 세 경로를 모두 제공해야 합니다.
 
-## GKE Helm Deployment with git-sync
+```json
+{
+  "qa_prefix": "gs://<bucket>/qa/youtube-backfill/run=<run-id>",
+  "source_path": "gs://<bucket>/qa/youtube-backfill/run=<run-id>/input/youtube.parquet",
+  "youtube_base_path": "gs://<bucket>/qa/youtube-backfill/run=<run-id>/output"
+}
+```
 
-This repository can also be deployed to GKE with the Helm umbrella chart in
-`charts/autoresearch-airflow`. The chart depends on the official
-`apache-airflow/airflow` chart and configures Airflow DAG delivery through a
-`git-sync` sidecar.
+자세한 실행과 rollback 절차는
+[`docs/youtube-backfill.md`](docs/youtube-backfill.md)를 참고하십시오.
 
-Default DAG sync source:
+## 실행 설정
+
+### 주요 Airflow 변수
+
+Helm values에서는 Airflow Variable을 `AIRFLOW_VAR_<이름>` 환경변수로 주입합니다.
+
+| Variable | 역할 |
+| --- | --- |
+| `AUTORESEARCH_BATCH_IMAGE` | 운영 KPO가 실행할 애플리케이션 이미지 digest |
+| `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` | 수동 QA에서만 사용하는 후보 이미지 |
+| `AIRFLOW_KPO_NAMESPACE` | KPO pod 실행 namespace, 기본값 `airflow` |
+| `AIRFLOW_KPO_SERVICE_ACCOUNT` | KPO pod Kubernetes ServiceAccount, 기본값 `autoresearch-batch` |
+| `AUTORESEARCH_API_SECRET_NAME` | API key를 읽을 Kubernetes Secret 이름 |
+| `YOUTUBE_TRENDING_BASE_PATH` | YouTube trending 출력 기준 경로 |
+| `ACTION_LOG_VIRTUAL_USERS_PATH` | virtual-user parquet 경로 |
+| `ACTION_LOG_OUTPUT_DIR` | 최종 action-log 출력 기준 경로 |
+| `ACTION_LOG_SHARD_WORK_DIR` | shard 작업 출력 기준 경로 |
+| `ACTION_LOG_PROGRESS_DIR` | shard 진행 상태 기준 경로 |
+| `ACTION_LOG_CHECKPOINT_DIR` | fingerprint별 checkpoint 기준 경로 |
+| `ACTION_LOG_SHARD_COUNT` | DAG parse 시 생성할 shard task 수, 기본값 5 |
+| `ACTION_LOG_OPENROUTER_POOL` | shard task가 사용할 Airflow Pool |
+| `ACTION_LOG_MAX_CONCURRENCY` | shard pod 내부 요청 동시성 |
+
+전체 dev 값은 `helm/values-gke-dev.yaml`과 `helm/values-dev.yaml`에서 확인할 수
+있습니다. `ACTION_LOG_SHARD_COUNT`는 DAG parse 시 topology를 결정하므로 변경 후
+scheduler가 새 DAG revision을 읽었는지 확인해야 합니다.
+
+### Kubernetes 시크릿
+
+기본 Secret 이름은 `autoresearch-airflow-env`이며 KPO pod가 다음 key를
+`secretKeyRef`로 읽습니다.
+
+- YouTube 수집: `YOUTUBE_API_KEYS`, `YOUTUBE_API_KEY`, `YOUTUBE_PROXY_URL`
+- action-log shard: `OPENROUTER_API_KEY`
+
+API key는 CLI argument, Helm values, Airflow Variable에 평문으로 넣지 않습니다.
+OpenRouter timeout과 retry 설정은 비밀값이 아니므로 Airflow Variable에서 읽어 pod
+환경변수로 전달합니다.
+
+## GKE와 Helm 배포
+
+### DAG 전달
+
+dev 환경은 컨테이너 이미지에 DAG를 포함하지 않고 `git-sync`로 다음 위치를
+동기화합니다.
 
 ```yaml
-airflow:
-  dags:
-    gitSync:
-      enabled: true
-      repo: https://github.com/SKYAHO/Autoresearch-airflow.git
-      branch: main
-      ref: main
-      rev: HEAD
-      subPath: dags
-      wait: 30
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: true
+    repo: https://github.com/SKYAHO/Autoresearch-airflow.git
+    branch: main
+    rev: HEAD
+    subPath: dags
+    period: 30s
 ```
 
-Render and lint the chart before deployment:
+DAG와 helper가 같은 git revision으로 배포되므로 DAG 변경만으로는 Airflow runtime
+이미지를 다시 빌드할 필요가 없습니다.
+
+### values 파일 구분
+
+- `charts/autoresearch-airflow`: Apache Airflow chart 1.16.0을 의존성으로 사용하는
+  umbrella chart입니다. chart 기본값은 운영 파라미터를 갖지 않습니다.
+- `environments/gke-values.example.yaml`: 비밀값이 없는 전체 GKE 설정 예제입니다.
+- `helm/values-gke-dev.yaml`: 현재 dev cluster에 적용하는 구체적인 umbrella chart
+  values이며 dev 운영 설정의 기준입니다.
+
+현재 dev 설정의 주요 특성은 다음과 같습니다.
+
+- Airflow 2.10.5, `LocalExecutor`
+- scheduler 1개, webserver 2개, worker 0개
+- bundled PostgreSQL 사용
+- DAG persistence 비활성화, `git-sync` 활성화
+- GKE `airflow-dev` node pool 사용
+- Webserver는 `10.10.0.12` internal LoadBalancer로만 노출
+- Google OAuth allowlist 사용, chart 기본 `admin/admin` 사용자 생성 비활성화
+- 원격 로그 저장 비활성화
+
+umbrella chart 검증 명령은 다음과 같습니다.
 
 ```bash
 helm repo add apache-airflow https://airflow.apache.org
@@ -231,56 +262,45 @@ helm dependency update charts/autoresearch-airflow
 helm lint charts/autoresearch-airflow
 helm template autoresearch-airflow charts/autoresearch-airflow \
   --namespace airflow \
-  --values environments/gke-values.example.yaml >/tmp/autoresearch-airflow.yaml
+  --values environments/gke-values.example.yaml \
+  >/tmp/autoresearch-airflow.yaml
 ```
 
-See `docs/gke-helm-gitsync.md` for the deployment, operations, and rollback
-runbook.
+실제 dev values도 동일한 umbrella chart로 렌더링해 확인합니다.
 
-## Team Airflow Access
+```bash
+helm template airflow charts/autoresearch-airflow \
+  --namespace airflow \
+  --values helm/values-gke-dev.yaml \
+  >/tmp/airflow-gke-dev.yaml
+```
 
-The dev Airflow Webserver is intentionally kept as a `ClusterIP` Service. Team
-members should access it through `kubectl port-forward` until an internal
-VPN/Bastion/IAP path is available.
+배포와 rollback 절차는
+[`docs/gke-helm-gitsync.md`](docs/gke-helm-gitsync.md)를 참고하십시오.
 
-Prerequisites:
+## Airflow Webserver 접근
 
-- Your Google account is added to the GCP project with GKE access.
-- Your Google account is allowed in the Airflow OAuth allowlist.
-- The Google OAuth app includes `http://localhost:8080/oauth-authorized/google`
-  as an authorized redirect URI.
-- `gcloud` and `kubectl` are installed locally.
-
-Configure local cluster access:
+dev Webserver Service는 GKE internal LoadBalancer입니다. 내부 네트워크 또는
+Bastion에서 접근할 수 있으며 Google OAuth redirect URI는 현재
+`http://localhost:8080/oauth-authorized/google`로 등록되어 있습니다. OAuth 로그인을
+검증할 때는 port-forward로 localhost를 유지합니다.
 
 ```powershell
 gcloud auth login
 gcloud config set project ar-infra-501607
-
 gcloud container clusters get-credentials autoresearch-dev-gke `
   --zone asia-northeast3-a `
   --project ar-infra-501607
 
 kubectl get pods -n airflow
-```
-
-Open the Airflow Webserver:
-
-```powershell
 kubectl port-forward -n airflow svc/airflow-webserver 8080:8080
 ```
 
-Then open:
+브라우저에서 `http://localhost:8080/login/`을 열고 allowlist에 등록된 Google 계정으로
+로그인합니다. OAuth redirect URI가 다르므로 `127.0.0.1` 대신 `localhost`를
+사용하십시오.
 
-```text
-http://localhost:8080/login/
-```
-
-Use your allowlisted Google account to sign in. Use `localhost`, not
-`127.0.0.1`, because the OAuth redirect URI is registered for
-`localhost:8080`. Stop port-forwarding with `Ctrl+C`.
-
-If access fails, check the current context and Webserver state:
+접근 문제는 다음 순서로 확인합니다.
 
 ```powershell
 kubectl config current-context
@@ -290,14 +310,65 @@ kubectl get deploy airflow-webserver -n airflow
 kubectl logs -n airflow deploy/airflow-webserver -c webserver --tail=80
 ```
 
-Do not share OAuth client secrets, kubeconfig files, or Kubernetes Secret
-payloads in GitHub, chat, screenshots, or PR comments. The OAuth client secret
-is stored only in the `airflow-web-oauth` Kubernetes Secret.
+OAuth client secret, kubeconfig, Kubernetes Secret payload는 GitHub, 채팅,
+스크린샷, PR 코멘트에 공유하지 않습니다.
 
-## GKE Diagnostics
+## 이미지 빌드
 
-Capture the current Airflow deployment evidence when debugging image pulls,
-resource scheduling, migrations, or init containers:
+애플리케이션 batch 이미지는 `SKYAHO/Autoresearch`에서 빌드하고 검증된 불변
+digest만 이 저장소의 `AUTORESEARCH_BATCH_IMAGE`에 반영합니다. 이 저장소는 Airflow
+runtime 이미지만 빌드합니다.
+
+Cloud Build 실행 예시는 다음과 같습니다.
+
+```bash
+gcloud builds submit \
+  --project ar-infra-501607 \
+  --config cloudbuild.yaml \
+  --substitutions _IMAGE_TAG=<tag>
+```
+
+생성되는 이미지는 다음과 같습니다.
+
+```text
+asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
+```
+
+GitHub Actions의 `Build and Push Airflow Image` workflow도 수동 실행할 수 있으며,
+Workload Identity Federation으로 GAR에 인증합니다.
+
+## 로컬 검증
+
+Python 3.12 환경에서 다음 검증을 실행합니다.
+
+```bash
+python -m pytest
+python -m compileall dags
+git diff --check
+```
+
+Helm까지 포함한 검증은 다음과 같이 실행합니다.
+
+```bash
+make verify
+```
+
+CI는 PR과 `main` push에서 Python 테스트와 DAG compile을 수행하고, 실제 Astro
+Runtime 이미지를 빌드해 Airflow DagBag import 및 DAG별 task 수를 검증합니다.
+별도 Helm workflow는 umbrella chart와 실제 dev values의 dependency·lint·template
+검증을 수행합니다.
+
+## 운영과 롤백
+
+- 모든 KPO task는 `get_logs=True`, `do_xcom_push=False`를 사용합니다.
+- 애플리케이션 로그는 pod stdout을 통해 Airflow task log에서 확인합니다.
+- 현재 dev values는 remote logging과 log persistence를 사용하지 않습니다.
+- 애플리케이션 롤백은 이전 불변 batch image digest로 수행합니다.
+- DAG 롤백은 이전 git revision으로 수행합니다.
+- image digest와 DAG revision은 서로 독립적인 롤백 자산으로 보존합니다.
+- full-volume 실행 전에 Pool, shard 수, pod 내부 동시성, retry를 함께 검토합니다.
+
+GKE 상태 수집은 다음 스크립트를 사용합니다.
 
 ```powershell
 .\scripts\collect_airflow_gke_diagnostics.ps1 `
@@ -306,8 +377,5 @@ resource scheduling, migrations, or init containers:
   -Tail 120
 ```
 
-To keep a timestamped local log outside git:
-
-```powershell
-.\scripts\collect_airflow_gke_diagnostics.ps1 *> airflow-diagnostics.log
-```
+운영 점검과 실행 증거는
+[`docs/operational-dag-qa.md`](docs/operational-dag-qa.md)에 기록합니다.

@@ -1,4 +1,5 @@
 import ast
+import re
 from pathlib import Path
 
 
@@ -127,10 +128,8 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     )
 
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
-    assert (
-        '- name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE\n'
-        f'    value: "{candidate}"'
-    ) in values
+    assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE" in values
+    assert candidate in values
     for suffix in (
         "data_lake/youtube_trending_kr",
         "asset/virtual_user/vu_1000.parquet",
@@ -142,6 +141,24 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
         "data_lake/action_log_checkpoints",
     ):
         assert f"gs://ar-infra-501607-autoresearch-dev-raw-data/{suffix}" in values
+
+
+def test_helm_values_map_backfill_paths_to_airflow_variables() -> None:
+    for relative_path in (
+        "environments/gke-values.example.yaml",
+        "helm/values-dev.yaml",
+        "helm/values-gke-dev.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+
+        assert "AIRFLOW_VAR_YOUTUBE_BACKFILL_SOURCE_PATH" in values
+        assert "AIRFLOW_VAR_YOUTUBE_BACKFILL_OUTPUT_BASE_PATH" in values
+        assert re.search(
+            r"name: AIRFLOW_VAR_YOUTUBE_BACKFILL_SOURCE_PATH"
+            r"[\s\S]*?key: YOUTUBE_BACKFILL_SOURCE\s+optional: true",
+            values,
+        )
+        assert "- name: YOUTUBE_BACKFILL_SOURCE\n" not in values
 
 
 def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() -> None:
@@ -164,24 +181,40 @@ def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() ->
         assert f"AIRFLOW_VAR_{variable_name}" in values
     assert "AIRFLOW_VAR_OPENROUTER_PROVIDER_SORT" not in values
     assert "airflow pools set action_log_openrouter 2" in values
-    assert (
-        '- name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY\n    value: "3"'
-        in values
+    assert re.search(
+        r'- name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY\s+value: "3"',
+        values,
     )
     assert "OPENROUTER_API_KEY" not in values
 
     for relative_path in (
         "helm/values-dev.yaml",
-        "charts/autoresearch-airflow/values.yaml",
+        "environments/gke-values.example.yaml",
     ):
         pool_values = (ROOT / relative_path).read_text(encoding="utf-8")
         assert "airflow pools set action_log_openrouter 5" in pool_values
         assert "airflow pools set action_log_openrouter 2" not in pool_values
         if relative_path.startswith("helm/"):
-            assert (
-                '- name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY\n    value: "3"'
-                in pool_values
+            assert re.search(
+                r'- name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY\s+value: "3"',
+                pool_values,
             )
+
+    chart_defaults = (
+        ROOT / "charts" / "autoresearch-airflow" / "values.yaml"
+    ).read_text(encoding="utf-8")
+    assert "airflow: {}" in chart_defaults
+    assert "action_log_openrouter" not in chart_defaults
+
+
+def test_environment_values_are_scoped_to_the_umbrella_chart() -> None:
+    for relative_path in (
+        "environments/gke-values.example.yaml",
+        "helm/values-dev.yaml",
+        "helm/values-gke-dev.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert "\nairflow:\n" in values
 
 
 def test_cloudbuild_builds_only_the_airflow_runtime_image() -> None:
@@ -204,3 +237,31 @@ def test_github_workflow_builds_only_the_airflow_runtime_image() -> None:
     assert "repository_dispatch" not in workflow
     assert "docker/batch/Dockerfile" not in workflow
     assert "autoresearch-batch:" not in workflow
+
+
+def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    runtime_check = ROOT / "scripts" / "check_airflow_dagbag.py"
+
+    assert "docker build" in workflow
+    assert "docker/airflow/Dockerfile" in workflow
+    assert "scripts/check_airflow_dagbag.py" in workflow
+    assert "docker run --rm" in workflow
+    assert runtime_check.is_file()
+    check_source = runtime_check.read_text(encoding="utf-8")
+    assert "DagBag" in check_source
+    assert '"youtube_gcs_action_log_pipeline": 8' in check_source
+    assert '"youtube_gcs_action_log_pipeline_qa": 8' in check_source
+    assert '"youtube_backfill_kr": 1' in check_source
+
+
+def test_helm_ci_renders_the_concrete_dev_values() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "helm-lint.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "helm template airflow charts/autoresearch-airflow" in workflow
+    assert "helm template airflow apache-airflow/airflow" not in workflow
+    assert "--values helm/values-gke-dev.yaml" in workflow

@@ -23,6 +23,8 @@ PR 제목/본문, issue 제목/본문도 한국어 격식체로 작성합니다.
 - 기본 배포 대상은 GKE이며 Workload Identity 사용을 전제로 합니다.
 - Helm umbrella chart 루트는 `charts/autoresearch-airflow`이고, 실제 dev 배포
   values는 `helm/values-gke-dev.yaml`입니다.
+- umbrella chart 기본값은 운영 파라미터를 소유하지 않습니다. 환경별 values는
+  `airflow:` 아래에 두고 실제 배포와 렌더링 모두 umbrella chart를 사용합니다.
 
 ## Core Rules
 

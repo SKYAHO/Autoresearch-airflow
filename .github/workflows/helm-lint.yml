@@ -35,4 +35,14 @@ jobs:
 
       - name: Render chart
         run: |
-          helm template autoresearch-airflow charts/autoresearch-airflow             --namespace airflow             --values environments/gke-values.example.yaml             >/tmp/autoresearch-airflow.yaml
+          helm template autoresearch-airflow charts/autoresearch-airflow \
+            --namespace airflow \
+            --values environments/gke-values.example.yaml \
+            >/tmp/autoresearch-airflow.yaml
+
+      - name: Render concrete dev values
+        run: |
+          helm template airflow charts/autoresearch-airflow \
+            --namespace airflow \
+            --values helm/values-gke-dev.yaml \
+            >/tmp/airflow-gke-dev.yaml
