@@ -123,7 +123,7 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     candidate = (
         "asia-northeast3-docker.pkg.dev/ar-infra-501607/"
         "autoresearch-dev-docker/autoresearch-batch@sha256:"
-        "6acc380c120f997f6e4aafb15d1c338a531275ba90fbeec889afc5c66c912cc2"
+        "d6648616ff25a32b9429f4020b70110b96c591ccefdfbbab561e7fee0959e8c9"
     )
 
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
