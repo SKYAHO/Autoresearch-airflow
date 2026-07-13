@@ -16,7 +16,7 @@ from airflow.models import Variable
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from kubernetes.client import models as k8s
 
-from autoresearch_airflow.dag_config import (
+from youtube_gcs_action_log_dag_config import (
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
     build_action_log_merge_kpo_arguments,

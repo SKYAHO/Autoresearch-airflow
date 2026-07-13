@@ -1,4 +1,4 @@
-"""git-sync DAG revision과 함께 배포되는 Airflow configuration helper."""
+"""git-sync DAG revision과 함께 배포되는 YouTube action-log helper."""
 
 from __future__ import annotations
 

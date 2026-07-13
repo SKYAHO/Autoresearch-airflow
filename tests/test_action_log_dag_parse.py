@@ -98,8 +98,20 @@ def _install_airflow_stubs(monkeypatch) -> None:
         monkeypatch.setitem(sys.modules, name, module)
 
 
+def _install_stale_image_helper(monkeypatch) -> None:
+    """Simulate the legacy helper package still baked into the Airflow image."""
+
+    stale_package = ModuleType("autoresearch_airflow")
+    stale_package.__path__ = ["/usr/local/airflow/autoresearch_airflow"]
+    stale_config = ModuleType("autoresearch_airflow.dag_config")
+    stale_package.dag_config = stale_config
+    monkeypatch.setitem(sys.modules, "autoresearch_airflow", stale_package)
+    monkeypatch.setitem(sys.modules, "autoresearch_airflow.dag_config", stale_config)
+
+
 def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     _install_airflow_stubs(monkeypatch)
+    _install_stale_image_helper(monkeypatch)
     monkeypatch.syspath_prepend(str(DAG_PATH.parent))
     sys.modules.pop("youtube_gcs_action_log_pipeline_factory", None)
     spec = importlib.util.spec_from_file_location(
@@ -217,6 +229,7 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
 
 def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None:
     _install_airflow_stubs(monkeypatch)
+    _install_stale_image_helper(monkeypatch)
     monkeypatch.syspath_prepend(str(QA_DAG_PATH.parent))
     sys.modules.pop("youtube_gcs_action_log_pipeline_factory", None)
     spec = importlib.util.spec_from_file_location("_qa_dag_under_test", QA_DAG_PATH)

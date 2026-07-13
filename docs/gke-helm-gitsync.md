@@ -38,7 +38,7 @@ airflow:
 
 ## 배포 절차
 
-Action-log DAG helper는 `dags/autoresearch_airflow`에 있으며 DAG와 같은 git-sync
+Action-log DAG helper는 `dags/youtube_gcs_action_log_dag_config.py`이며 DAG와 같은 git-sync
 revision으로 배포됩니다. 애플리케이션 batch image는 `Autoresearch` 저장소가
 release하고, 이 저장소는 검증된 immutable digest를 참조합니다. helper 변경을 위해
 Airflow image를 다시 빌드하지 않습니다.
