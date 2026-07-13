@@ -86,23 +86,24 @@ def test_git_sync_owns_uniquely_named_dag_helper_module() -> None:
     assert not (ROOT / "autoresearch_airflow" / "dag_config.py").exists()
 
 
-def test_batch_dockerfile_uses_uv_and_autoresearch_source() -> None:
-    dockerfile = ROOT / "docker" / "batch" / "Dockerfile"
-    content = dockerfile.read_text(encoding="utf-8")
-
-    assert "ghcr.io/astral-sh/uv:" in content
-    assert "https://github.com/SKYAHO/Autoresearch.git" in content
-    assert "uv venv /opt/venv" in content
-    assert "uv pip install --python /opt/venv/bin/python" in content
-    assert "autoresearch_airflow_jobs" in content
-    assert "git fetch --depth 1 origin" in content
-    assert "git checkout FETCH_HEAD" in content
-    assert 'org.opencontainers.image.revision="${AUTORESEARCH_REF}"' in content
+def test_legacy_batch_build_and_wrapper_sources_are_removed() -> None:
+    for relative_path in (
+        "autoresearch_airflow_jobs/__init__.py",
+        "autoresearch_airflow_jobs/daily_action_log.py",
+        "autoresearch_airflow_jobs/daily_youtube_trending.py",
+        "docker/batch/Dockerfile",
+        "scripts/check_action_log_data_quality.py",
+    ):
+        assert not (ROOT / relative_path).exists()
 
 
 def test_astro_airflow_image_has_required_build_context_files() -> None:
-    assert (ROOT / "packages.txt").read_text(encoding="utf-8").strip() == ""
-    assert (ROOT / "requirements.txt").read_text(encoding="utf-8").strip() == ""
+    context = ROOT / "docker" / "airflow"
+
+    assert (context / "packages.txt").read_text(encoding="utf-8").strip() == ""
+    assert (context / "requirements.txt").read_text(encoding="utf-8").strip() == ""
+    assert not (ROOT / "packages.txt").exists()
+    assert not (ROOT / "requirements.txt").exists()
 
 
 def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
@@ -183,12 +184,23 @@ def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() ->
             )
 
 
-def test_cloudbuild_builds_airflow_and_batch_images_from_configured_ref() -> None:
+def test_cloudbuild_builds_only_the_airflow_runtime_image() -> None:
     config = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
 
-    assert "docker/batch/Dockerfile" in config
     assert "docker/airflow/Dockerfile" in config
-    assert "_AUTORESEARCH_REF: 6db0728da32ac2da6a1997e1e44389fa0bddf3cd" in config
-    assert "AUTORESEARCH_REF=${_AUTORESEARCH_REF}" in config
-    assert "autoresearch-batch:${_IMAGE_TAG}" in config
     assert "autoresearch-airflow:${_IMAGE_TAG}" in config
+    assert "docker/batch/Dockerfile" not in config
+    assert "AUTORESEARCH_REF" not in config
+    assert "autoresearch-batch:${_IMAGE_TAG}" not in config
+
+
+def test_github_workflow_builds_only_the_airflow_runtime_image() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "build-and-push.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "docker/airflow/Dockerfile" in workflow
+    assert "autoresearch-airflow:" in workflow
+    assert "repository_dispatch" not in workflow
+    assert "docker/batch/Dockerfile" not in workflow
+    assert "autoresearch-batch:" not in workflow

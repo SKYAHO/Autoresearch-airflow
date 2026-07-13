@@ -1,18 +1,12 @@
-name: Build and Push Images
+name: Build and Push Airflow Image
 
 on:
   workflow_dispatch:
     inputs:
-      autoresearch_ref:
-        description: 'Autoresearch git ref (tag, SHA, or branch)'
-        required: true
-        default: 'main'
       image_tag:
-        description: 'Docker image tag (defaults to autoresearch_ref if empty)'
+        description: 'Airflow image tag (defaults to short workflow SHA)'
         required: false
         default: ''
-  repository_dispatch:
-    types: [autoresearch-released]
 
 env:
   REGION: asia-northeast3
@@ -32,15 +26,11 @@ jobs:
       - name: Resolve variables
         id: vars
         run: |
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            REF="${{ github.event.client_payload.ref }}"
-            TAG="${{ github.event.client_payload.tag }}"
-          else
-            REF="${{ inputs.autoresearch_ref }}"
-            TAG="${{ inputs.image_tag }}"
+          TAG="${{ inputs.image_tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_SHA::7}"
           fi
-          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG:-$REF}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Authenticate to GCP (WIF)
         id: auth
@@ -55,29 +45,18 @@ jobs:
       - name: Configure Docker for GAR
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-      - name: Build batch image
-        run: |
-          docker build \
-            -f docker/batch/Dockerfile \
-            --build-arg AUTORESEARCH_REF=${{ steps.vars.outputs.ref }} \
-            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-batch:${{ steps.vars.outputs.tag }} \
-            .
-
       - name: Build airflow image
         run: |
           docker build \
             -f docker/airflow/Dockerfile \
             -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }} \
-            .
+            docker/airflow
 
-      - name: Push images
-        run: |
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-batch:${{ steps.vars.outputs.tag }}
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }}
+      - name: Push airflow image
+        run: docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }}
 
       - name: Summary
         run: |
-          echo "## Docker images pushed" >> $GITHUB_STEP_SUMMARY
+          echo "## Airflow image pushed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- \`autoresearch-batch:${{ steps.vars.outputs.tag }}\` (AUTORESEARCH_REF: ${{ steps.vars.outputs.ref }})" >> $GITHUB_STEP_SUMMARY
           echo "- \`autoresearch-airflow:${{ steps.vars.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
