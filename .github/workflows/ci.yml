@@ -29,4 +29,4 @@ jobs:
         run: python -m pytest
 
       - name: Compile Python files
-        run: python -m compileall autoresearch_airflow_jobs dags
+        run: python -m compileall dags

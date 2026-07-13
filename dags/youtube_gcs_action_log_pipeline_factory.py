@@ -2,8 +2,8 @@
 
 Production runs the promoted immutable application image.  The manual QA DAG
 can select a candidate override, falling back to that production image.  The
-legacy wrapper files remain available only as rollback assets and are not
-invoked by either DAG.
+previous immutable image and DAG revision remain rollback assets; neither DAG
+uses a repository-local application wrapper.
 """
 
 from __future__ import annotations
