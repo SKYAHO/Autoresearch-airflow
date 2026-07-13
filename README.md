@@ -174,7 +174,7 @@ QA 공개 계약 반영 순서는 다음과 같습니다.
    OCI `org.opencontainers.image.revision`을 확인합니다.
 2. `AUTORESEARCH_BATCH_IMAGE_OVERRIDE`에 그 digest를 설정하고 모든 GCS 경로를
    완전한 `gs://...` URI로 Helm 배포합니다. 프로덕션 image 값은 바꾸지 않습니다.
-3. DAG 커밋을 `main`에 반영하여 `dags/autoresearch_airflow` helper와 DAG가 같은
+3. DAG 커밋을 `main`에 반영하여 `dags/youtube_gcs_action_log_dag_config.py`와 DAG가 같은
    git-sync revision으로 동기화되게 합니다. Airflow image 재빌드는 필요 없습니다.
 4. scheduler import error와 Pool을 확인한 뒤 격리된 prefix로 QA DAG를 수동
    실행하고 최종 quality task까지 성공하는지 확인합니다.

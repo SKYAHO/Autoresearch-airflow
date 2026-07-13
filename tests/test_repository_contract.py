@@ -77,8 +77,9 @@ def test_manual_qa_dag_is_unscheduled_and_bounded_to_1000_users() -> None:
     assert "public_batch_contract=True" in source
 
 
-def test_git_sync_owns_dag_helper_package() -> None:
-    assert (ROOT / "dags" / "autoresearch_airflow" / "dag_config.py").is_file()
+def test_git_sync_owns_uniquely_named_dag_helper_module() -> None:
+    assert (ROOT / "dags" / "youtube_gcs_action_log_dag_config.py").is_file()
+    assert not (ROOT / "dags" / "autoresearch_airflow" / "dag_config.py").exists()
     assert not (ROOT / "autoresearch_airflow" / "dag_config.py").exists()
 
 
