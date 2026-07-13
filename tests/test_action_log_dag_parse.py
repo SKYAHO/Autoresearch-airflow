@@ -7,6 +7,7 @@ from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[1]
 DAG_PATH = ROOT / "dags" / "youtube_gcs_action_log_pipeline.py"
+QA_DAG_PATH = ROOT / "dags" / "youtube_gcs_action_log_pipeline_qa.py"
 
 
 class _Model:
@@ -100,6 +101,7 @@ def _install_airflow_stubs(monkeypatch) -> None:
 def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     _install_airflow_stubs(monkeypatch)
     monkeypatch.syspath_prepend(str(DAG_PATH.parent))
+    sys.modules.pop("youtube_gcs_action_log_pipeline_factory", None)
     spec = importlib.util.spec_from_file_location(
         "_action_log_dag_under_test", DAG_PATH
     )
@@ -122,6 +124,13 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
 
     collect = dag.task_dict["collect_youtube_trending_partition"]
     merge = dag.task_dict["merge_action_log_partition"]
+    assert "validate_action_log_partition" not in dag.task_dict
+    assert collect.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
+    assert collect.kwargs["cmds"] == [
+        "python",
+        "-m",
+        "autoresearch_airflow_jobs.daily_youtube_trending",
+    ]
     collect_arguments = collect.kwargs["arguments"]
     collect_youtube_path_position = collect_arguments.index("--youtube-base-path") + 1
     assert (
@@ -167,6 +176,12 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         assert task.kwargs["execution_timeout"] == timedelta(hours=6, minutes=30)
         assert task.kwargs["get_logs"] is True
         assert task.kwargs["do_xcom_push"] is False
+        assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
+        assert task.kwargs["cmds"] == [
+            "python",
+            "-m",
+            "autoresearch_airflow_jobs.daily_action_log",
+        ]
         assert "OPENROUTER_API_KEY" not in " ".join(arguments)
         secret_env = task.kwargs["env_vars"][0]
         assert secret_env.name == "OPENROUTER_API_KEY"
@@ -198,3 +213,96 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         path_template = merge_arguments[merge_arguments.index(argument_name) + 1]
         assert "resolve_dag_run_path(dag_run.conf" in path_template
         assert f"'{conf_key}'" in path_template
+
+
+def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None:
+    _install_airflow_stubs(monkeypatch)
+    monkeypatch.syspath_prepend(str(QA_DAG_PATH.parent))
+    sys.modules.pop("youtube_gcs_action_log_pipeline_factory", None)
+    spec = importlib.util.spec_from_file_location("_qa_dag_under_test", QA_DAG_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    dag = module.dag
+    candidate_image = (
+        "{{ var.value.get('AUTORESEARCH_BATCH_IMAGE_OVERRIDE', "
+        "var.value.AUTORESEARCH_BATCH_IMAGE) }}"
+    )
+    assert dag.kwargs["schedule"] is None
+    assert len(dag.task_dict) == 8
+    assert all(
+        task.kwargs["image"] == candidate_image for task in dag.task_dict.values()
+    )
+
+    collect = dag.task_dict["collect_youtube_trending_partition"]
+    merge = dag.task_dict["merge_action_log_partition"]
+    quality = dag.task_dict["validate_action_log_partition"]
+    shards = [
+        task
+        for task_id, task in dag.task_dict.items()
+        if task_id.startswith("ensure_action_log_shard_")
+    ]
+    assert len(shards) == 5
+    assert collect.kwargs["cmds"] == [
+        "python",
+        "-m",
+        "autoresearch.jobs.youtube_trending",
+    ]
+    assert "--bucket" not in collect.kwargs["arguments"]
+    assert "--overwrite" in collect.kwargs["arguments"]
+
+    for shard in shards:
+        arguments = shard.kwargs["arguments"]
+        assert shard.kwargs["cmds"] == [
+            "python",
+            "-m",
+            "autoresearch.jobs.action_log",
+        ]
+        assert arguments[arguments.index("--max-users") + 1] == "1000"
+        for forbidden_argument in (
+            "--bucket",
+            "--final-output-base-path",
+            "--final-quarantine-base-path",
+        ):
+            assert forbidden_argument not in arguments
+        assert shard.downstream_task_ids == {merge.task_id}
+
+    merge_arguments = merge.kwargs["arguments"]
+    assert merge.kwargs["cmds"] == [
+        "python",
+        "-m",
+        "autoresearch.jobs.action_log",
+    ]
+    for forbidden_argument in (
+        "--bucket",
+        "--quarantine-base-path",
+        "--shard-quarantine-base-path",
+    ):
+        assert forbidden_argument not in merge_arguments
+    assert "--overwrite" in merge_arguments
+    assert merge.downstream_task_ids == {quality.task_id}
+
+    assert quality.kwargs["cmds"] == [
+        "python",
+        "-m",
+        "autoresearch.jobs.action_log_quality",
+    ]
+    assert quality.kwargs["arguments"] == [
+        "--partition-date",
+        "{{ dag_run.conf.get('partition_date') or "
+        "data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",
+        "--youtube-base-path",
+        "{{ resolve_dag_run_path(dag_run.conf, 'youtube_base_path', "
+        "var.value.get('ACTION_LOG_YOUTUBE_BASE_PATH', '')) }}",
+        "--virtual-users-path",
+        "{{ resolve_dag_run_path(dag_run.conf, 'virtual_users_path', "
+        "var.value.get('ACTION_LOG_VIRTUAL_USERS_PATH', '')) }}",
+        "--action-log-base-path",
+        "{{ resolve_dag_run_path(dag_run.conf, 'action_log_output_base_path', "
+        "var.value.get('ACTION_LOG_OUTPUT_DIR', '')) }}",
+        "--expected-model",
+        "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
+    ]
+    assert quality.kwargs["trigger_rule"] == "all_success"
+    assert quality.kwargs["retries"] == 0

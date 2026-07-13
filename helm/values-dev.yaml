@@ -27,6 +27,8 @@ env:
     value: "<gcs-bucket-name-without-gs-prefix>"
   - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
     value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch:replace-me"
+  - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE
+    value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch@sha256:<candidate-digest>"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
     value: "airflow"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
@@ -34,7 +36,7 @@ env:
   - name: AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME
     value: "autoresearch-airflow-env"
   - name: AIRFLOW_VAR_YOUTUBE_TRENDING_BASE_PATH
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/youtube_trending_kr"
   - name: AIRFLOW_VAR_YOUTUBE_TRENDING_REGION_CODE
     value: "KR"
   - name: AIRFLOW_VAR_YOUTUBE_TRENDING_MAX_RESULTS
@@ -44,21 +46,21 @@ env:
   - name: AIRFLOW_VAR_ACTION_LOG_MODEL_NAME
     value: "mistralai/mistral-nemo"
   - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/youtube_trending_kr"
   - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/asset/virtual_user/vu_1000.parquet"
   - name: AIRFLOW_VAR_ACTION_LOG_OUTPUT_DIR
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log"
   - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_quarantine"
   - name: AIRFLOW_VAR_ACTION_LOG_SHARD_WORK_DIR
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_work"
   - name: AIRFLOW_VAR_ACTION_LOG_SHARD_QUARANTINE_DIR
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_quarantine_work"
   - name: AIRFLOW_VAR_ACTION_LOG_PROGRESS_DIR
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_progress"
   - name: AIRFLOW_VAR_ACTION_LOG_CHECKPOINT_DIR
-    value: ""
+    value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_checkpoints"
   - name: AIRFLOW_VAR_ACTION_LOG_SHARD_COUNT
     value: "5"
   - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER

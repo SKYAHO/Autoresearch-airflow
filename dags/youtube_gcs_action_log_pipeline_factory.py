@@ -1,7 +1,8 @@
 """Factory for the YouTube-to-action-log Kubernetes DAGs.
 
-The production and manual QA DAGs intentionally share one task graph and one
-set of KubernetesPodOperator settings.  Only the DAG id and schedule differ.
+Production keeps the rollback-safe legacy wrappers until the public application
+contract has passed QA.  The manual QA DAG exercises that public contract and
+adds a final data-quality gate.
 """
 
 from __future__ import annotations
@@ -20,6 +21,10 @@ from autoresearch_airflow.dag_config import (
     YouTubeTrendingDagSettings,
     build_action_log_merge_kpo_arguments,
     build_action_log_shard_kpo_arguments,
+    build_public_action_log_merge_kpo_arguments,
+    build_public_action_log_quality_kpo_arguments,
+    build_public_action_log_shard_kpo_arguments,
+    build_public_youtube_trending_kpo_arguments,
     build_youtube_trending_kpo_arguments,
     resolve_dag_run_path as _resolve_dag_run_path,
 )
@@ -129,7 +134,8 @@ def _positive_int_variable(name: str, default: int) -> int:
 
 
 _ACTION_LOG_SHARD_COUNT = _positive_int_variable("ACTION_LOG_SHARD_COUNT", 5)
-_BATCH_IMAGE_TEMPLATE = (
+_PRODUCTION_BATCH_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
+_QA_BATCH_IMAGE_TEMPLATE = (
     "{{ var.value.get('AUTORESEARCH_BATCH_IMAGE_OVERRIDE', "
     "var.value.AUTORESEARCH_BATCH_IMAGE) }}"
 )
@@ -178,17 +184,41 @@ def build_youtube_gcs_action_log_pipeline(
     start_date: datetime | None = None,
     tags: list[str] | None = None,
     max_users: int | None = None,
+    public_batch_contract: bool = False,
 ) -> DAG:
-    """Build the shared production/QA YouTube action-log DAG."""
+    """Build the production or QA YouTube action-log DAG."""
 
     if max_users is not None and max_users < 1:
         raise ValueError("max_users must be at least 1")
 
+    batch_image = (
+        _QA_BATCH_IMAGE_TEMPLATE
+        if public_batch_contract
+        else _PRODUCTION_BATCH_IMAGE_TEMPLATE
+    )
+    youtube_module = (
+        "autoresearch.jobs.youtube_trending"
+        if public_batch_contract
+        else "autoresearch_airflow_jobs.daily_youtube_trending"
+    )
+    action_log_module = (
+        "autoresearch.jobs.action_log"
+        if public_batch_contract
+        else "autoresearch_airflow_jobs.daily_action_log"
+    )
+    youtube_arguments = (
+        build_public_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS)
+        if public_batch_contract
+        else build_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS)
+    )
+
     def shard_arguments(shard_index: int) -> list[str]:
-        arguments = build_action_log_shard_kpo_arguments(
-            _ACTION_LOG_SETTINGS,
-            shard_index=shard_index,
+        builder = (
+            build_public_action_log_shard_kpo_arguments
+            if public_batch_contract
+            else build_action_log_shard_kpo_arguments
         )
+        arguments = builder(_ACTION_LOG_SETTINGS, shard_index=shard_index)
         if max_users is not None:
             candidates_position = arguments.index("--candidates-per-user")
             arguments[candidates_position:candidates_position] = [
@@ -216,9 +246,9 @@ def build_youtube_gcs_action_log_pipeline(
             task_id="collect_youtube_trending_partition",
             name="collect-youtube-trending-partition",
             namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
-            image=_BATCH_IMAGE_TEMPLATE,
-            cmds=["python", "-m", "autoresearch_airflow_jobs.daily_youtube_trending"],
-            arguments=build_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS),
+            image=batch_image,
+            cmds=["python", "-m", youtube_module],
+            arguments=youtube_arguments,
             env_vars=_secret_env_vars("YOUTUBE_API_KEYS", "YOUTUBE_API_KEY", "YOUTUBE_PROXY_URL"),
             service_account_name=_KPO_SERVICE_ACCOUNT,
             image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
@@ -240,8 +270,8 @@ def build_youtube_gcs_action_log_pipeline(
                 task_id=f"ensure_action_log_shard_{shard_index:03d}",
                 name=f"ensure-action-log-shard-{shard_index:03d}",
                 namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
-                image=_BATCH_IMAGE_TEMPLATE,
-                cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
+                image=batch_image,
+                cmds=["python", "-m", action_log_module],
                 arguments=shard_arguments(shard_index),
                 env_vars=[
                     *_secret_env_vars("OPENROUTER_API_KEY", optional=False),
@@ -276,9 +306,13 @@ def build_youtube_gcs_action_log_pipeline(
             task_id="merge_action_log_partition",
             name="merge-action-log-partition",
             namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
-            image=_BATCH_IMAGE_TEMPLATE,
-            cmds=["python", "-m", "autoresearch_airflow_jobs.daily_action_log"],
-            arguments=build_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS),
+            image=batch_image,
+            cmds=["python", "-m", action_log_module],
+            arguments=(
+                build_public_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS)
+                if public_batch_contract
+                else build_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS)
+            ),
             env_vars=_secret_env_vars(),
             service_account_name=_KPO_SERVICE_ACCOUNT,
             image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
@@ -297,5 +331,33 @@ def build_youtube_gcs_action_log_pipeline(
             ),
         )
         collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition
+
+        if public_batch_contract:
+            validate_action_log_partition = KubernetesPodOperator(
+                task_id="validate_action_log_partition",
+                name="validate-action-log-partition",
+                namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
+                image=batch_image,
+                cmds=["python", "-m", "autoresearch.jobs.action_log_quality"],
+                arguments=build_public_action_log_quality_kpo_arguments(
+                    _ACTION_LOG_SETTINGS
+                ),
+                service_account_name=_KPO_SERVICE_ACCOUNT,
+                image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
+                in_cluster=True,
+                get_logs=True,
+                is_delete_operator_pod=True,
+                do_xcom_push=False,
+                retries=0,
+                trigger_rule="all_success",
+                execution_timeout=timedelta(minutes=30),
+                startup_timeout_seconds=600,
+                labels={"app": "autoresearch", "pipeline": "action-log-quality"},
+                container_resources=k8s.V1ResourceRequirements(
+                    requests={"cpu": "250m", "memory": "512Mi"},
+                    limits={"cpu": "1", "memory": "2Gi"},
+                ),
+            )
+            merge_action_log_partition >> validate_action_log_partition
 
     return dag

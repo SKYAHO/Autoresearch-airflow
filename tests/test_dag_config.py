@@ -8,6 +8,10 @@ from autoresearch_airflow.dag_config import (
     build_action_log_merge_kpo_arguments,
     build_action_log_kpo_arguments,
     build_action_log_shard_kpo_arguments,
+    build_public_action_log_merge_kpo_arguments,
+    build_public_action_log_quality_kpo_arguments,
+    build_public_action_log_shard_kpo_arguments,
+    build_public_youtube_trending_kpo_arguments,
     build_youtube_trending_kpo_arguments,
     resolve_candidates_per_user,
     resolve_dag_run_path,
@@ -334,4 +338,82 @@ def test_build_youtube_trending_kpo_arguments_uses_airflow_templates() -> None:
         "{{ var.value.get('YOUTUBE_TRENDING_MAX_RESULTS', '200') }}",
         "--proxy-url",
         "{{ var.value.get('YOUTUBE_PROXY_URL', '') }}",
+    ]
+
+
+def test_public_youtube_arguments_use_canonical_full_path_contract() -> None:
+    args = build_public_youtube_trending_kpo_arguments(
+        YouTubeTrendingDagSettings()
+    )
+
+    assert "--bucket" not in args
+    assert args[-2:] == [
+        "--overwrite",
+        "{{ dag_run.conf.get('overwrite', false) }}",
+    ]
+
+
+def test_public_action_log_shard_arguments_exclude_legacy_final_paths() -> None:
+    args = build_public_action_log_shard_kpo_arguments(
+        ActionLogDagSettings(),
+        shard_index=3,
+    )
+
+    assert args[:3] == ["--mode", "shard", "--partition-date"]
+    assert args[args.index("--shard-index") + 1] == "3"
+    for forbidden_argument in (
+        "--bucket",
+        "--final-output-base-path",
+        "--final-quarantine-base-path",
+    ):
+        assert forbidden_argument not in args
+    for required_argument in (
+        "--youtube-base-path",
+        "--virtual-users-path",
+        "--output-base-path",
+        "--quarantine-base-path",
+        "--progress-base-path",
+        "--checkpoint-base-path",
+    ):
+        assert required_argument in args
+
+
+def test_public_action_log_merge_arguments_match_canonical_contract() -> None:
+    args = build_public_action_log_merge_kpo_arguments(ActionLogDagSettings())
+
+    assert args == [
+        "--mode",
+        "merge",
+        "--partition-date",
+        PARTITION_DATE_TEMPLATE,
+        "--shard-count",
+        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}",
+        "--shard-output-base-path",
+        _path_template(
+            "action_log_shard_output_base_path",
+            "ACTION_LOG_SHARD_WORK_DIR",
+        ),
+        "--output-base-path",
+        _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"),
+        "--max-quarantine-ratio",
+        "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}",
+        "--overwrite",
+        "{{ dag_run.conf.get('overwrite', false) }}",
+    ]
+
+
+def test_public_action_log_quality_arguments_validate_final_partition() -> None:
+    args = build_public_action_log_quality_kpo_arguments(ActionLogDagSettings())
+
+    assert args == [
+        "--partition-date",
+        PARTITION_DATE_TEMPLATE,
+        "--youtube-base-path",
+        _path_template("youtube_base_path", "ACTION_LOG_YOUTUBE_BASE_PATH"),
+        "--virtual-users-path",
+        _path_template("virtual_users_path", "ACTION_LOG_VIRTUAL_USERS_PATH"),
+        "--action-log-base-path",
+        _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"),
+        "--expected-model",
+        "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
     ]

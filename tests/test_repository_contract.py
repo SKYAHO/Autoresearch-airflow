@@ -74,6 +74,12 @@ def test_manual_qa_dag_is_unscheduled_and_bounded_to_1000_users() -> None:
     assert 'dag_id="youtube_gcs_action_log_pipeline_qa"' in source
     assert "schedule=None" in source
     assert "max_users=1000" in source
+    assert "public_batch_contract=True" in source
+
+
+def test_git_sync_owns_dag_helper_package() -> None:
+    assert (ROOT / "dags" / "autoresearch_airflow" / "dag_config.py").is_file()
+    assert not (ROOT / "autoresearch_airflow" / "dag_config.py").exists()
 
 
 def test_batch_dockerfile_uses_uv_and_autoresearch_source() -> None:
@@ -103,6 +109,29 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "enabled: true" in values
     assert "https://github.com/SKYAHO/Autoresearch-airflow.git" in values
     assert "subPath: dags" in values
+
+
+def test_gke_values_pin_qa_candidate_digest_and_complete_gcs_paths() -> None:
+    values = (ROOT / "helm" / "values-gke-dev.yaml").read_text(encoding="utf-8")
+    candidate = (
+        "asia-northeast3-docker.pkg.dev/ar-infra-501607/"
+        "autoresearch-dev-docker/autoresearch-batch@sha256:"
+        "6acc380c120f997f6e4aafb15d1c338a531275ba90fbeec889afc5c66c912cc2"
+    )
+
+    assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" in values
+    assert candidate in values
+    for suffix in (
+        "data_lake/youtube_trending_kr",
+        "asset/virtual_user/vu_1000.parquet",
+        "data_lake/action_log",
+        "data_lake/action_log_quarantine",
+        "data_lake/action_log_work",
+        "data_lake/action_log_quarantine_work",
+        "data_lake/action_log_progress",
+        "data_lake/action_log_checkpoints",
+    ):
+        assert f"gs://ar-infra-501607-autoresearch-dev-raw-data/{suffix}" in values
 
 
 def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() -> None:
