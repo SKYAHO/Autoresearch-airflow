@@ -1,4 +1,4 @@
-"""Shared Airflow DAG configuration helpers."""
+"""git-sync DAG revision과 함께 배포되는 Airflow configuration helper."""
 
 from __future__ import annotations
 
@@ -186,6 +186,7 @@ class YouTubeTrendingDagSettings:
         "{{ var.value.get('YOUTUBE_TRENDING_MAX_RESULTS', '200') }}"
     )
     proxy_url_template: str = "{{ var.value.get('YOUTUBE_PROXY_URL', '') }}"
+    overwrite_template: str = "{{ dag_run.conf.get('overwrite', false) }}"
 
 
 @dataclass(frozen=True)
@@ -279,6 +280,27 @@ def build_youtube_trending_kpo_arguments(
     ]
 
 
+def build_public_youtube_trending_kpo_arguments(
+    settings: YouTubeTrendingDagSettings,
+) -> list[str]:
+    """Build canonical public CLI arguments without the legacy bucket fallback."""
+
+    return [
+        "--partition-date",
+        settings.partition_date_template,
+        "--youtube-base-path",
+        settings.youtube_base_path_template,
+        "--region-code",
+        settings.region_code_template,
+        "--max-results",
+        settings.max_results_template,
+        "--proxy-url",
+        settings.proxy_url_template,
+        "--overwrite",
+        settings.overwrite_template,
+    ]
+
+
 def _build_action_log_common_arguments(
     settings: ActionLogDagSettings,
     *,
@@ -292,6 +314,52 @@ def _build_action_log_common_arguments(
         settings.partition_date_template,
         "--bucket",
         settings.bucket_template,
+        "--youtube-base-path",
+        settings.youtube_base_path_template,
+        "--virtual-users-path",
+        settings.virtual_users_path_template,
+        "--output-base-path",
+        output_base_path_template,
+        "--quarantine-base-path",
+        quarantine_base_path_template,
+        "--overwrite",
+        settings.overwrite_template,
+        "--generator-name",
+        settings.generator_name_template,
+        "--model-name",
+        settings.model_name_template,
+        "--candidates-per-user",
+        settings.candidates_per_user_template,
+        "--target-ctr",
+        settings.target_ctr_template,
+        "--personalized-ratio",
+        settings.personalized_ratio_template,
+        "--popular-ratio",
+        settings.popular_ratio_template,
+        "--exploration-ratio",
+        settings.exploration_ratio_template,
+        "--seed",
+        settings.seed_template,
+        "--max-concurrency",
+        settings.max_concurrency_template,
+        "--chunk-size",
+        settings.chunk_size_template,
+        "--max-quarantine-ratio",
+        settings.max_quarantine_ratio_template,
+    ]
+
+
+def _build_public_action_log_common_arguments(
+    settings: ActionLogDagSettings,
+    *,
+    output_base_path_template: str,
+    quarantine_base_path_template: str,
+) -> list[str]:
+    """Build the public action-log arguments shared by single and shard modes."""
+
+    return [
+        "--partition-date",
+        settings.partition_date_template,
         "--youtube-base-path",
         settings.youtube_base_path_template,
         "--virtual-users-path",
@@ -367,6 +435,32 @@ def build_action_log_shard_kpo_arguments(
     ]
 
 
+def build_public_action_log_shard_kpo_arguments(
+    settings: ActionLogDagSettings,
+    *,
+    shard_index: int,
+) -> list[str]:
+    """Build canonical public CLI arguments for one action-log shard."""
+
+    return [
+        "--mode",
+        "shard",
+        *_build_public_action_log_common_arguments(
+            settings,
+            output_base_path_template=settings.shard_output_base_path_template,
+            quarantine_base_path_template=settings.shard_quarantine_base_path_template,
+        ),
+        "--shard-index",
+        str(shard_index),
+        "--shard-count",
+        settings.shard_count_template,
+        "--progress-base-path",
+        settings.progress_base_path_template,
+        "--checkpoint-base-path",
+        settings.checkpoint_base_path_template,
+    ]
+
+
 def build_action_log_merge_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
     """Build CLI arguments for the action log shard merge container."""
 
@@ -389,4 +483,46 @@ def build_action_log_merge_kpo_arguments(settings: ActionLogDagSettings) -> list
         settings.shard_count_template,
         "--max-quarantine-ratio",
         settings.max_quarantine_ratio_template,
+    ]
+
+
+def build_public_action_log_merge_kpo_arguments(
+    settings: ActionLogDagSettings,
+) -> list[str]:
+    """Build canonical public CLI arguments for action-log shard merge."""
+
+    return [
+        "--mode",
+        "merge",
+        "--partition-date",
+        settings.partition_date_template,
+        "--shard-count",
+        settings.shard_count_template,
+        "--shard-output-base-path",
+        settings.shard_output_base_path_template,
+        "--output-base-path",
+        settings.output_base_path_template,
+        "--max-quarantine-ratio",
+        settings.max_quarantine_ratio_template,
+        "--overwrite",
+        settings.overwrite_template,
+    ]
+
+
+def build_public_action_log_quality_kpo_arguments(
+    settings: ActionLogDagSettings,
+) -> list[str]:
+    """Build canonical public CLI arguments for the final quality gate."""
+
+    return [
+        "--partition-date",
+        settings.partition_date_template,
+        "--youtube-base-path",
+        settings.youtube_base_path_template,
+        "--virtual-users-path",
+        settings.virtual_users_path_template,
+        "--action-log-base-path",
+        settings.output_base_path_template,
+        "--expected-model",
+        settings.model_name_template,
     ]

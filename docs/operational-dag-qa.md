@@ -1,8 +1,9 @@
 # Operational DAG QA for YouTube API and Mistral Nemo
 
 반복 수동 QA는 `youtube_gcs_action_log_pipeline_qa` DAG를 사용한다. 이 DAG는
-운영 DAG와 동일한 factory/task graph를 사용하지만 `schedule=None`이며, 운영 DAG를
-unpause하지 않아도 수동 trigger할 수 있다. 운영 DAG는
+운영 DAG와 같은 factory를 사용하지만 공개 application CLI와 최종 quality task를
+활성화하고 `schedule=None`이므로, 운영 DAG를 unpause하지 않아도 수동 trigger할 수
+있다. 운영 DAG는
 `youtube_gcs_action_log_pipeline`로 유지한다. QA DAG는 입력 parquet의 앞 1,000명만
 결정론적으로 처리하지만, 운영 DAG는 configured virtual-user parquet의 전체 행을
 처리한다.
@@ -22,9 +23,10 @@ YouTube Data API v3
   -> GCS action log parquet
 ```
 
-데이터품질 QA는 DAG 태스크로 매일 넣지 않는다. 운영 DAG 배포 후 특정
-`partition_date`를 한 번 수동 trigger하고, 생성된 parquet을
-`scripts/check_action_log_data_quality.py`로 읽어 품질을 확인한다.
+데이터품질 검사는 QA DAG의 `validate_action_log_partition` task가 공개
+`autoresearch.jobs.action_log_quality` CLI로 수행한다. 기존 수동 검사 script는
+과거 증거 재현과 추가 진단용으로 유지하며, 예약 production DAG에는 아직 quality
+task를 추가하지 않는다.
 
 ## 현재 충족된 조건
 
@@ -79,6 +81,13 @@ collect_youtube_trending_partition
   -> merge_action_log_partition (all_success)
 ```
 
+`youtube_gcs_action_log_pipeline_qa`는 동일한 fan-out/fan-in 뒤 quality gate를
+추가하며, 모든 pod가 `Autoresearch` 공개 module을 실행한다.
+
+```text
+collect -> 5 shards -> merge -> validate_action_log_partition
+```
+
 스케줄은 2026-07-13부터 KST 00:00이고, 운영 목표는 KST 10:00에 YouTube partition과
 action log partition을 모두 GCS에서 확인할 수 있게 하는 것이다. 기본
 partition date는 `data_interval_end`를 KST로 변환한 날짜다. 수동 실행
@@ -121,10 +130,10 @@ gs://<bucket>/qa/action-log/run=<run_id>/final-quarantine/dt=<yyyy-mm-dd>/quaran
   바꾸지 않습니다. model/generator와 Secret도 기존 Airflow Variable 및
   Kubernetes Secret 계약을 유지합니다.
 
-이 기능은 DAG가 `autoresearch_airflow.dag_config`의 새 macro helper를 사용하므로
-git-sync DAG commit만 먼저 반영하면 안 됩니다. 동일 commit으로 Airflow image를
-빌드·배포한 뒤 그 commit의 DAG를 동기화하고 scheduler import error가 없는지
-확인합니다. Batch CLI의 기존 path argument 자체는 변경하지 않습니다.
+macro helper는 `dags/autoresearch_airflow`에 있으므로 DAG와 동일한 git-sync
+commit으로 배포됩니다. Airflow image 재빌드는 필요하지 않습니다. QA batch
+image digest와 완전한 GCS URI를 Helm으로 먼저 반영한 뒤 git-sync commit과
+scheduler import error를 확인합니다.
 
 ### 4. Airflow variables
 
@@ -133,23 +142,23 @@ git-sync DAG commit만 먼저 반영하면 안 됩니다. 동일 commit으로 Ai
 ```text
 YOUTUBE_LAKE_BUCKET=ar-infra-501607-autoresearch-dev-raw-data
 AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch:<tag>
-AUTORESEARCH_BATCH_IMAGE_OVERRIDE=<optional immutable digest override>
+AUTORESEARCH_BATCH_IMAGE_OVERRIDE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<candidate-digest>
 AIRFLOW_KPO_NAMESPACE=airflow
 AIRFLOW_KPO_SERVICE_ACCOUNT=autoresearch-batch
 AUTORESEARCH_API_SECRET_NAME=autoresearch-airflow-env
-YOUTUBE_TRENDING_BASE_PATH=<empty for default or production base path>
+YOUTUBE_TRENDING_BASE_PATH=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr
 YOUTUBE_TRENDING_REGION_CODE=KR
 YOUTUBE_TRENDING_MAX_RESULTS=200
 ACTION_LOG_GENERATOR=openrouter
 ACTION_LOG_MODEL_NAME=mistralai/mistral-nemo
-ACTION_LOG_YOUTUBE_BASE_PATH=<empty for default or production base path>
-ACTION_LOG_VIRTUAL_USERS_PATH=<empty for default or production parquet path>
-ACTION_LOG_OUTPUT_DIR=<empty for default or production action log base path>
-ACTION_LOG_QUARANTINE_DIR=<empty for default or production quarantine base path>
-ACTION_LOG_SHARD_WORK_DIR=<empty for default or production shard work base path>
-ACTION_LOG_SHARD_QUARANTINE_DIR=<empty for default or production quarantine work base path>
-ACTION_LOG_PROGRESS_DIR=<empty for default or production progress base path>
-ACTION_LOG_CHECKPOINT_DIR=<empty for default or production checkpoint base path>
+ACTION_LOG_YOUTUBE_BASE_PATH=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr
+ACTION_LOG_VIRTUAL_USERS_PATH=gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet
+ACTION_LOG_OUTPUT_DIR=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log
+ACTION_LOG_QUARANTINE_DIR=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_quarantine
+ACTION_LOG_SHARD_WORK_DIR=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_work
+ACTION_LOG_SHARD_QUARANTINE_DIR=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_quarantine_work
+ACTION_LOG_PROGRESS_DIR=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_progress
+ACTION_LOG_CHECKPOINT_DIR=gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_checkpoints
 ACTION_LOG_SHARD_COUNT=5
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_TARGET_CTR=0.02
@@ -210,10 +219,9 @@ OpenRouter 요청, JSON/schema 처리, checkpoint/progress 쓰기, 처리율과 
 수 있습니다. 이 계약은 stdout 전달 범위이며 durable remote logging을 활성화하지
 않습니다.
 
-Shard 000은 시작 시 기존 final parquet을 무효화합니다. Merge도 시작 전에 final을
-삭제하고, 앱 merge 호출 중 어떤 예외가 발생해도 부분 게시된 final parquet을 다시
-삭제합니다. 전역 quarantine 비율 초과 시 현재 quarantine은 보존할 수 있지만 final
-parquet은 성공 산출물로 남지 않습니다.
+기존 production wrapper의 stale-final 무효화 로직은 그대로 유지됩니다. 공개 QA
+shard에는 final 경로를 전달하지 않으며, final publication은 merge가 담당합니다.
+같은 partition을 교체하는 QA 실행은 `overwrite=true`를 명시해야 합니다.
 
 수동 trigger 예시:
 

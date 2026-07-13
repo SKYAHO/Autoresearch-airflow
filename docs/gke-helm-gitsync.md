@@ -38,30 +38,27 @@ airflow:
 
 ## 배포 절차
 
-Action-log shard DAG는 batch image와 Airflow helper image에 동시에 의존합니다.
-따라서 DAG를 `main`에 반영하기 전에 애플리케이션 커밋이 포함된 image를 먼저
-빌드하고 Helm으로 배포합니다. image 반영 전 DAG 변경은 live 적용으로 간주하지
-않습니다.
+Action-log DAG helper는 `dags/autoresearch_airflow`에 있으며 DAG와 같은 git-sync
+revision으로 배포됩니다. 애플리케이션 batch image는 `Autoresearch` 저장소가
+release하고, 이 저장소는 검증된 immutable digest를 참조합니다. helper 변경을 위해
+Airflow image를 다시 빌드하지 않습니다.
 
 ```bash
-IMAGE_TAG=action-log-shard-6db0728-<yyyymmdd-hhmmss>
-
-gcloud builds submit \
-  --project ar-infra-501607 \
-  --config cloudbuild.yaml \
-  --substitutions _IMAGE_TAG=${IMAGE_TAG},_AUTORESEARCH_REF=6db0728da32ac2da6a1997e1e44389fa0bddf3cd
+QA_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<verified-digest>
 ```
 
 배포 순서는 반드시 다음과 같습니다.
 
-1. Artifact Registry에서 새 batch image digest와
-   `org.opencontainers.image.revision=6db0728...`를 확인합니다.
-2. `helm/values-gke-dev.yaml`의 Airflow/batch image tag를 새 tag로 바꾸고 Helm
-   upgrade를 수행합니다. 이 단계에서 action-log Variable과 Pool도 반영합니다.
+1. `Autoresearch` release workflow와 Artifact Registry에서 candidate digest,
+   OCI revision, public CLI smoke 결과를 확인합니다.
+2. `helm/values-gke-dev.yaml`의 `AUTORESEARCH_BATCH_IMAGE_OVERRIDE`에 candidate
+   digest를 넣고 모든 batch 경로가 완전한 `gs://...` URI인지 확인한 뒤 Helm
+   upgrade를 수행합니다. `AUTORESEARCH_BATCH_IMAGE`는 그대로 둡니다.
 3. scheduler와 webserver rollout, `action_log_openrouter=2 slots`를 확인합니다.
-4. 그 후에만 DAG 변경을 `main`에 반영하고 git-sync의 새 commit 동기화와 DAG
-   import 상태를 확인합니다.
-5. 수동 run으로 shard fan-out과 단일 merge를 확인합니다.
+4. DAG 변경을 `main`에 반영하고 helper를 포함한 git-sync commit 및 DAG import
+   상태를 확인합니다.
+5. 격리된 GCS prefix로 QA DAG를 실행해 5개 shard, 단일 merge, 최종 quality
+   task가 모두 성공하는지 확인합니다. 프로덕션 전환은 이 증거 이후 별도 단계입니다.
 
 1. GKE cluster와 `airflow` namespace를 준비합니다.
 2. Workload Identity용 Kubernetes ServiceAccount와 Google ServiceAccount 매핑을
