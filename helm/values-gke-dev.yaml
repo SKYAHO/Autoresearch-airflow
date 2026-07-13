@@ -85,7 +85,7 @@ env:
   - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
     value: "ar-infra-501607-autoresearch-dev-raw-data"
   - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
-    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:6acc380c120f997f6e4aafb15d1c338a531275ba90fbeec889afc5c66c912cc2"
+    value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:d6648616ff25a32b9429f4020b70110b96c591ccefdfbbab561e7fee0959e8c9"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
     value: "airflow"
   - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
