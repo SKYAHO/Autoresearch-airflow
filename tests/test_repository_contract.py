@@ -14,14 +14,17 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     )
 
     assert "KubernetesPodOperator" in source
-    assert "autoresearch_airflow_jobs.daily_youtube_trending" in source
-    assert "autoresearch_airflow_jobs.daily_action_log" in source
+    assert "autoresearch.jobs.youtube_trending" in source
+    assert "autoresearch.jobs.action_log" in source
+    assert "autoresearch.jobs.action_log_quality" in source
+    assert "autoresearch_airflow_jobs" not in source
     assert "AUTORESEARCH_BATCH_IMAGE" in source
     assert "youtube_gcs_action_log_pipeline" in production_source
     assert "collect_youtube_trending_partition" in source
     assert "ensure_action_log_shards" in source
     assert "ensure_action_log_shard_" in source
     assert "merge_action_log_partition" in source
+    assert "validate_action_log_partition" in source
     assert "schedule=\"0 0 * * *\"" in production_source
     assert "datetime(2026, 7, 12" in production_source
     assert "max_users=" not in production_source
@@ -74,7 +77,7 @@ def test_manual_qa_dag_is_unscheduled_and_bounded_to_1000_users() -> None:
     assert 'dag_id="youtube_gcs_action_log_pipeline_qa"' in source
     assert "schedule=None" in source
     assert "max_users=1000" in source
-    assert "public_batch_contract=True" in source
+    assert "use_candidate_image=True" in source
 
 
 def test_git_sync_owns_uniquely_named_dag_helper_module() -> None:
@@ -110,9 +113,11 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "enabled: true" in values
     assert "https://github.com/SKYAHO/Autoresearch-airflow.git" in values
     assert "subPath: dags" in values
+    assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
+    assert "autoresearch-batch@sha256:<production-digest>" in values
 
 
-def test_gke_values_pin_qa_candidate_digest_and_complete_gcs_paths() -> None:
+def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     values = (ROOT / "helm" / "values-gke-dev.yaml").read_text(encoding="utf-8")
     candidate = (
         "asia-northeast3-docker.pkg.dev/ar-infra-501607/"
@@ -120,8 +125,11 @@ def test_gke_values_pin_qa_candidate_digest_and_complete_gcs_paths() -> None:
         "6acc380c120f997f6e4aafb15d1c338a531275ba90fbeec889afc5c66c912cc2"
     )
 
-    assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" in values
-    assert candidate in values
+    assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
+    assert (
+        '- name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE\n'
+        f'    value: "{candidate}"'
+    ) in values
     for suffix in (
         "data_lake/youtube_trending_kr",
         "asset/virtual_user/vu_1000.parquet",

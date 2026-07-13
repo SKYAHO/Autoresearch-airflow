@@ -296,8 +296,7 @@ def build_public_youtube_trending_kpo_arguments(
         settings.max_results_template,
         "--proxy-url",
         settings.proxy_url_template,
-        "--overwrite",
-        settings.overwrite_template,
+        f"--overwrite={settings.overwrite_template}",
     ]
 
 
@@ -368,8 +367,7 @@ def _build_public_action_log_common_arguments(
         output_base_path_template,
         "--quarantine-base-path",
         quarantine_base_path_template,
-        "--overwrite",
-        settings.overwrite_template,
+        f"--overwrite={settings.overwrite_template}",
         "--generator-name",
         settings.generator_name_template,
         "--model-name",
@@ -504,8 +502,7 @@ def build_public_action_log_merge_kpo_arguments(
         settings.output_base_path_template,
         "--max-quarantine-ratio",
         settings.max_quarantine_ratio_template,
-        "--overwrite",
-        settings.overwrite_template,
+        f"--overwrite={settings.overwrite_template}",
     ]
 
 

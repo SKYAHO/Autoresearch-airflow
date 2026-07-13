@@ -133,17 +133,25 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         if task_id.startswith("ensure_action_log_shard_")
     ]
     assert len(shards) == 5
+    assert len(dag.task_dict) == 8
+    assert all(
+        task.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
+        for task in dag.task_dict.values()
+    )
 
     collect = dag.task_dict["collect_youtube_trending_partition"]
     merge = dag.task_dict["merge_action_log_partition"]
-    assert "validate_action_log_partition" not in dag.task_dict
-    assert collect.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
+    quality = dag.task_dict["validate_action_log_partition"]
     assert collect.kwargs["cmds"] == [
         "python",
         "-m",
-        "autoresearch_airflow_jobs.daily_youtube_trending",
+        "autoresearch.jobs.youtube_trending",
     ]
     collect_arguments = collect.kwargs["arguments"]
+    assert "--bucket" not in collect_arguments
+    assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in (
+        collect_arguments
+    )
     collect_youtube_path_position = collect_arguments.index("--youtube-base-path") + 1
     assert (
         "resolve_dag_run_path(dag_run.conf"
@@ -174,8 +182,6 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
             "--quarantine-base-path": "action_log_shard_quarantine_base_path",
             "--progress-base-path": "action_log_progress_base_path",
             "--checkpoint-base-path": "action_log_checkpoint_base_path",
-            "--final-output-base-path": "action_log_output_base_path",
-            "--final-quarantine-base-path": "action_log_quarantine_base_path",
         }
         for argument_name, conf_key in expected_path_keys.items():
             path_template = arguments[arguments.index(argument_name) + 1]
@@ -188,12 +194,20 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         assert task.kwargs["execution_timeout"] == timedelta(hours=6, minutes=30)
         assert task.kwargs["get_logs"] is True
         assert task.kwargs["do_xcom_push"] is False
-        assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
         assert task.kwargs["cmds"] == [
             "python",
             "-m",
-            "autoresearch_airflow_jobs.daily_action_log",
+            "autoresearch.jobs.action_log",
         ]
+        for forbidden_argument in (
+            "--bucket",
+            "--final-output-base-path",
+            "--final-quarantine-base-path",
+        ):
+            assert forbidden_argument not in arguments
+        assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in (
+            arguments
+        )
         assert "OPENROUTER_API_KEY" not in " ".join(arguments)
         secret_env = task.kwargs["env_vars"][0]
         assert secret_env.name == "OPENROUTER_API_KEY"
@@ -218,13 +232,28 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     )
     for argument_name, conf_key in {
         "--output-base-path": "action_log_output_base_path",
-        "--quarantine-base-path": "action_log_quarantine_base_path",
         "--shard-output-base-path": "action_log_shard_output_base_path",
-        "--shard-quarantine-base-path": "action_log_shard_quarantine_base_path",
     }.items():
         path_template = merge_arguments[merge_arguments.index(argument_name) + 1]
         assert "resolve_dag_run_path(dag_run.conf" in path_template
         assert f"'{conf_key}'" in path_template
+    for forbidden_argument in (
+        "--bucket",
+        "--quarantine-base-path",
+        "--shard-quarantine-base-path",
+    ):
+        assert forbidden_argument not in merge_arguments
+    assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in (
+        merge_arguments
+    )
+    assert merge.downstream_task_ids == {quality.task_id}
+    assert quality.kwargs["cmds"] == [
+        "python",
+        "-m",
+        "autoresearch.jobs.action_log_quality",
+    ]
+    assert quality.kwargs["trigger_rule"] == "all_success"
+    assert quality.kwargs["retries"] == 0
 
 
 def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None:
@@ -263,7 +292,9 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
         "autoresearch.jobs.youtube_trending",
     ]
     assert "--bucket" not in collect.kwargs["arguments"]
-    assert "--overwrite" in collect.kwargs["arguments"]
+    assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in (
+        collect.kwargs["arguments"]
+    )
 
     for shard in shards:
         arguments = shard.kwargs["arguments"]
@@ -293,7 +324,9 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
         "--shard-quarantine-base-path",
     ):
         assert forbidden_argument not in merge_arguments
-    assert "--overwrite" in merge_arguments
+    assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in (
+        merge_arguments
+    )
     assert merge.downstream_task_ids == {quality.task_id}
 
     assert quality.kwargs["cmds"] == [

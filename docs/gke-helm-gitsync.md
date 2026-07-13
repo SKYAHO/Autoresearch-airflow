@@ -44,21 +44,26 @@ release하고, 이 저장소는 검증된 immutable digest를 참조합니다. h
 Airflow image를 다시 빌드하지 않습니다.
 
 ```bash
-QA_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<verified-digest>
+PRODUCTION_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<verified-digest>
+ROLLBACK_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<previous-digest>
 ```
 
 배포 순서는 반드시 다음과 같습니다.
 
-1. `Autoresearch` release workflow와 Artifact Registry에서 candidate digest,
-   OCI revision, public CLI smoke 결과를 확인합니다.
-2. `helm/values-gke-dev.yaml`의 `AUTORESEARCH_BATCH_IMAGE_OVERRIDE`에 candidate
-   digest를 넣고 모든 batch 경로가 완전한 `gs://...` URI인지 확인한 뒤 Helm
-   upgrade를 수행합니다. `AUTORESEARCH_BATCH_IMAGE`는 그대로 둡니다.
-3. scheduler와 webserver rollout, `action_log_openrouter=2 slots`를 확인합니다.
-4. DAG 변경을 `main`에 반영하고 helper를 포함한 git-sync commit 및 DAG import
-   상태를 확인합니다.
-5. 격리된 GCS prefix로 QA DAG를 실행해 5개 shard, 단일 merge, 최종 quality
-   task가 모두 성공하는지 확인합니다. 프로덕션 전환은 이 증거 이후 별도 단계입니다.
+1. `Autoresearch` release workflow와 Artifact Registry에서 QA를 통과한 digest,
+   OCI revision, public CLI smoke 결과를 확인하고 이전 digest를 기록합니다.
+2. merge 전에 production DAG를 pause하고 진행 중인 run이 없으며 같은 schedule의
+   legacy DAG가 따로 활성화되어 있지 않은지 확인합니다.
+3. `helm/values-gke-dev.yaml`의 `AUTORESEARCH_BATCH_IMAGE`를 검증된 digest로
+   변경하고 `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` 항목을 제거합니다. 모든 batch
+   경로가 완전한 `gs://...` URI인지 함께 확인합니다.
+4. 공개 CLI와 quality gate를 사용하는 DAG 변경을 `main`에 반영한 직후 Helm
+   upgrade를 수행합니다. factory, helper, production digest가 함께 전환되어야 합니다.
+5. scheduler와 webserver rollout, DAG import error 0건,
+   production 8-task topology, `action_log_openrouter=2 slots`를 확인합니다.
+6. production DAG를 unpause하고 수동 실행 또는 다음 예약 실행에서 5개 shard,
+   단일 merge, 최종 quality task와 final partition을 확인합니다. 최소 한 번의
+   예약 실행이 성공할 때까지 이전 digest와 DAG revision을 롤백 후보로 보존합니다.
 
 1. GKE cluster와 `airflow` namespace를 준비합니다.
 2. Workload Identity용 Kubernetes ServiceAccount와 Google ServiceAccount 매핑을
