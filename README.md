@@ -129,6 +129,15 @@ configuration cannot be supplied through `dag_run.conf`; they remain parse-time
 Airflow Variables or Kubernetes Secrets.
 See [docs/operational-dag-qa.md](docs/operational-dag-qa.md) for the full contract.
 
+## Manual YouTube Backfill
+
+`dags/youtube_backfill_kr.py` is an unscheduled, single-task KPO DAG for the
+application-owned `autoresearch.jobs.youtube_backfill` command. It uses the same
+immutable `AUTORESEARCH_BATCH_IMAGE` as the daily pipeline and never imports
+application Python internals. Production Variables, isolated QA trigger examples,
+overwrite semantics, smoke checks, and rollback are documented in
+[docs/youtube-backfill.md](docs/youtube-backfill.md).
+
 ## Local Verification
 
 ```bash
