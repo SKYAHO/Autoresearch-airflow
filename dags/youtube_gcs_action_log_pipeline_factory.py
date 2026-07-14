@@ -109,6 +109,15 @@ _API_SECRET_NAME = Variable.get(
 _OPENROUTER_POOL = Variable.get(
     "ACTION_LOG_OPENROUTER_POOL", default_var="action_log_openrouter"
 )
+_BATCH_SPOT_NODE_SELECTOR = {"cloud.google.com/gke-nodepool": "batch-spot"}
+_BATCH_SPOT_TOLERATIONS = [
+    {
+        "key": "workload",
+        "operator": "Equal",
+        "value": "batch-spot",
+        "effect": "NoSchedule",
+    },
+]
 _OPENROUTER_ENV_DEFAULTS = {
     "OPENROUTER_TIMEOUT_SEC": "60",
     "OPENROUTER_MAX_RETRIES": "2",
@@ -245,6 +254,8 @@ def build_youtube_gcs_action_log_pipeline(
             execution_timeout=timedelta(minutes=30),
             startup_timeout_seconds=600,
             labels={"app": "autoresearch", "pipeline": "youtube-collection"},
+            node_selector=_BATCH_SPOT_NODE_SELECTOR,
+            tolerations=_BATCH_SPOT_TOLERATIONS,
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": "500m", "memory": "1Gi"},
                 limits={"cpu": "2", "memory": "4Gi"},
@@ -280,6 +291,8 @@ def build_youtube_gcs_action_log_pipeline(
                     "pipeline": "youtube-action-log",
                     "shard": f"{shard_index:03d}",
                 },
+                node_selector=_BATCH_SPOT_NODE_SELECTOR,
+                tolerations=_BATCH_SPOT_TOLERATIONS,
                 container_resources=k8s.V1ResourceRequirements(
                     requests={"cpu": "250m", "memory": "512Mi"},
                     limits={"cpu": "2", "memory": "4Gi"},
@@ -304,11 +317,13 @@ def build_youtube_gcs_action_log_pipeline(
             get_logs=True,
             is_delete_operator_pod=True,
             do_xcom_push=False,
-            retries=0,
+            retries=1,
             trigger_rule="all_success",
             execution_timeout=timedelta(minutes=30),
             startup_timeout_seconds=600,
             labels={"app": "autoresearch", "pipeline": "youtube-action-log"},
+            node_selector=_BATCH_SPOT_NODE_SELECTOR,
+            tolerations=_BATCH_SPOT_TOLERATIONS,
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": "500m", "memory": "1Gi"},
                 limits={"cpu": "2", "memory": "4Gi"},
@@ -335,11 +350,13 @@ def build_youtube_gcs_action_log_pipeline(
             get_logs=True,
             is_delete_operator_pod=True,
             do_xcom_push=False,
-            retries=0,
+            retries=1,
             trigger_rule="all_success",
             execution_timeout=timedelta(minutes=30),
             startup_timeout_seconds=600,
             labels={"app": "autoresearch", "pipeline": "action-log-quality"},
+            node_selector=_BATCH_SPOT_NODE_SELECTOR,
+            tolerations=_BATCH_SPOT_TOLERATIONS,
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": "250m", "memory": "512Mi"},
                 limits={"cpu": "1", "memory": "2Gi"},

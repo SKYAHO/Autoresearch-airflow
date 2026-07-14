@@ -21,6 +21,15 @@ _KPO_SERVICE_ACCOUNT = Variable.get(
 _BATCH_IMAGE_PULL_POLICY = Variable.get(
     "AUTORESEARCH_BATCH_IMAGE_PULL_POLICY", default_var="IfNotPresent"
 )
+_BATCH_SPOT_NODE_SELECTOR = {"cloud.google.com/gke-nodepool": "batch-spot"}
+_BATCH_SPOT_TOLERATIONS = [
+    {
+        "key": "workload",
+        "operator": "Equal",
+        "value": "batch-spot",
+        "effect": "NoSchedule",
+    },
+]
 
 
 with DAG(
@@ -29,7 +38,7 @@ with DAG(
     start_date=datetime(2026, 7, 13, tzinfo=ZoneInfo("Asia/Seoul")),
     catchup=False,
     max_active_runs=1,
-    default_args={"retries": 0},
+    default_args={"retries": 1},
     tags=["youtube", "collection", "backfill", "gcs", "kubernetes"],
     user_defined_macros={"resolve_backfill_path": resolve_backfill_path},
     doc_md=__doc__,
@@ -53,10 +62,12 @@ with DAG(
         get_logs=True,
         is_delete_operator_pod=True,
         do_xcom_push=False,
-        retries=0,
+        retries=1,
         execution_timeout=timedelta(hours=2),
         startup_timeout_seconds=600,
         labels={"app": "autoresearch", "pipeline": "youtube-backfill"},
+        node_selector=_BATCH_SPOT_NODE_SELECTOR,
+        tolerations=_BATCH_SPOT_TOLERATIONS,
         container_resources=k8s.V1ResourceRequirements(
             requests={"cpu": "500m", "memory": "1Gi"},
             limits={"cpu": "2", "memory": "4Gi"},
