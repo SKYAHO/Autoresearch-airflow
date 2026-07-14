@@ -32,8 +32,8 @@ GitHub Projects에서 이 저장소 작업을 관리할 때 사용하는 기본 
 PR을 `In Review`로 옮기기 전에 다음 중 가능한 검증을 수행합니다.
 
 ```bash
-helm dependency update charts/autoresearch-airflow
-helm lint charts/autoresearch-airflow
-helm template autoresearch-airflow charts/autoresearch-airflow   --namespace airflow   --values environments/gke-values.example.yaml >/tmp/autoresearch-airflow.yaml
+helm dependency update deploy/airflow
+helm lint deploy/airflow
+helm template autoresearch-airflow deploy/airflow   --namespace airflow   --values deploy/airflow/values.example.yaml >/tmp/autoresearch-airflow.yaml
 git diff --check
 ```
