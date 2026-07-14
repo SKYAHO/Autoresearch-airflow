@@ -45,23 +45,14 @@ airflow:
   workers:
     replicas: 0
 
+  # metadata DB는 내장 pod PostgreSQL 대신 관리형 Cloud SQL을 사용한다.
+  # 연결 URI는 운영자가 만든 k8s Secret(airflow-metadata-db, key: connection)에서 읽는다.
+  # Secret 생성 절차: docs/cloud-sql-metadata.md
   postgresql:
-    enabled: true
-    image:
-      registry: docker.io
-      repository: bitnamilegacy/postgresql
-      tag: 16.1.0-debian-11-r15
-      pullPolicy: IfNotPresent
-    primary:
-      nodeSelector:
-        cloud.google.com/gke-nodepool: airflow-dev
-      resources:
-        requests:
-          cpu: 50m
-          memory: 128Mi
-        limits:
-          cpu: 250m
-          memory: 256Mi
+    enabled: false
+
+  data:
+    metadataSecretName: airflow-metadata-db
 
   logs:
     persistence:
@@ -91,6 +82,13 @@ airflow:
   env:
     - name: AIRFLOW__CORE__LOAD_EXAMPLES
       value: "False"
+    # Cloud SQL db-f1-micro(최대 연결 ~25) 대비 연결 풀을 작게 유지한다.
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE
+      value: "3"
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW
+      value: "3"
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
+      value: "1800"
     - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
       value: "ar-infra-501607-autoresearch-dev-raw-data"
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
