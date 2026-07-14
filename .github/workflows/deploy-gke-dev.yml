@@ -78,11 +78,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          kubectl auth can-i get pods -n "$AIRFLOW_NAMESPACE" | grep -Fx true
-          kubectl auth can-i create secrets -n "$AIRFLOW_NAMESPACE" | grep -Fx true
-          kubectl auth can-i patch deployments.apps -n "$AIRFLOW_NAMESPACE" | grep -Fx true
+          # kubectl auth can-i는 yes/no를 출력하고 허용 시 exit 0을 반환한다.
+          # --quiet로 출력을 억제하고 종료 코드로만 판정한다(set -e가 거부 시 실패시킴).
+          kubectl auth can-i get pods -n "$AIRFLOW_NAMESPACE" --quiet
+          kubectl auth can-i create secrets -n "$AIRFLOW_NAMESPACE" --quiet
+          kubectl auth can-i patch deployments.apps -n "$AIRFLOW_NAMESPACE" --quiet
           kubectl auth can-i create roles.rbac.authorization.k8s.io \
-            -n "$AIRFLOW_NAMESPACE" | grep -Fx true
+            -n "$AIRFLOW_NAMESPACE" --quiet
 
       - name: Build and validate Helm chart
         shell: bash
