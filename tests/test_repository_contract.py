@@ -108,7 +108,7 @@ def test_astro_airflow_image_has_required_build_context_files() -> None:
 
 
 def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
-    values = (ROOT / "helm" / "values-dev.yaml").read_text(encoding="utf-8")
+    values = (ROOT / "deploy" / "airflow" / "values.example.yaml").read_text(encoding="utf-8")
 
     assert "dags:" in values
     assert "gitSync:" in values
@@ -120,7 +120,7 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
 
 
 def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
-    values = (ROOT / "helm" / "values-gke-dev.yaml").read_text(encoding="utf-8")
+    values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(encoding="utf-8")
     candidate = (
         "asia-northeast3-docker.pkg.dev/ar-infra-501607/"
         "autoresearch-dev-docker/autoresearch-batch@sha256:"
@@ -145,9 +145,8 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
 
 def test_helm_values_map_backfill_paths_to_airflow_variables() -> None:
     for relative_path in (
-        "environments/gke-values.example.yaml",
-        "helm/values-dev.yaml",
-        "helm/values-gke-dev.yaml",
+        "deploy/airflow/values.example.yaml",
+        "deploy/airflow/values.yaml",
     ):
         values = (ROOT / relative_path).read_text(encoding="utf-8")
 
@@ -162,7 +161,7 @@ def test_helm_values_map_backfill_paths_to_airflow_variables() -> None:
 
 
 def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() -> None:
-    values = (ROOT / "helm" / "values-gke-dev.yaml").read_text(encoding="utf-8")
+    values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(encoding="utf-8")
 
     for variable_name in (
         "ACTION_LOG_SHARD_WORK_DIR",
@@ -188,30 +187,21 @@ def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() ->
     assert "OPENROUTER_API_KEY" not in values
 
     for relative_path in (
-        "helm/values-dev.yaml",
-        "environments/gke-values.example.yaml",
+        "deploy/airflow/values.example.yaml",
     ):
         pool_values = (ROOT / relative_path).read_text(encoding="utf-8")
         assert "airflow pools set action_log_openrouter 5" in pool_values
         assert "airflow pools set action_log_openrouter 2" not in pool_values
-        if relative_path.startswith("helm/"):
+        if relative_path.startswith("deploy/"):
             assert re.search(
                 r'- name: AIRFLOW_VAR_ACTION_LOG_MAX_CONCURRENCY\s+value: "3"',
                 pool_values,
             )
 
-    chart_defaults = (
-        ROOT / "charts" / "autoresearch-airflow" / "values.yaml"
-    ).read_text(encoding="utf-8")
-    assert "airflow: {}" in chart_defaults
-    assert "action_log_openrouter" not in chart_defaults
-
-
 def test_environment_values_are_scoped_to_the_umbrella_chart() -> None:
     for relative_path in (
-        "environments/gke-values.example.yaml",
-        "helm/values-dev.yaml",
-        "helm/values-gke-dev.yaml",
+        "deploy/airflow/values.example.yaml",
+        "deploy/airflow/values.yaml",
     ):
         values = (ROOT / relative_path).read_text(encoding="utf-8")
         assert "\nairflow:\n" in values
@@ -262,6 +252,6 @@ def test_helm_ci_renders_the_concrete_dev_values() -> None:
         encoding="utf-8"
     )
 
-    assert "helm template airflow charts/autoresearch-airflow" in workflow
+    assert "helm template airflow deploy/airflow" in workflow
     assert "helm template airflow apache-airflow/airflow" not in workflow
-    assert "--values helm/values-gke-dev.yaml" in workflow
+    assert "--values deploy/airflow/values.yaml" in workflow

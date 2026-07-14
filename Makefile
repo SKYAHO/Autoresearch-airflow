@@ -1,7 +1,7 @@
-CHART := charts/autoresearch-airflow
+CHART := deploy/airflow
 RELEASE := autoresearch-airflow
 NAMESPACE := airflow
-VALUES := environments/gke-values.example.yaml
+VALUES := deploy/airflow/values.example.yaml
 
 .PHONY: deps lint template verify
 
