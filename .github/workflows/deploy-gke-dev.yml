@@ -117,7 +117,8 @@ jobs:
           )"
           dags_json="$(
             kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
-              -c scheduler -- airflow dags list --output json 2>/dev/null
+              -c scheduler -- airflow dags list --output json 2>/dev/null \
+              | grep -vE '^\[[0-9]{4}-'
           )"
           was_paused="$(
             DAGS_JSON="$dags_json" python - <<'PY'
@@ -165,7 +166,8 @@ jobs:
                   -c scheduler -- airflow dags list-runs \
                   --dag-id "$PRODUCTION_DAG_ID" \
                   --state "$state" \
-                  --output json 2>/dev/null
+                  --output json 2>/dev/null \
+                  | grep -vE '^\[[0-9]{4}-'
               )"
               state_count="$(
                 RUNS_JSON="$runs_json" python -c \
@@ -219,14 +221,16 @@ jobs:
           deployed_image="$(
             kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
               -c scheduler -- airflow variables get \
-              AUTORESEARCH_BATCH_IMAGE 2>/dev/null
+              AUTORESEARCH_BATCH_IMAGE 2>/dev/null \
+              | grep -vE '^\[[0-9]{4}-'
           )"
           test "$deployed_image" = "$expected_image"
 
           import_errors="$(
             kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
               -c scheduler -- airflow dags list-import-errors \
-              --output json 2>/dev/null
+              --output json 2>/dev/null \
+              | grep -vE '^\[[0-9]{4}-'
           )"
           IMPORT_ERRORS="$import_errors" python -c \
             'import json, os; assert json.loads(os.environ["IMPORT_ERRORS"]) == []'
@@ -246,7 +250,8 @@ jobs:
           pool_json="$(
             kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
               -c scheduler -- airflow pools get action_log_openrouter \
-              --output json 2>/dev/null
+              --output json 2>/dev/null \
+              | grep -vE '^\[[0-9]{4}-'
           )"
           POOL_JSON="$pool_json" python -c \
             'import json, os; assert int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2'
