@@ -21,17 +21,17 @@ PR 제목/본문, issue 제목/본문도 한국어 격식체로 작성합니다.
 - dev GKE 배포는 컨테이너 이미지에 DAG를 굽지 않고 `git-sync` sidecar로
   `SKYAHO/Autoresearch-airflow`의 `dags/` 디렉터리를 동기화합니다.
 - 기본 배포 대상은 GKE이며 Workload Identity 사용을 전제로 합니다.
-- Helm umbrella chart 루트는 `charts/autoresearch-airflow`이고, 실제 dev 배포
-  values는 `helm/values-gke-dev.yaml`입니다.
-- umbrella chart 기본값은 운영 파라미터를 소유하지 않습니다. 환경별 values는
-  `airflow:` 아래에 두고 실제 배포와 렌더링 모두 umbrella chart를 사용합니다.
+- Helm umbrella chart 루트는 `deploy/airflow`이고, 실제 dev 배포
+  values는 `deploy/airflow/values.yaml`입니다.
+- umbrella chart의 `values.yaml`이 dev 운영 설정의 기준이며, 신규 환경 구성은
+  `values.example.yaml`을 복사해서 사용합니다.
 
 ## Core Rules
 
 - Kubernetes Secret 값, API key, GCP service account key JSON, kubeconfig를 커밋하지 않습니다.
-- 실제 환경 값은 `environments/*.example.yaml`을 복사해서 별도 비공개 파일로 관리합니다.
+- 실제 환경 값은 `deploy/airflow/values.example.yaml`을 복사해서 별도 비공개 파일로 관리합니다.
 - DAG 동기화 정책 변경 시 `README.md`, `docs/gke-helm-gitsync.md`,
-  `helm/values-gke-dev.yaml`을 함께 확인합니다.
+  `deploy/airflow/values.yaml`을 함께 확인합니다.
 - Upstream `apache-airflow/airflow` chart 값을 변경할 때는 Helm template 렌더링으로 검증합니다.
 - 구조 변경과 운영 파라미터 변경은 커밋/PR 설명에서 분리해 설명합니다.
 
@@ -40,9 +40,9 @@ PR 제목/본문, issue 제목/본문도 한국어 격식체로 작성합니다.
 변경 후 가능한 가장 좁은 범위부터 검증합니다.
 
 ```bash
-helm dependency update charts/autoresearch-airflow
-helm lint charts/autoresearch-airflow
-helm template autoresearch-airflow charts/autoresearch-airflow   --namespace airflow   --values environments/gke-values.example.yaml >/tmp/autoresearch-airflow.yaml
+helm dependency update deploy/airflow
+helm lint deploy/airflow
+helm template autoresearch-airflow deploy/airflow   --namespace airflow   --values deploy/airflow/values.example.yaml >/tmp/autoresearch-airflow.yaml
 git diff --check
 ```
 

@@ -28,21 +28,21 @@ jobs:
           helm repo update
 
       - name: Build chart dependencies
-        run: helm dependency update charts/autoresearch-airflow
+        run: helm dependency update deploy/airflow
 
       - name: Lint chart
-        run: helm lint charts/autoresearch-airflow
+        run: helm lint deploy/airflow
 
       - name: Render chart
         run: |
-          helm template autoresearch-airflow charts/autoresearch-airflow \
+          helm template autoresearch-airflow deploy/airflow \
             --namespace airflow \
-            --values environments/gke-values.example.yaml \
+            --values deploy/airflow/values.example.yaml \
             >/tmp/autoresearch-airflow.yaml
 
       - name: Render concrete dev values
         run: |
-          helm template airflow charts/autoresearch-airflow \
+          helm template airflow deploy/airflow \
             --namespace airflow \
-            --values helm/values-gke-dev.yaml \
+            --values deploy/airflow/values.yaml \
             >/tmp/airflow-gke-dev.yaml

@@ -21,6 +21,8 @@ kubeconfig*
 # Helm artifacts
 charts/**/charts/*.tgz
 charts/**/Chart.lock
+deploy/**/charts/*.tgz
+deploy/**/Chart.lock
 # Python/editor noise
 .DS_Store
 .idea/
