@@ -108,7 +108,7 @@ def test_astro_airflow_image_has_required_build_context_files() -> None:
 
 
 def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
-    values = (ROOT / "helm" / "values-dev.yaml").read_text(encoding="utf-8")
+    values = (ROOT / "deploy" / "airflow" / "values.example.yaml").read_text(encoding="utf-8")
 
     assert "dags:" in values
     assert "gitSync:" in values
