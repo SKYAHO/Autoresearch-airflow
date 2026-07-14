@@ -272,3 +272,49 @@ def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> N
     assert "test \"$task_count\" -eq 8" in workflow
     assert "action_log_openrouter" in workflow
     assert 'int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2' in workflow
+
+
+def test_helm_values_use_external_cloud_sql_metadata_db() -> None:
+    for relative_path in (
+        "deploy/airflow/values.yaml",
+        "deploy/airflow/values.example.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+
+        # 내장 PostgreSQL 서브차트를 끈다.
+        assert re.search(r"postgresql:\s*\n\s+enabled:\s*false", values), relative_path
+        # 외부 metadata 연결을 운영자 생성 Secret으로 지정한다.
+        assert re.search(
+            r"data:\s*\n\s+metadataSecretName:\s*airflow-metadata-db", values
+        ), relative_path
+
+
+def test_helm_values_tune_sql_alchemy_pool() -> None:
+    for relative_path in (
+        "deploy/airflow/values.yaml",
+        "deploy/airflow/values.example.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+
+        assert re.search(
+            r'AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE\s*\n\s+value:\s*"3"', values
+        ), relative_path
+        assert re.search(
+            r'AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW\s*\n\s+value:\s*"3"', values
+        ), relative_path
+        assert re.search(
+            r'AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE\s*\n\s+value:\s*"1800"',
+            values,
+        ), relative_path
+
+
+def test_helm_values_do_not_embed_db_password() -> None:
+    for relative_path in (
+        "deploy/airflow/values.yaml",
+        "deploy/airflow/values.example.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+
+        # 비밀번호를 평문으로 커밋하지 않는다. 연결은 Secret 참조로만.
+        assert "metadataConnection:" not in values, relative_path
+        assert not re.search(r"postgresql://[^\s:]+:[^@\s]+@", values), relative_path
