@@ -148,12 +148,18 @@ def test_batch_operator_reads_parse_time_config_from_environment(monkeypatch) ->
             pipeline="example",
             execution_timeout=timedelta(minutes=1),
             container_resources=_Model(),
+            # Airflow가 DAG 컨텍스트에서 apply_defaults로 주입하는 인자를 흉내냅니다.
+            params={"partition_date": ""},
+            default_args={"retries": 2},
         )
 
     task = dag.task_dict["example_task"]
     assert task.kwargs["namespace"] == "batch-jobs"
     assert task.kwargs["service_account_name"] == "batch-runner"
     assert task.kwargs["image_pull_policy"] == "Always"
+    # DAG 레벨 인자가 KubernetesPodOperator로 전달되어야 합니다.
+    assert task.kwargs["params"] == {"partition_date": ""}
+    assert task.kwargs["default_args"] == {"retries": 2}
 
 
 def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:

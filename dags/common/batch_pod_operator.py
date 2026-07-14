@@ -72,7 +72,10 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
         trigger_rule: str = "all_success",
         pool: str | None = None,
         pool_slots: int = 1,
+        **kwargs,
     ) -> None:
+        # Airflow가 DAG 컨텍스트에서 default_args/params 등을 apply_defaults로
+        # 주입하므로, 커스텀 오퍼레이터는 이를 받아 super로 전달해야 합니다.
         pod_labels = {"app": "autoresearch", "pipeline": pipeline, **(labels or {})}
         operator_arguments = _KubernetesPodOperatorArguments(
             task_id=task_id,
@@ -101,4 +104,4 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
         )
         if env_vars is not None:
             operator_arguments["env_vars"] = env_vars
-        super().__init__(**operator_arguments)
+        super().__init__(**operator_arguments, **kwargs)
