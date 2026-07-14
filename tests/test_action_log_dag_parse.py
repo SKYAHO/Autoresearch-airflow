@@ -6,9 +6,11 @@ from types import ModuleType
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DAG_PATH = ROOT / "dags" / "youtube_gcs_action_log_pipeline.py"
-QA_DAG_PATH = ROOT / "dags" / "youtube_gcs_action_log_pipeline_qa.py"
-BACKFILL_DAG_PATH = ROOT / "dags" / "youtube_backfill_kr.py"
+DAGS_ROOT = ROOT / "dags"
+DAG_PATH = DAGS_ROOT / "youtube_gcs_action_log" / "dag_prod.py"
+QA_DAG_PATH = DAGS_ROOT / "youtube_gcs_action_log" / "dag_qa.py"
+BACKFILL_DAG_PATH = DAGS_ROOT / "youtube_backfill" / "dag_kr.py"
+KPO_PATH = DAGS_ROOT / "common" / "batch_pod_operator.py"
 
 
 class _Model:
@@ -110,11 +112,55 @@ def _install_stale_image_helper(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "autoresearch_airflow.dag_config", stale_config)
 
 
+def _forget_pipeline_packages() -> None:
+    """Drop cached DAG packages so each test re-imports them from source."""
+
+    for name in (
+        "common",
+        "common.batch_pod_operator",
+        "youtube_backfill",
+        "youtube_backfill.config",
+        "youtube_gcs_action_log",
+        "youtube_gcs_action_log.config",
+        "youtube_gcs_action_log.factory",
+    ):
+        sys.modules.pop(name, None)
+
+
+def test_batch_operator_reads_parse_time_config_from_environment(monkeypatch) -> None:
+    _install_airflow_stubs(monkeypatch)
+    monkeypatch.setenv("AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE", "batch-jobs")
+    monkeypatch.setenv("AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT", "batch-runner")
+    monkeypatch.setenv(
+        "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_PULL_POLICY", "Always"
+    )
+    spec = importlib.util.spec_from_file_location("_batch_operator_under_test", KPO_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    with _FakeDAG() as dag:
+        module.AutoresearchBatchPodOperator(
+            task_id="example_task",
+            image="example:latest",
+            module="example.job",
+            arguments=[],
+            pipeline="example",
+            execution_timeout=timedelta(minutes=1),
+            container_resources=_Model(),
+        )
+
+    task = dag.task_dict["example_task"]
+    assert task.kwargs["namespace"] == "batch-jobs"
+    assert task.kwargs["service_account_name"] == "batch-runner"
+    assert task.kwargs["image_pull_policy"] == "Always"
+
+
 def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     _install_airflow_stubs(monkeypatch)
     _install_stale_image_helper(monkeypatch)
-    monkeypatch.syspath_prepend(str(DAG_PATH.parent))
-    sys.modules.pop("youtube_gcs_action_log_pipeline_factory", None)
+    monkeypatch.syspath_prepend(str(DAGS_ROOT))
+    _forget_pipeline_packages()
     spec = importlib.util.spec_from_file_location(
         "_action_log_dag_under_test", DAG_PATH
     )
@@ -260,8 +306,8 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
 def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None:
     _install_airflow_stubs(monkeypatch)
     _install_stale_image_helper(monkeypatch)
-    monkeypatch.syspath_prepend(str(QA_DAG_PATH.parent))
-    sys.modules.pop("youtube_gcs_action_log_pipeline_factory", None)
+    monkeypatch.syspath_prepend(str(DAGS_ROOT))
+    _forget_pipeline_packages()
     spec = importlib.util.spec_from_file_location("_qa_dag_under_test", QA_DAG_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -357,8 +403,8 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
 
 def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
     _install_airflow_stubs(monkeypatch)
-    monkeypatch.syspath_prepend(str(BACKFILL_DAG_PATH.parent))
-    sys.modules.pop("youtube_backfill_dag_config", None)
+    monkeypatch.syspath_prepend(str(DAGS_ROOT))
+    _forget_pipeline_packages()
     spec = importlib.util.spec_from_file_location(
         "_backfill_dag_under_test", BACKFILL_DAG_PATH
     )

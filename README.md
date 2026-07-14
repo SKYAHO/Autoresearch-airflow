@@ -66,7 +66,7 @@ gs://<bucket>/data_lake/action_log/dt=YYYY-MM-DD/part-0.parquet
 
 ### 일일 운영 파이프라인
 
-`dags/youtube_gcs_action_log_pipeline.py`는 매일 KST 00:00에 실행됩니다.
+`dags/youtube_gcs_action_log/dag_prod.py`는 매일 KST 00:00에 실행됩니다.
 `start_date`는 2026-07-12 KST이고 첫 data interval은 2026-07-13 KST 00:00에
 종료됩니다. `catchup=False`, `max_active_runs=1`입니다.
 
@@ -99,7 +99,7 @@ timeout을 사용합니다. 실제 dev 배포는 `action_log_openrouter` Pool을
 
 ### 수동 QA 파이프라인
 
-`dags/youtube_gcs_action_log_pipeline_qa.py`는 `schedule=None`인 수동 DAG입니다.
+`dags/youtube_gcs_action_log/dag_qa.py`는 `schedule=None`인 수동 DAG입니다.
 운영 DAG와 동일한 factory, 공개 CLI, 최종 품질 검사를 사용하되 입력 사용자를 최대
 1,000명으로 제한합니다.
 
@@ -136,7 +136,7 @@ timeout을 사용합니다. 실제 dev 배포는 `action_log_openrouter` Pool을
 
 ### YouTube 백필
 
-`dags/youtube_backfill_kr.py`는 `schedule=None`인 단일 KPO DAG입니다.
+`dags/youtube_backfill/dag_kr.py`는 `schedule=None`인 단일 KPO DAG입니다.
 `autoresearch.jobs.youtube_backfill`을 실행하며 자동 retry 없이 최대 2시간 동안
 동작합니다. 일치하는 날짜 partition을 교체하도록 `--overwrite=true`를 항상
 전달합니다.

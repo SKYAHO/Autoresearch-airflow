@@ -1,0 +1,9 @@
+# 저장소는 항상 LF로 저장하고, 워킹트리도 LF로 체크아웃합니다.
+# Windows + WSL 병행 개발 시 CRLF/LF 혼선을 방지합니다.
+* text=auto eol=lf
+
+# Windows PowerShell 스크립트는 워킹트리에서 CRLF를 유지합니다(저장소는 LF).
+*.ps1 text eol=crlf
+
+# 락 파일은 도구가 생성/관리하므로 diff 노이즈를 줄입니다.
+uv.lock linguist-generated=true

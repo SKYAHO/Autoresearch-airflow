@@ -1,6 +1,6 @@
 import pytest
 
-from youtube_backfill_dag_config import resolve_backfill_path
+from youtube_backfill.config import resolve_backfill_path
 
 
 _QA_PREFIX = "gs://test-bucket/qa/youtube-backfill/run=20260713T120000Z"

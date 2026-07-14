@@ -20,9 +20,7 @@ gha-kubeconfig-*
 gha-creds-*.json
 *-service-account.json
 *gcp-key*.json
-# Helm artifacts
-charts/**/charts/*.tgz
-charts/**/Chart.lock
+# Helm artifacts (umbrella chart 루트: deploy/airflow)
 deploy/**/charts/*.tgz
 deploy/**/Chart.lock
 # Python/editor noise
