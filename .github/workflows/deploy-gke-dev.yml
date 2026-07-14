@@ -1,0 +1,286 @@
+name: Deploy Airflow dev
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - deploy/airflow/values.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: airflow-dev-gke
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Helm upgrade and runtime verification
+    runs-on: ubuntu-latest
+    environment: dev-gke
+    timeout-minutes: 360
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
+      GKE_LOCATION: ${{ vars.GKE_LOCATION }}
+      GKE_DEPLOYER_SA: ${{ vars.GKE_DEPLOYER_SA }}
+      WIF_PROVIDER_ID: ${{ vars.WIF_PROVIDER_ID }}
+      AIRFLOW_NAMESPACE: airflow
+      AIRFLOW_RELEASE: airflow
+      PRODUCTION_DAG_ID: youtube_gcs_action_log_pipeline
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variable_name in \
+            GCP_PROJECT_ID GKE_CLUSTER GKE_LOCATION \
+            GKE_DEPLOYER_SA WIF_PROVIDER_ID
+          do
+            if [[ -z "${!variable_name}" ]]; then
+              echo "::error::$variable_name is not configured"
+              exit 1
+            fi
+          done
+          python scripts/promote_batch_image.py \
+            --values deploy/airflow/values.yaml \
+            --check
+
+      - name: Authenticate to GCP with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER_ID }}
+          service_account: ${{ env.GKE_DEPLOYER_SA }}
+
+      - name: Get GKE credentials through the DNS endpoint
+        uses: google-github-actions/get-gke-credentials@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_LOCATION }}
+          namespace: ${{ env.AIRFLOW_NAMESPACE }}
+          use_dns_based_endpoint: true
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: Verify namespace-scoped deploy permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl auth can-i get pods -n "$AIRFLOW_NAMESPACE" | grep -Fx true
+          kubectl auth can-i create secrets -n "$AIRFLOW_NAMESPACE" | grep -Fx true
+          kubectl auth can-i patch deployments.apps -n "$AIRFLOW_NAMESPACE" | grep -Fx true
+          kubectl auth can-i create roles.rbac.authorization.k8s.io \
+            -n "$AIRFLOW_NAMESPACE" | grep -Fx true
+
+      - name: Build and validate Helm chart
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm repo add apache-airflow https://airflow.apache.org
+          helm repo update
+          helm dependency update deploy/airflow
+          helm lint deploy/airflow \
+            --values deploy/airflow/values.yaml
+          helm template "$AIRFLOW_RELEASE" deploy/airflow \
+            --namespace "$AIRFLOW_NAMESPACE" \
+            --values deploy/airflow/values.yaml \
+            >/tmp/airflow-gke-dev.yaml
+
+      - name: Capture current release and DAG state
+        id: state
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_revision="$(
+            helm list -n "$AIRFLOW_NAMESPACE" \
+              --filter "^${AIRFLOW_RELEASE}$" \
+              --output json | jq -r '.[0].revision // ""'
+          )"
+          scheduler_pod="$(
+            kubectl get pod -n "$AIRFLOW_NAMESPACE" \
+              -l component=scheduler \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          dags_json="$(
+            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+              -c scheduler -- airflow dags list --output json 2>/dev/null
+          )"
+          was_paused="$(
+            DAGS_JSON="$dags_json" python - <<'PY'
+          import json
+          import os
+
+          dag_id = "youtube_gcs_action_log_pipeline"
+          dags = json.loads(os.environ["DAGS_JSON"])
+          matches = [dag for dag in dags if dag["dag_id"] == dag_id]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one {dag_id} DAG, found {len(matches)}")
+          print(str(matches[0]["is_paused"]).lower())
+          PY
+          )"
+          echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
+          echo "was_paused=$was_paused" >> "$GITHUB_OUTPUT"
+
+      - name: Pause production DAG
+        shell: bash
+        run: |
+          set -euo pipefail
+          scheduler_pod="$(
+            kubectl get pod -n "$AIRFLOW_NAMESPACE" \
+              -l component=scheduler \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+            -c scheduler -- airflow dags pause "$PRODUCTION_DAG_ID"
+
+      - name: Wait for active production run to finish
+        timeout-minutes: 300
+        shell: bash
+        run: |
+          set -euo pipefail
+          while true; do
+            scheduler_pod="$(
+              kubectl get pod -n "$AIRFLOW_NAMESPACE" \
+                -l component=scheduler \
+                -o jsonpath='{.items[0].metadata.name}'
+            )"
+            active_runs=0
+            for state in queued running; do
+              runs_json="$(
+                kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+                  -c scheduler -- airflow dags list-runs \
+                  --dag-id "$PRODUCTION_DAG_ID" \
+                  --state "$state" \
+                  --output json 2>/dev/null
+              )"
+              state_count="$(
+                RUNS_JSON="$runs_json" python -c \
+                  'import json, os; print(len(json.loads(os.environ["RUNS_JSON"])))'
+              )"
+              active_runs=$((active_runs + state_count))
+            done
+
+            if [[ "$active_runs" -eq 0 ]]; then
+              echo "Production DAG is idle."
+              break
+            fi
+            echo "Waiting for $active_runs active production DAG run(s)."
+            sleep 60
+          done
+
+      - name: Upgrade Airflow release
+        id: upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm upgrade --install "$AIRFLOW_RELEASE" deploy/airflow \
+            --namespace "$AIRFLOW_NAMESPACE" \
+            --values deploy/airflow/values.yaml \
+            --atomic \
+            --wait \
+            --wait-for-jobs \
+            --timeout 15m \
+            --history-max 10
+
+      - name: Verify Airflow runtime
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl rollout status statefulset/airflow-scheduler \
+            -n "$AIRFLOW_NAMESPACE" --timeout=10m
+          kubectl rollout status deployment/airflow-webserver \
+            -n "$AIRFLOW_NAMESPACE" --timeout=10m
+
+          scheduler_pod="$(
+            kubectl get pod -n "$AIRFLOW_NAMESPACE" \
+              -l component=scheduler \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          expected_image="$(
+            python scripts/promote_batch_image.py \
+              --values deploy/airflow/values.yaml \
+              --check | sed -n 's/^digest_ref=//p'
+          )"
+          deployed_image="$(
+            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+              -c scheduler -- airflow variables get \
+              AUTORESEARCH_BATCH_IMAGE 2>/dev/null
+          )"
+          test "$deployed_image" = "$expected_image"
+
+          import_errors="$(
+            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+              -c scheduler -- airflow dags list-import-errors \
+              --output json 2>/dev/null
+          )"
+          IMPORT_ERRORS="$import_errors" python -c \
+            'import json, os; assert json.loads(os.environ["IMPORT_ERRORS"]) == []'
+
+          task_output="$(
+            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+              -c scheduler -- airflow tasks list \
+              "$PRODUCTION_DAG_ID" 2>/dev/null
+          )"
+          task_count="$(
+            grep -Ec \
+              '^(collect_youtube_trending_partition|ensure_action_log_shard_[0-9]{3}|merge_action_log_partition|validate_action_log_partition)$' \
+              <<<"$task_output"
+          )"
+          test "$task_count" -eq 8
+
+          pool_json="$(
+            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+              -c scheduler -- airflow pools get action_log_openrouter \
+              --output json 2>/dev/null
+          )"
+          POOL_JSON="$pool_json" python -c \
+            'import json, os; assert int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2'
+
+          kubectl get pods -n "$AIRFLOW_NAMESPACE"
+          helm status "$AIRFLOW_RELEASE" -n "$AIRFLOW_NAMESPACE"
+
+      - name: Roll back after post-deploy verification failure
+        if: ${{ failure() && steps.upgrade.outcome == 'success' && steps.verify.outcome == 'failure' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_revision="${{ steps.state.outputs.previous_revision }}"
+          if [[ -z "$previous_revision" ]]; then
+            echo "::error::No previous Helm revision is available for rollback"
+            exit 1
+          fi
+          helm rollback "$AIRFLOW_RELEASE" "$previous_revision" \
+            --namespace "$AIRFLOW_NAMESPACE" \
+            --wait \
+            --timeout 15m
+
+      - name: Restore production DAG state
+        if: ${{ always() && steps.state.outputs.was_paused != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          scheduler_pod="$(
+            kubectl get pod -n "$AIRFLOW_NAMESPACE" \
+              -l component=scheduler \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          if [[ "${{ steps.state.outputs.was_paused }}" == "false" ]]; then
+            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+              -c scheduler -- airflow dags unpause "$PRODUCTION_DAG_ID"
+          else
+            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+              -c scheduler -- airflow dags pause "$PRODUCTION_DAG_ID"
+          fi

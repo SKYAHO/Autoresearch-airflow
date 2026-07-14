@@ -121,15 +121,14 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
 
 def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(encoding="utf-8")
-    candidate = (
-        "asia-northeast3-docker.pkg.dev/ar-infra-501607/"
-        "autoresearch-dev-docker/autoresearch-batch@sha256:"
-        "d6648616ff25a32b9429f4020b70110b96c591ccefdfbbab561e7fee0959e8c9"
-    )
 
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE" in values
-    assert candidate in values
+    assert re.search(
+        r"asia-northeast3-docker\.pkg\.dev/ar-infra-501607/"
+        r"autoresearch-dev-docker/autoresearch-batch@sha256:[0-9a-f]{64}",
+        values,
+    )
     for suffix in (
         "data_lake/youtube_trending_kr",
         "asset/virtual_user/vu_1000.parquet",
@@ -255,3 +254,21 @@ def test_helm_ci_renders_the_concrete_dev_values() -> None:
     assert "helm template airflow deploy/airflow" in workflow
     assert "helm template airflow apache-airflow/airflow" not in workflow
     assert "--values deploy/airflow/values.yaml" in workflow
+
+
+def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-gke-dev.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "use_dns_based_endpoint: true" in workflow
+    assert "google-github-actions/auth@v3" in workflow
+    assert "google-github-actions/get-gke-credentials@v3" in workflow
+    assert "airflow dags pause" in workflow
+    assert "airflow dags unpause" in workflow
+    assert "--atomic" in workflow
+    assert "helm rollback" in workflow
+    assert "airflow dags list-import-errors" in workflow
+    assert "test \"$task_count\" -eq 8" in workflow
+    assert "action_log_openrouter" in workflow
+    assert 'int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2' in workflow

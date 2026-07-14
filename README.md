@@ -33,7 +33,7 @@ action-log 생성·병합·품질 검사, YouTube backfill은 모두
 | `deploy/airflow/values.example.yaml` | 신규 환경 구성용 placeholder values 예제 |
 | `tests/` | DAG import, CLI 인자, 경로 격리, 저장소 계약 테스트 |
 | `docs/` | GKE 배포, 운영 QA, backfill 실행 절차 |
-| `scripts/` | GKE 진단과 Webserver Service 보정 스크립트 |
+| `scripts/` | digest 승격, GKE 진단과 Webserver Service 보정 스크립트 |
 
 ## 데이터 흐름
 
@@ -274,6 +274,38 @@ helm template airflow deploy/airflow \
   --values deploy/airflow/values.yaml \
   >/tmp/airflow-gke-dev.yaml
 ```
+
+### 자동 digest 승격과 dev 배포
+
+`Autoresearch`의 application release가 image digest, OCI revision, non-root 실행과
+공개 CLI를 검증하면 이 저장소의 `deploy/airflow/values.yaml`만 바꾸는 PR을 자동으로
+생성합니다. PR은 사람이 CI 결과와 digest를 확인해 merge합니다. 자동화 계정은
+직접 merge하지 않습니다.
+
+digest PR이 `main`에 merge되면 `Deploy Airflow dev` workflow가 실행됩니다.
+
+1. values의 immutable digest 형식과 Helm chart를 검증합니다.
+2. GKE DNS endpoint로 인증하고 production DAG의 기존 pause 상태를 기록합니다.
+3. DAG를 pause한 뒤 queued/running run이 끝날 때까지 기다립니다.
+4. `helm upgrade --install --atomic`을 수행합니다.
+5. scheduler/webserver rollout, 배포 digest, import error 0건, 8-task topology와
+   `action_log_openrouter=2 slots`를 검증합니다.
+6. 검증 실패 시 이전 Helm revision으로 rollback하고, 성공·실패와 관계없이 원래
+   DAG pause 상태를 복원합니다.
+
+workflow는 `dev-gke` environment와 다음 repository variable을 사용합니다.
+
+| Variable | 값 |
+| --- | --- |
+| `GCP_PROJECT_ID` | `ar-infra-501607` |
+| `GKE_CLUSTER` | `autoresearch-dev-gke` |
+| `GKE_LOCATION` | `asia-northeast3-a` |
+| `GKE_DEPLOYER_SA` | infra output `github_actions_airflow_deployer_service_account_email` |
+| `WIF_PROVIDER_ID` | bootstrap output의 full provider resource ID |
+
+`Autoresearch-infra`에서 WIF mapping, deployer GSA와 namespace RoleBinding을 먼저
+적용해야 합니다. workflow의 `workflow_dispatch`는 같은 검증과 배포 절차를 수동
+재실행할 때 사용합니다.
 
 배포와 rollback 절차는
 [`docs/gke-helm-gitsync.md`](docs/gke-helm-gitsync.md)를 참고하십시오.

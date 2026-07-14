@@ -16,6 +16,8 @@ build/
 
 # Kubernetes/GCP credentials
 kubeconfig*
+gha-kubeconfig-*
+gha-creds-*.json
 *-service-account.json
 *gcp-key*.json
 # Helm artifacts
