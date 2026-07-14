@@ -4,15 +4,32 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+KPO_PATH = ROOT / "dags" / "common" / "batch_pod_operator.py"
+ACTION_LOG_FACTORY_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "factory.py"
+ACTION_LOG_PROD_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_prod.py"
+ACTION_LOG_QA_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_qa.py"
+ACTION_LOG_CONFIG_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "config.py"
+BACKFILL_DAG_PATH = ROOT / "dags" / "youtube_backfill" / "dag_kr.py"
+
+
+def test_dags_share_encapsulated_batch_pod_operator() -> None:
+    action_log_source = ACTION_LOG_FACTORY_PATH.read_text(encoding="utf-8")
+    backfill_source = BACKFILL_DAG_PATH.read_text(encoding="utf-8")
+
+    assert KPO_PATH.is_file()
+    operator_source = KPO_PATH.read_text(encoding="utf-8")
+    assert "class AutoresearchBatchPodOperator(KubernetesPodOperator)" in operator_source
+    assert "Variable.get" not in operator_source
+    assert "Variable.get" not in action_log_source
+    assert "AutoresearchBatchPodOperator(" in action_log_source
+    assert "AutoresearchBatchPodOperator(" in backfill_source
 
 
 def test_dag_defines_kubernetes_pod_operator_task() -> None:
-    dag_path = ROOT / "dags" / "youtube_gcs_action_log_pipeline_factory.py"
-    tree = ast.parse(dag_path.read_text(encoding="utf-8"))
-    source = ast.unparse(tree)
-    production_source = (ROOT / "dags" / "youtube_gcs_action_log_pipeline.py").read_text(
-        encoding="utf-8"
-    )
+    tree = ast.parse(ACTION_LOG_FACTORY_PATH.read_text(encoding="utf-8"))
+    operator_tree = ast.parse(KPO_PATH.read_text(encoding="utf-8"))
+    source = f"{ast.unparse(tree)}\n{ast.unparse(operator_tree)}"
+    production_source = ACTION_LOG_PROD_PATH.read_text(encoding="utf-8")
 
     assert "KubernetesPodOperator" in source
     assert "autoresearch.jobs.youtube_trending" in source
@@ -45,16 +62,12 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
 
 
 def test_kpo_runtime_fields_are_not_jinja_literals() -> None:
-    dag_path = ROOT / "dags" / "youtube_gcs_action_log_pipeline_factory.py"
-    tree = ast.parse(dag_path.read_text(encoding="utf-8"))
+    tree = ast.parse(KPO_PATH.read_text(encoding="utf-8"))
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if (
-            not isinstance(node.func, ast.Name)
-            or node.func.id != "KubernetesPodOperator"
-        ):
+        if not isinstance(node.func, ast.Name) or node.func.id != "_KubernetesPodOperatorArguments":
             continue
 
         keyword_values = {keyword.arg: keyword.value for keyword in node.keywords}
@@ -67,13 +80,11 @@ def test_kpo_runtime_fields_are_not_jinja_literals() -> None:
             ), f"{field_name} is not rendered by KubernetesPodOperator templating"
         return
 
-    raise AssertionError("KubernetesPodOperator call not found")
+    raise AssertionError("encapsulated KubernetesPodOperator arguments not found")
 
 
 def test_manual_qa_dag_is_unscheduled_and_bounded_to_1000_users() -> None:
-    source = (ROOT / "dags" / "youtube_gcs_action_log_pipeline_qa.py").read_text(
-        encoding="utf-8"
-    )
+    source = ACTION_LOG_QA_PATH.read_text(encoding="utf-8")
 
     assert 'dag_id="youtube_gcs_action_log_pipeline_qa"' in source
     assert "schedule=None" in source
@@ -82,7 +93,7 @@ def test_manual_qa_dag_is_unscheduled_and_bounded_to_1000_users() -> None:
 
 
 def test_git_sync_owns_uniquely_named_dag_helper_module() -> None:
-    assert (ROOT / "dags" / "youtube_gcs_action_log_dag_config.py").is_file()
+    assert ACTION_LOG_CONFIG_PATH.is_file()
     assert not (ROOT / "dags" / "autoresearch_airflow" / "dag_config.py").exists()
     assert not (ROOT / "autoresearch_airflow" / "dag_config.py").exists()
 

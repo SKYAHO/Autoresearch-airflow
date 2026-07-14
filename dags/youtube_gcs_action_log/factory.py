@@ -8,16 +8,16 @@ uses a repository-local application wrapper.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from airflow import DAG
-from airflow.models import Variable
-from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from kubernetes.client import models as k8s
 
-from youtube_gcs_action_log_dag_config import (
+from common.batch_pod_operator import AutoresearchBatchPodOperator
+from youtube_gcs_action_log.config import (
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
     build_public_action_log_merge_kpo_arguments,
@@ -35,6 +35,10 @@ _PARTITION_DATE_TEMPLATE = (
 )
 _CANDIDATES_PER_USER_CONF_KEY = "candidates_per_user"
 _QA_PREFIX_CONF_KEY = "qa_prefix"
+
+
+def _airflow_env(name: str, default: str) -> str:
+    return os.environ.get(f"AIRFLOW_VAR_{name}", default)
 
 
 def _path_conf(conf: Mapping[str, object] | None) -> dict[str, object]:
@@ -97,27 +101,10 @@ _ACTION_LOG_SETTINGS = ActionLogDagSettings(
     max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '2') }}",
     chunk_size_template="{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
 )
-_KPO_SERVICE_ACCOUNT = Variable.get(
-    "AIRFLOW_KPO_SERVICE_ACCOUNT", default_var="autoresearch-batch"
+_API_SECRET_NAME = _airflow_env(
+    "AUTORESEARCH_API_SECRET_NAME", "autoresearch-airflow-env"
 )
-_BATCH_IMAGE_PULL_POLICY = Variable.get(
-    "AUTORESEARCH_BATCH_IMAGE_PULL_POLICY", default_var="IfNotPresent"
-)
-_API_SECRET_NAME = Variable.get(
-    "AUTORESEARCH_API_SECRET_NAME", default_var="autoresearch-airflow-env"
-)
-_OPENROUTER_POOL = Variable.get(
-    "ACTION_LOG_OPENROUTER_POOL", default_var="action_log_openrouter"
-)
-_BATCH_SPOT_NODE_SELECTOR = {"cloud.google.com/gke-nodepool": "batch-spot"}
-_BATCH_SPOT_TOLERATIONS = [
-    {
-        "key": "workload",
-        "operator": "Equal",
-        "value": "batch-spot",
-        "effect": "NoSchedule",
-    },
-]
+_OPENROUTER_POOL = _airflow_env("ACTION_LOG_OPENROUTER_POOL", "action_log_openrouter")
 _OPENROUTER_ENV_DEFAULTS = {
     "OPENROUTER_TIMEOUT_SEC": "60",
     "OPENROUTER_MAX_RETRIES": "2",
@@ -130,7 +117,7 @@ _OPENROUTER_ENV_DEFAULTS = {
 def _positive_int_variable(name: str, default: int) -> int:
     """Read a positive integer Airflow Variable at DAG parse time."""
 
-    raw_value = Variable.get(name, default_var=str(default))
+    raw_value = _airflow_env(name, str(default))
     try:
         value = int(raw_value)
     except ValueError as exc:
@@ -170,7 +157,7 @@ def _openrouter_runtime_env_vars() -> list[k8s.V1EnvVar]:
     """Expose non-secret OpenRouter resilience settings to shard pods."""
 
     env_vars = [
-        k8s.V1EnvVar(name=name, value=Variable.get(name, default_var=default))
+        k8s.V1EnvVar(name=name, value=_airflow_env(name, default))
         for name, default in _OPENROUTER_ENV_DEFAULTS.items()
     ]
     for name in (
@@ -178,7 +165,7 @@ def _openrouter_runtime_env_vars() -> list[k8s.V1EnvVar]:
         "OPENROUTER_ALLOW_FALLBACKS",
         "OPENROUTER_REQUIRE_PARAMETERS",
     ):
-        value = Variable.get(name, default_var="")
+        value = _airflow_env(name, "")
         if value:
             env_vars.append(k8s.V1EnvVar(name=name, value=value))
     return env_vars
@@ -237,25 +224,15 @@ def build_youtube_gcs_action_log_pipeline(
         },
         doc_md=__doc__,
     ) as dag:
-        collect_youtube_trending_partition = KubernetesPodOperator(
+        collect_youtube_trending_partition = AutoresearchBatchPodOperator(
             task_id="collect_youtube_trending_partition",
-            name="collect-youtube-trending-partition",
-            namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
             image=batch_image,
-            cmds=["python", "-m", youtube_module],
+            module=youtube_module,
             arguments=youtube_arguments,
             env_vars=_secret_env_vars("YOUTUBE_API_KEYS", "YOUTUBE_API_KEY", "YOUTUBE_PROXY_URL"),
-            service_account_name=_KPO_SERVICE_ACCOUNT,
-            image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
-            in_cluster=True,
-            get_logs=True,
-            is_delete_operator_pod=True,
-            do_xcom_push=False,
+            pipeline="youtube-collection",
+            retries=2,
             execution_timeout=timedelta(minutes=30),
-            startup_timeout_seconds=600,
-            labels={"app": "autoresearch", "pipeline": "youtube-collection"},
-            node_selector=_BATCH_SPOT_NODE_SELECTOR,
-            tolerations=_BATCH_SPOT_TOLERATIONS,
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": "500m", "memory": "1Gi"},
                 limits={"cpu": "2", "memory": "4Gi"},
@@ -263,36 +240,22 @@ def build_youtube_gcs_action_log_pipeline(
         )
 
         ensure_action_log_shards = [
-            KubernetesPodOperator(
+            AutoresearchBatchPodOperator(
                 task_id=f"ensure_action_log_shard_{shard_index:03d}",
-                name=f"ensure-action-log-shard-{shard_index:03d}",
-                namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
                 image=batch_image,
-                cmds=["python", "-m", action_log_module],
+                module=action_log_module,
                 arguments=shard_arguments(shard_index),
                 env_vars=[
                     *_secret_env_vars("OPENROUTER_API_KEY", optional=False),
                     *_openrouter_runtime_env_vars(),
                 ],
-                service_account_name=_KPO_SERVICE_ACCOUNT,
-                image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
+                pipeline="youtube-action-log",
                 pool=_OPENROUTER_POOL,
                 pool_slots=1,
-                in_cluster=True,
-                get_logs=True,
-                is_delete_operator_pod=True,
-                do_xcom_push=False,
                 retries=1,
                 retry_delay=timedelta(minutes=10),
                 execution_timeout=timedelta(hours=6, minutes=30),
-                startup_timeout_seconds=600,
-                labels={
-                    "app": "autoresearch",
-                    "pipeline": "youtube-action-log",
-                    "shard": f"{shard_index:03d}",
-                },
-                node_selector=_BATCH_SPOT_NODE_SELECTOR,
-                tolerations=_BATCH_SPOT_TOLERATIONS,
+                labels={"shard": f"{shard_index:03d}"},
                 container_resources=k8s.V1ResourceRequirements(
                     requests={"cpu": "250m", "memory": "512Mi"},
                     limits={"cpu": "2", "memory": "4Gi"},
@@ -301,29 +264,17 @@ def build_youtube_gcs_action_log_pipeline(
             for shard_index in range(_ACTION_LOG_SHARD_COUNT)
         ]
 
-        merge_action_log_partition = KubernetesPodOperator(
+        merge_action_log_partition = AutoresearchBatchPodOperator(
             task_id="merge_action_log_partition",
-            name="merge-action-log-partition",
-            namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
             image=batch_image,
-            cmds=["python", "-m", action_log_module],
+            module=action_log_module,
             arguments=build_public_action_log_merge_kpo_arguments(
                 _ACTION_LOG_SETTINGS
             ),
-            env_vars=_secret_env_vars(),
-            service_account_name=_KPO_SERVICE_ACCOUNT,
-            image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
-            in_cluster=True,
-            get_logs=True,
-            is_delete_operator_pod=True,
-            do_xcom_push=False,
+            pipeline="youtube-action-log",
             retries=1,
             trigger_rule="all_success",
             execution_timeout=timedelta(minutes=30),
-            startup_timeout_seconds=600,
-            labels={"app": "autoresearch", "pipeline": "youtube-action-log"},
-            node_selector=_BATCH_SPOT_NODE_SELECTOR,
-            tolerations=_BATCH_SPOT_TOLERATIONS,
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": "500m", "memory": "1Gi"},
                 limits={"cpu": "2", "memory": "4Gi"},
@@ -335,28 +286,17 @@ def build_youtube_gcs_action_log_pipeline(
             >> merge_action_log_partition
         )
 
-        validate_action_log_partition = KubernetesPodOperator(
+        validate_action_log_partition = AutoresearchBatchPodOperator(
             task_id="validate_action_log_partition",
-            name="validate-action-log-partition",
-            namespace="{{ var.value.get('AIRFLOW_KPO_NAMESPACE', 'airflow') }}",
             image=batch_image,
-            cmds=["python", "-m", "autoresearch.jobs.action_log_quality"],
+            module="autoresearch.jobs.action_log_quality",
             arguments=build_public_action_log_quality_kpo_arguments(
                 _ACTION_LOG_SETTINGS
             ),
-            service_account_name=_KPO_SERVICE_ACCOUNT,
-            image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
-            in_cluster=True,
-            get_logs=True,
-            is_delete_operator_pod=True,
-            do_xcom_push=False,
+            pipeline="action-log-quality",
             retries=1,
             trigger_rule="all_success",
             execution_timeout=timedelta(minutes=30),
-            startup_timeout_seconds=600,
-            labels={"app": "autoresearch", "pipeline": "action-log-quality"},
-            node_selector=_BATCH_SPOT_NODE_SELECTOR,
-            tolerations=_BATCH_SPOT_TOLERATIONS,
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": "250m", "memory": "512Mi"},
                 limits={"cpu": "1", "memory": "2Gi"},

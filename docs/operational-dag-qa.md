@@ -128,7 +128,7 @@ gs://<bucket>/qa/action-log/run=<run_id>/final-quarantine/dt=<yyyy-mm-dd>/quaran
   바꾸지 않습니다. model/generator와 Secret도 기존 Airflow Variable 및
   Kubernetes Secret 계약을 유지합니다.
 
-macro helper는 `dags/youtube_gcs_action_log_dag_config.py`에 있으므로 DAG와 동일한
+macro helper는 `dags/youtube_gcs_action_log/config.py`에 있으므로 DAG와 동일한
 git-sync commit으로 배포됩니다. Airflow image 재빌드는 필요하지 않습니다.
 production batch image는 QA를 통과한 immutable digest로 고정하고, 완전한 GCS
 URI, git-sync commit, scheduler import error를 함께 확인합니다.

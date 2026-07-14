@@ -1,6 +1,6 @@
 import pytest
 
-from youtube_gcs_action_log_dag_config import (
+from youtube_gcs_action_log.config import (
     CANDIDATES_PER_USER_CONF_KEY,
     QA_PATH_CONF_KEYS,
     ActionLogDagSettings,
