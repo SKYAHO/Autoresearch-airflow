@@ -225,7 +225,7 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         }
 
     assert merge.kwargs["trigger_rule"] == "all_success"
-    assert merge.kwargs["retries"] == 0
+    assert merge.kwargs["retries"] == 1
     assert merge.kwargs["do_xcom_push"] is False
     merge_arguments = merge.kwargs["arguments"]
     assert merge_arguments[merge_arguments.index("--shard-count") + 1] == (
@@ -254,7 +254,7 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         "autoresearch.jobs.action_log_quality",
     ]
     assert quality.kwargs["trigger_rule"] == "all_success"
-    assert quality.kwargs["retries"] == 0
+    assert quality.kwargs["retries"] == 1
 
 
 def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None:
@@ -352,7 +352,7 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
         "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
     ]
     assert quality.kwargs["trigger_rule"] == "all_success"
-    assert quality.kwargs["retries"] == 0
+    assert quality.kwargs["retries"] == 1
 
 
 def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
@@ -389,7 +389,7 @@ def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
         "--overwrite=true",
     ]
     assert "env_vars" not in task.kwargs
-    assert task.kwargs["retries"] == 0
+    assert task.kwargs["retries"] == 1
     assert task.kwargs["execution_timeout"] == timedelta(hours=2)
     assert task.kwargs["get_logs"] is True
     assert task.kwargs["do_xcom_push"] is False
