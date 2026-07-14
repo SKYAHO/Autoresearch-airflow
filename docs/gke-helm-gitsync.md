@@ -50,22 +50,30 @@ PRODUCTION_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev
 ROLLBACK_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<previous-digest>
 ```
 
-배포 순서는 반드시 다음과 같습니다.
+application digest 승격과 dev 배포의 기본 순서는 다음과 같습니다.
 
 1. `Autoresearch` release workflow와 Artifact Registry에서 QA를 통과한 digest,
    OCI revision, public CLI smoke 결과를 확인하고 이전 digest를 기록합니다.
-2. merge 전에 production DAG를 pause하고 진행 중인 run이 없으며 같은 schedule의
-   legacy DAG가 따로 활성화되어 있지 않은지 확인합니다.
-3. `deploy/airflow/values.yaml`의 `AUTORESEARCH_BATCH_IMAGE`를 검증된 digest로
-   변경하고 `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` 항목을 제거합니다. 모든 batch
-   경로가 완전한 `gs://...` URI인지 함께 확인합니다.
-4. 공개 CLI와 quality gate를 사용하는 DAG 변경을 `main`에 반영한 직후 Helm
-   upgrade를 수행합니다. factory, helper, production digest가 함께 전환되어야 합니다.
-5. scheduler와 webserver rollout, DAG import error 0건,
-   production 8-task topology, `action_log_openrouter=2 slots`를 확인합니다.
-6. production DAG를 unpause하고 수동 실행 또는 다음 예약 실행에서 5개 shard,
-   단일 merge, 최종 quality task와 final partition을 확인합니다. 최소 한 번의
-   예약 실행이 성공할 때까지 이전 digest와 DAG revision을 롤백 후보로 보존합니다.
+2. release workflow가 `deploy/airflow/values.yaml`의 production digest만 갱신하는
+   Airflow PR을 생성합니다. 같은 source SHA는 같은 promotion branch를 사용합니다.
+3. PR CI에서 digest 형식, DAG 계약과 Helm 렌더링을 확인한 뒤 사람이 merge합니다.
+4. `main` merge로 `Deploy Airflow dev` workflow가 시작됩니다. workflow가 production
+   DAG를 pause하고 queued/running run이 없을 때까지 기다린 뒤 Helm upgrade를
+   수행합니다.
+5. workflow가 scheduler와 webserver rollout, 실제 Airflow Variable의 digest,
+   DAG import error 0건, production 8-task topology,
+   `action_log_openrouter=2 slots`를 확인합니다.
+6. 검증 실패 시 이전 Helm revision으로 rollback합니다. 성공·실패와 관계없이
+   배포 전 production DAG의 pause 상태를 복원합니다.
+7. 다음 예약 실행에서 5개 shard, 단일 merge, 최종 quality task와 final partition을
+   확인합니다. 최소 한 번의 예약 실행이 성공할 때까지 이전 digest와 DAG revision을
+   rollback 후보로 보존합니다.
+
+자동 배포에는 `dev-gke` GitHub environment와 `GCP_PROJECT_ID`, `GKE_CLUSTER`,
+`GKE_LOCATION`, `GKE_DEPLOYER_SA`, `WIF_PROVIDER_ID` repository variable이 필요합니다.
+deployer는 GKE DNS endpoint를 사용하며 GCP에서는 cluster viewer, Kubernetes에서는
+`airflow` namespace의 admin 권한만 가집니다. 이 IAM/RBAC는
+`Autoresearch-infra`가 먼저 적용해야 합니다.
 
 1. GKE cluster와 `airflow` namespace를 준비합니다.
 2. Workload Identity용 Kubernetes ServiceAccount와 Google ServiceAccount 매핑을
