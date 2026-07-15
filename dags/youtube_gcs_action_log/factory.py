@@ -14,7 +14,6 @@ from zoneinfo import ZoneInfo
 
 from airflow import DAG
 from airflow.utils.task_group import TaskGroup
-from kubernetes.client import models as k8s
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
 from youtube_gcs_action_log.config import (
@@ -55,9 +54,6 @@ _ACTION_LOG_SETTINGS = ActionLogDagSettings(
     max_concurrency_template="{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '2') }}",
     chunk_size_template="{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
 )
-_API_SECRET_NAME = _airflow_env(
-    "AUTORESEARCH_API_SECRET_NAME", "autoresearch-airflow-env"
-)
 _OPENROUTER_POOL = _airflow_env("ACTION_LOG_OPENROUTER_POOL", "action_log_openrouter")
 _OPENROUTER_ENV_DEFAULTS = {
     "OPENROUTER_TIMEOUT_SEC": "60",
@@ -91,31 +87,13 @@ _QA_BATCH_IMAGE_TEMPLATE = (
 )
 
 
-def _secret_env_vars(*keys: str, optional: bool = True) -> list[k8s.V1EnvVar]:
-    """Expose Kubernetes Secret keys to a KPO pod without putting them in args."""
+def _openrouter_runtime_env() -> dict[str, str]:
+    """Collect non-secret OpenRouter resilience settings for shard pods."""
 
-    return [
-        k8s.V1EnvVar(
-            name=key,
-            value_from=k8s.V1EnvVarSource(
-                secret_key_ref=k8s.V1SecretKeySelector(
-                    name=_API_SECRET_NAME,
-                    key=key,
-                    optional=optional,
-                )
-            ),
-        )
-        for key in keys
-    ]
-
-
-def _openrouter_runtime_env_vars() -> list[k8s.V1EnvVar]:
-    """Expose non-secret OpenRouter resilience settings to shard pods."""
-
-    env_vars = [
-        k8s.V1EnvVar(name=name, value=_airflow_env(name, default))
+    env = {
+        name: _airflow_env(name, default)
         for name, default in _OPENROUTER_ENV_DEFAULTS.items()
-    ]
+    }
     for name in (
         "OPENROUTER_PROVIDER_SORT",
         "OPENROUTER_ALLOW_FALLBACKS",
@@ -123,8 +101,102 @@ def _openrouter_runtime_env_vars() -> list[k8s.V1EnvVar]:
     ):
         value = _airflow_env(name, "")
         if value:
-            env_vars.append(k8s.V1EnvVar(name=name, value=value))
-    return env_vars
+            env[name] = value
+    return env
+
+
+class ActionLogTasks:
+    """Build the action-log DAG's pod tasks, hiding KPO wiring from the DAG body."""
+
+    def __init__(self, *, batch_image: str, max_users: int | None) -> None:
+        self._image = batch_image
+        self._max_users = max_users
+
+    def collect_youtube_trending(self) -> AutoresearchBatchPodOperator:
+        return AutoresearchBatchPodOperator(
+            task_id="collect_youtube_trending_partition",
+            image=self._image,
+            module="autoresearch.jobs.youtube_trending",
+            arguments=build_public_youtube_trending_kpo_arguments(_YOUTUBE_SETTINGS),
+            pipeline="youtube-collection",
+            secret_env_keys=("YOUTUBE_API_KEYS", "YOUTUBE_API_KEY", "YOUTUBE_PROXY_URL"),
+            retries=2,
+            execution_timeout=timedelta(minutes=30),
+            cpu_request="500m",
+            memory_request="1Gi",
+            cpu_limit="2",
+            memory_limit="4Gi",
+        )
+
+    def action_log_shards(self) -> list[AutoresearchBatchPodOperator]:
+        return [
+            self._action_log_shard(shard_index)
+            for shard_index in range(_ACTION_LOG_SHARD_COUNT)
+        ]
+
+    def _action_log_shard(self, shard_index: int) -> AutoresearchBatchPodOperator:
+        arguments = build_public_action_log_shard_kpo_arguments(
+            _ACTION_LOG_SETTINGS,
+            shard_index=shard_index,
+        )
+        if self._max_users is not None:
+            candidates_position = arguments.index("--candidates-per-user")
+            arguments[candidates_position:candidates_position] = [
+                "--max-users",
+                str(self._max_users),
+            ]
+        return AutoresearchBatchPodOperator(
+            task_id=f"ensure_action_log_shard_{shard_index:03d}",
+            image=self._image,
+            module="autoresearch.jobs.action_log",
+            arguments=arguments,
+            pipeline="youtube-action-log",
+            secret_env_keys=("OPENROUTER_API_KEY",),
+            secret_env_optional=False,
+            plain_env=_openrouter_runtime_env(),
+            pool=_OPENROUTER_POOL,
+            pool_slots=1,
+            retries=1,
+            retry_delay=timedelta(minutes=10),
+            execution_timeout=timedelta(hours=6, minutes=30),
+            labels={"shard": f"{shard_index:03d}"},
+            cpu_request="250m",
+            memory_request="512Mi",
+            cpu_limit="2",
+            memory_limit="4Gi",
+        )
+
+    def merge_action_log(self) -> AutoresearchBatchPodOperator:
+        return AutoresearchBatchPodOperator(
+            task_id="merge_action_log_partition",
+            image=self._image,
+            module="autoresearch.jobs.action_log",
+            arguments=build_public_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS),
+            pipeline="youtube-action-log",
+            retries=1,
+            trigger_rule="all_success",
+            execution_timeout=timedelta(minutes=30),
+            cpu_request="500m",
+            memory_request="1Gi",
+            cpu_limit="2",
+            memory_limit="4Gi",
+        )
+
+    def validate_action_log(self) -> AutoresearchBatchPodOperator:
+        return AutoresearchBatchPodOperator(
+            task_id="validate_action_log_partition",
+            image=self._image,
+            module="autoresearch.jobs.action_log_quality",
+            arguments=build_public_action_log_quality_kpo_arguments(_ACTION_LOG_SETTINGS),
+            pipeline="action-log-quality",
+            retries=1,
+            trigger_rule="all_success",
+            execution_timeout=timedelta(minutes=30),
+            cpu_request="250m",
+            memory_request="512Mi",
+            cpu_limit="1",
+            memory_limit="2Gi",
+        )
 
 
 def build_youtube_gcs_action_log_pipeline(
@@ -146,24 +218,7 @@ def build_youtube_gcs_action_log_pipeline(
         if use_candidate_image
         else _PRODUCTION_BATCH_IMAGE_TEMPLATE
     )
-    youtube_module = "autoresearch.jobs.youtube_trending"
-    action_log_module = "autoresearch.jobs.action_log"
-    youtube_arguments = build_public_youtube_trending_kpo_arguments(
-        _YOUTUBE_SETTINGS
-    )
-
-    def shard_arguments(shard_index: int) -> list[str]:
-        arguments = build_public_action_log_shard_kpo_arguments(
-            _ACTION_LOG_SETTINGS,
-            shard_index=shard_index,
-        )
-        if max_users is not None:
-            candidates_position = arguments.index("--candidates-per-user")
-            arguments[candidates_position:candidates_position] = [
-                "--max-users",
-                str(max_users),
-            ]
-        return arguments
+    tasks = ActionLogTasks(batch_image=batch_image, max_users=max_users)
 
     with DAG(
         dag_id=dag_id,
@@ -180,91 +235,13 @@ def build_youtube_gcs_action_log_pipeline(
         },
         doc_md=__doc__,
     ) as dag:
-        with TaskGroup(
-            group_id="youtube_partition",
-            prefix_group_id=False,
-        ):
-            collect_youtube_trending_partition = AutoresearchBatchPodOperator(
-                task_id="collect_youtube_trending_partition",
-                image=batch_image,
-                module=youtube_module,
-                arguments=youtube_arguments,
-                env_vars=_secret_env_vars(
-                    "YOUTUBE_API_KEYS",
-                    "YOUTUBE_API_KEY",
-                    "YOUTUBE_PROXY_URL",
-                ),
-                pipeline="youtube-collection",
-                retries=2,
-                execution_timeout=timedelta(minutes=30),
-                container_resources=k8s.V1ResourceRequirements(
-                    requests={"cpu": "500m", "memory": "1Gi"},
-                    limits={"cpu": "2", "memory": "4Gi"},
-                ),
-            )
+        with TaskGroup(group_id="youtube_partition", prefix_group_id=False):
+            collect_youtube_trending_partition = tasks.collect_youtube_trending()
 
-        with TaskGroup(
-            group_id="action_log_partition",
-            prefix_group_id=False,
-        ):
-            ensure_action_log_shards = [
-                AutoresearchBatchPodOperator(
-                    task_id=f"ensure_action_log_shard_{shard_index:03d}",
-                    image=batch_image,
-                    module=action_log_module,
-                    arguments=shard_arguments(shard_index),
-                    env_vars=[
-                        *_secret_env_vars("OPENROUTER_API_KEY", optional=False),
-                        *_openrouter_runtime_env_vars(),
-                    ],
-                    pipeline="youtube-action-log",
-                    pool=_OPENROUTER_POOL,
-                    pool_slots=1,
-                    retries=1,
-                    retry_delay=timedelta(minutes=10),
-                    execution_timeout=timedelta(hours=6, minutes=30),
-                    labels={"shard": f"{shard_index:03d}"},
-                    container_resources=k8s.V1ResourceRequirements(
-                        requests={"cpu": "250m", "memory": "512Mi"},
-                        limits={"cpu": "2", "memory": "4Gi"},
-                    ),
-                )
-                for shard_index in range(_ACTION_LOG_SHARD_COUNT)
-            ]
-
-            merge_action_log_partition = AutoresearchBatchPodOperator(
-                task_id="merge_action_log_partition",
-                image=batch_image,
-                module=action_log_module,
-                arguments=build_public_action_log_merge_kpo_arguments(
-                    _ACTION_LOG_SETTINGS
-                ),
-                pipeline="youtube-action-log",
-                retries=1,
-                trigger_rule="all_success",
-                execution_timeout=timedelta(minutes=30),
-                container_resources=k8s.V1ResourceRequirements(
-                    requests={"cpu": "500m", "memory": "1Gi"},
-                    limits={"cpu": "2", "memory": "4Gi"},
-                ),
-            )
-
-            validate_action_log_partition = AutoresearchBatchPodOperator(
-                task_id="validate_action_log_partition",
-                image=batch_image,
-                module="autoresearch.jobs.action_log_quality",
-                arguments=build_public_action_log_quality_kpo_arguments(
-                    _ACTION_LOG_SETTINGS
-                ),
-                pipeline="action-log-quality",
-                retries=1,
-                trigger_rule="all_success",
-                execution_timeout=timedelta(minutes=30),
-                container_resources=k8s.V1ResourceRequirements(
-                    requests={"cpu": "250m", "memory": "512Mi"},
-                    limits={"cpu": "1", "memory": "2Gi"},
-                ),
-            )
+        with TaskGroup(group_id="action_log_partition", prefix_group_id=False):
+            ensure_action_log_shards = tasks.action_log_shards()
+            merge_action_log_partition = tasks.merge_action_log()
+            validate_action_log_partition = tasks.validate_action_log()
 
         (
             collect_youtube_trending_partition

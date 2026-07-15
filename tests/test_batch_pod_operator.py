@@ -2,7 +2,7 @@ import importlib.util
 from datetime import timedelta
 from pathlib import Path
 
-from airflow_stubs import FakeDAG, Model, install_airflow_stubs
+from airflow_stubs import FakeDAG, install_airflow_stubs
 
 
 KPO_PATH = (
@@ -30,7 +30,10 @@ def test_batch_operator_reads_parse_time_config_from_environment(monkeypatch) ->
             arguments=[],
             pipeline="example",
             execution_timeout=timedelta(minutes=1),
-            container_resources=Model(),
+            cpu_request="250m",
+            memory_request="512Mi",
+            cpu_limit="1",
+            memory_limit="2Gi",
             params={"partition_date": ""},
             default_args={"retries": 2},
         )
