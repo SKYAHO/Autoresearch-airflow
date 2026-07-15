@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from airflow import DAG
-from kubernetes.client import models as k8s
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
 from youtube_backfill.config import (
@@ -39,8 +38,8 @@ with DAG(
         pipeline="youtube-backfill",
         retries=1,
         execution_timeout=timedelta(hours=2),
-        container_resources=k8s.V1ResourceRequirements(
-            requests={"cpu": "500m", "memory": "1Gi"},
-            limits={"cpu": "2", "memory": "4Gi"},
-        ),
+        cpu_request="500m",
+        memory_request="1Gi",
+        cpu_limit="2",
+        memory_limit="4Gi",
     )

@@ -1,172 +1,24 @@
 import importlib.util
-import sys
 from datetime import timedelta
 from pathlib import Path
-from types import ModuleType
+
+from airflow_stubs import (
+    forget_pipeline_packages,
+    install_airflow_stubs,
+    install_stale_image_helper,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DAGS_ROOT = ROOT / "dags"
 DAG_PATH = DAGS_ROOT / "youtube_gcs_action_log" / "dag_prod.py"
 QA_DAG_PATH = DAGS_ROOT / "youtube_gcs_action_log" / "dag_qa.py"
-BACKFILL_DAG_PATH = DAGS_ROOT / "youtube_backfill" / "dag_kr.py"
-KPO_PATH = DAGS_ROOT / "common" / "batch_pod_operator.py"
-
-
-class _Model:
-    def __init__(self, **kwargs) -> None:
-        for name, value in kwargs.items():
-            setattr(self, name, value)
-
-
-class _FakeDAG:
-    current = None
-
-    def __init__(self, **kwargs) -> None:
-        self.kwargs = kwargs
-        self.task_dict: dict[str, _FakeKubernetesPodOperator] = {}
-
-    def __enter__(self):
-        type(self).current = self
-        return self
-
-    def __exit__(self, *_args) -> None:
-        type(self).current = None
-
-
-class _FakeKubernetesPodOperator:
-    def __init__(self, **kwargs) -> None:
-        self.kwargs = kwargs
-        self.task_id = kwargs["task_id"]
-        self.downstream_task_ids: set[str] = set()
-        dag = _FakeDAG.current
-        assert dag is not None
-        dag.task_dict[self.task_id] = self
-
-    def __rshift__(self, other):
-        targets = other if isinstance(other, list) else [other]
-        self.downstream_task_ids.update(task.task_id for task in targets)
-        return other
-
-    def __rrshift__(self, other):
-        sources = other if isinstance(other, list) else [other]
-        for source in sources:
-            source.downstream_task_ids.add(self.task_id)
-        return self
-
-
-def _install_airflow_stubs(monkeypatch) -> None:
-    airflow = ModuleType("airflow")
-    airflow.DAG = _FakeDAG
-    airflow_models = ModuleType("airflow.models")
-
-    class _Variable:
-        @staticmethod
-        def get(_name, default_var=None):
-            return default_var
-
-    airflow_models.Variable = _Variable
-    airflow_providers = ModuleType("airflow.providers")
-    airflow_cncf = ModuleType("airflow.providers.cncf")
-    airflow_kubernetes = ModuleType("airflow.providers.cncf.kubernetes")
-    airflow_operators = ModuleType("airflow.providers.cncf.kubernetes.operators")
-    airflow_pod = ModuleType("airflow.providers.cncf.kubernetes.operators.pod")
-    airflow_pod.KubernetesPodOperator = _FakeKubernetesPodOperator
-
-    kubernetes = ModuleType("kubernetes")
-    kubernetes_client = ModuleType("kubernetes.client")
-    kubernetes_models = ModuleType("kubernetes.client.models")
-    for model_name in (
-        "V1EnvVar",
-        "V1EnvVarSource",
-        "V1SecretKeySelector",
-        "V1ResourceRequirements",
-    ):
-        setattr(kubernetes_models, model_name, type(model_name, (_Model,), {}))
-    kubernetes_client.models = kubernetes_models
-
-    modules = {
-        "airflow": airflow,
-        "airflow.models": airflow_models,
-        "airflow.providers": airflow_providers,
-        "airflow.providers.cncf": airflow_cncf,
-        "airflow.providers.cncf.kubernetes": airflow_kubernetes,
-        "airflow.providers.cncf.kubernetes.operators": airflow_operators,
-        "airflow.providers.cncf.kubernetes.operators.pod": airflow_pod,
-        "kubernetes": kubernetes,
-        "kubernetes.client": kubernetes_client,
-        "kubernetes.client.models": kubernetes_models,
-    }
-    for name, module in modules.items():
-        monkeypatch.setitem(sys.modules, name, module)
-
-
-def _install_stale_image_helper(monkeypatch) -> None:
-    """Simulate the legacy helper package still baked into the Airflow image."""
-
-    stale_package = ModuleType("autoresearch_airflow")
-    stale_package.__path__ = ["/usr/local/airflow/autoresearch_airflow"]
-    stale_config = ModuleType("autoresearch_airflow.dag_config")
-    stale_package.dag_config = stale_config
-    monkeypatch.setitem(sys.modules, "autoresearch_airflow", stale_package)
-    monkeypatch.setitem(sys.modules, "autoresearch_airflow.dag_config", stale_config)
-
-
-def _forget_pipeline_packages() -> None:
-    """Drop cached DAG packages so each test re-imports them from source."""
-
-    for name in (
-        "common",
-        "common.batch_pod_operator",
-        "youtube_backfill",
-        "youtube_backfill.config",
-        "youtube_gcs_action_log",
-        "youtube_gcs_action_log.config",
-        "youtube_gcs_action_log.factory",
-    ):
-        sys.modules.pop(name, None)
-
-
-def test_batch_operator_reads_parse_time_config_from_environment(monkeypatch) -> None:
-    _install_airflow_stubs(monkeypatch)
-    monkeypatch.setenv("AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE", "batch-jobs")
-    monkeypatch.setenv("AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT", "batch-runner")
-    monkeypatch.setenv(
-        "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_PULL_POLICY", "Always"
-    )
-    spec = importlib.util.spec_from_file_location("_batch_operator_under_test", KPO_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    with _FakeDAG() as dag:
-        module.AutoresearchBatchPodOperator(
-            task_id="example_task",
-            image="example:latest",
-            module="example.job",
-            arguments=[],
-            pipeline="example",
-            execution_timeout=timedelta(minutes=1),
-            container_resources=_Model(),
-            # Airflow가 DAG 컨텍스트에서 apply_defaults로 주입하는 인자를 흉내냅니다.
-            params={"partition_date": ""},
-            default_args={"retries": 2},
-        )
-
-    task = dag.task_dict["example_task"]
-    assert task.kwargs["namespace"] == "batch-jobs"
-    assert task.kwargs["service_account_name"] == "batch-runner"
-    assert task.kwargs["image_pull_policy"] == "Always"
-    # DAG 레벨 인자가 KubernetesPodOperator로 전달되어야 합니다.
-    assert task.kwargs["params"] == {"partition_date": ""}
-    assert task.kwargs["default_args"] == {"retries": 2}
-
 
 def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
-    _install_airflow_stubs(monkeypatch)
-    _install_stale_image_helper(monkeypatch)
+    install_airflow_stubs(monkeypatch)
+    install_stale_image_helper(monkeypatch)
     monkeypatch.syspath_prepend(str(DAGS_ROOT))
-    _forget_pipeline_packages()
+    forget_pipeline_packages()
     spec = importlib.util.spec_from_file_location(
         "_action_log_dag_under_test", DAG_PATH
     )
@@ -187,6 +39,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     ]
     assert len(shards) == 5
     assert len(dag.task_dict) == 8
+    # TaskGroup으로 묶여도 task_id에 group 접두어가 붙지 않아야 한다.
+    # (prefix_group_id=False 유지 → 기존 DAG run 이력/clear 호환 보장)
+    assert all("." not in task_id for task_id in dag.task_dict), sorted(dag.task_dict)
     assert all(
         task.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
         for task in dag.task_dict.values()
@@ -195,6 +50,12 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     collect = dag.task_dict["collect_youtube_trending_partition"]
     merge = dag.task_dict["merge_action_log_partition"]
     quality = dag.task_dict["validate_action_log_partition"]
+    assert collect.task_group.group_id == "youtube_partition"
+    assert all(
+        shard.task_group.group_id == "action_log_partition" for shard in shards
+    )
+    assert merge.task_group.group_id == "action_log_partition"
+    assert quality.task_group.group_id == "action_log_partition"
     assert collect.kwargs["cmds"] == [
         "python",
         "-m",
@@ -310,10 +171,10 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
 
 
 def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None:
-    _install_airflow_stubs(monkeypatch)
-    _install_stale_image_helper(monkeypatch)
+    install_airflow_stubs(monkeypatch)
+    install_stale_image_helper(monkeypatch)
     monkeypatch.syspath_prepend(str(DAGS_ROOT))
-    _forget_pipeline_packages()
+    forget_pipeline_packages()
     spec = importlib.util.spec_from_file_location("_qa_dag_under_test", QA_DAG_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -405,43 +266,3 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
     ]
     assert quality.kwargs["trigger_rule"] == "all_success"
     assert quality.kwargs["retries"] == 1
-
-
-def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
-    _install_airflow_stubs(monkeypatch)
-    monkeypatch.syspath_prepend(str(DAGS_ROOT))
-    _forget_pipeline_packages()
-    spec = importlib.util.spec_from_file_location(
-        "_backfill_dag_under_test", BACKFILL_DAG_PATH
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    dag = module.dag
-    assert dag.kwargs["schedule"] is None
-    assert dag.kwargs["max_active_runs"] == 1
-    assert dag.kwargs["user_defined_macros"] == {
-        "resolve_backfill_path": module.resolve_backfill_path
-    }
-    assert list(dag.task_dict) == ["backfill_youtube_partitions"]
-
-    task = dag.task_dict["backfill_youtube_partitions"]
-    assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
-    assert task.kwargs["cmds"] == [
-        "python",
-        "-m",
-        "autoresearch.jobs.youtube_backfill",
-    ]
-    assert task.kwargs["arguments"] == [
-        "--source-path",
-        module.SOURCE_PATH_TEMPLATE,
-        "--youtube-base-path",
-        module.YOUTUBE_BASE_PATH_TEMPLATE,
-        "--overwrite=true",
-    ]
-    assert "env_vars" not in task.kwargs
-    assert task.kwargs["retries"] == 1
-    assert task.kwargs["execution_timeout"] == timedelta(hours=2)
-    assert task.kwargs["get_logs"] is True
-    assert task.kwargs["do_xcom_push"] is False

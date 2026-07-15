@@ -174,7 +174,6 @@ class YouTubeTrendingDagSettings:
     """Templates used by the YouTube trending KubernetesPodOperator task."""
 
     partition_date_template: str = PARTITION_DATE_TEMPLATE
-    bucket_template: str = "{{ var.value.YOUTUBE_LAKE_BUCKET }}"
     youtube_base_path_template: str = _qa_path_template(
         "youtube_base_path",
         "YOUTUBE_TRENDING_BASE_PATH",
@@ -194,7 +193,6 @@ class ActionLogDagSettings:
     """Templates used by the action log KubernetesPodOperator task."""
 
     partition_date_template: str = PARTITION_DATE_TEMPLATE
-    bucket_template: str = "{{ var.value.YOUTUBE_LAKE_BUCKET }}"
     youtube_base_path_template: str = _qa_path_template(
         "youtube_base_path",
         "ACTION_LOG_YOUTUBE_BASE_PATH",
@@ -259,27 +257,6 @@ class ActionLogDagSettings:
     )
 
 
-def build_youtube_trending_kpo_arguments(
-    settings: YouTubeTrendingDagSettings,
-) -> list[str]:
-    """Build CLI arguments for the daily YouTube trending batch container."""
-
-    return [
-        "--partition-date",
-        settings.partition_date_template,
-        "--bucket",
-        settings.bucket_template,
-        "--youtube-base-path",
-        settings.youtube_base_path_template,
-        "--region-code",
-        settings.region_code_template,
-        "--max-results",
-        settings.max_results_template,
-        "--proxy-url",
-        settings.proxy_url_template,
-    ]
-
-
 def build_public_youtube_trending_kpo_arguments(
     settings: YouTubeTrendingDagSettings,
 ) -> list[str]:
@@ -297,54 +274,6 @@ def build_public_youtube_trending_kpo_arguments(
         "--proxy-url",
         settings.proxy_url_template,
         f"--overwrite={settings.overwrite_template}",
-    ]
-
-
-def _build_action_log_common_arguments(
-    settings: ActionLogDagSettings,
-    *,
-    output_base_path_template: str,
-    quarantine_base_path_template: str,
-) -> list[str]:
-    """Build shared CLI arguments for action log batch containers."""
-
-    return [
-        "--partition-date",
-        settings.partition_date_template,
-        "--bucket",
-        settings.bucket_template,
-        "--youtube-base-path",
-        settings.youtube_base_path_template,
-        "--virtual-users-path",
-        settings.virtual_users_path_template,
-        "--output-base-path",
-        output_base_path_template,
-        "--quarantine-base-path",
-        quarantine_base_path_template,
-        "--overwrite",
-        settings.overwrite_template,
-        "--generator-name",
-        settings.generator_name_template,
-        "--model-name",
-        settings.model_name_template,
-        "--candidates-per-user",
-        settings.candidates_per_user_template,
-        "--target-ctr",
-        settings.target_ctr_template,
-        "--personalized-ratio",
-        settings.personalized_ratio_template,
-        "--popular-ratio",
-        settings.popular_ratio_template,
-        "--exploration-ratio",
-        settings.exploration_ratio_template,
-        "--seed",
-        settings.seed_template,
-        "--max-concurrency",
-        settings.max_concurrency_template,
-        "--chunk-size",
-        settings.chunk_size_template,
-        "--max-quarantine-ratio",
-        settings.max_quarantine_ratio_template,
     ]
 
 
@@ -393,46 +322,6 @@ def _build_public_action_log_common_arguments(
     ]
 
 
-def build_action_log_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
-    """Build CLI arguments for the legacy single-pod daily action log container."""
-
-    return _build_action_log_common_arguments(
-        settings,
-        output_base_path_template=settings.output_base_path_template,
-        quarantine_base_path_template=settings.quarantine_base_path_template,
-    )
-
-
-def build_action_log_shard_kpo_arguments(
-    settings: ActionLogDagSettings,
-    *,
-    shard_index: int,
-) -> list[str]:
-    """Build CLI arguments for one action log shard container."""
-
-    return [
-        "--mode",
-        "shard",
-        *_build_action_log_common_arguments(
-            settings,
-            output_base_path_template=settings.shard_output_base_path_template,
-            quarantine_base_path_template=settings.shard_quarantine_base_path_template,
-        ),
-        "--shard-index",
-        str(shard_index),
-        "--shard-count",
-        settings.shard_count_template,
-        "--progress-base-path",
-        settings.progress_base_path_template,
-        "--checkpoint-base-path",
-        settings.checkpoint_base_path_template,
-        "--final-output-base-path",
-        settings.output_base_path_template,
-        "--final-quarantine-base-path",
-        settings.quarantine_base_path_template,
-    ]
-
-
 def build_public_action_log_shard_kpo_arguments(
     settings: ActionLogDagSettings,
     *,
@@ -456,31 +345,6 @@ def build_public_action_log_shard_kpo_arguments(
         settings.progress_base_path_template,
         "--checkpoint-base-path",
         settings.checkpoint_base_path_template,
-    ]
-
-
-def build_action_log_merge_kpo_arguments(settings: ActionLogDagSettings) -> list[str]:
-    """Build CLI arguments for the action log shard merge container."""
-
-    return [
-        "--mode",
-        "merge",
-        "--partition-date",
-        settings.partition_date_template,
-        "--bucket",
-        settings.bucket_template,
-        "--output-base-path",
-        settings.output_base_path_template,
-        "--quarantine-base-path",
-        settings.quarantine_base_path_template,
-        "--shard-output-base-path",
-        settings.shard_output_base_path_template,
-        "--shard-quarantine-base-path",
-        settings.shard_quarantine_base_path_template,
-        "--shard-count",
-        settings.shard_count_template,
-        "--max-quarantine-ratio",
-        settings.max_quarantine_ratio_template,
     ]
 
 

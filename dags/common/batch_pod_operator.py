@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from typing import TypedDict
 
@@ -15,6 +15,9 @@ _KPO_SERVICE_ACCOUNT = os.environ.get(
 )
 _BATCH_IMAGE_PULL_POLICY = os.environ.get(
     "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_PULL_POLICY", "IfNotPresent"
+)
+_API_SECRET_NAME = os.environ.get(
+    "AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME", "autoresearch-airflow-env"
 )
 _BATCH_SPOT_NODE_SELECTOR = {"cloud.google.com/gke-nodepool": "batch-spot"}
 _BATCH_SPOT_TOLERATIONS = [
@@ -54,6 +57,21 @@ class _KubernetesPodOperatorArguments(TypedDict, total=False):
     container_resources: k8s.V1ResourceRequirements
 
 
+def _secret_env_var(key: str, *, optional: bool) -> k8s.V1EnvVar:
+    """Reference a Kubernetes Secret key without exposing the value in args."""
+
+    return k8s.V1EnvVar(
+        name=key,
+        value_from=k8s.V1EnvVarSource(
+            secret_key_ref=k8s.V1SecretKeySelector(
+                name=_API_SECRET_NAME,
+                key=key,
+                optional=optional,
+            )
+        ),
+    )
+
+
 class AutoresearchBatchPodOperator(KubernetesPodOperator):
     def __init__(
         self,
@@ -63,9 +81,14 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
         module: str,
         arguments: list[str],
         pipeline: str,
-        container_resources: k8s.V1ResourceRequirements,
         execution_timeout: timedelta,
-        env_vars: list[k8s.V1EnvVar] | None = None,
+        cpu_request: str,
+        memory_request: str,
+        cpu_limit: str,
+        memory_limit: str,
+        secret_env_keys: Sequence[str] = (),
+        secret_env_optional: bool = True,
+        plain_env: Mapping[str, str] | None = None,
         labels: Mapping[str, str] | None = None,
         retries: int = 1,
         retry_delay: timedelta = timedelta(minutes=10),
@@ -77,6 +100,14 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
         # Airflow가 DAG 컨텍스트에서 default_args/params 등을 apply_defaults로
         # 주입하므로, 커스텀 오퍼레이터는 이를 받아 super로 전달해야 합니다.
         pod_labels = {"app": "autoresearch", "pipeline": pipeline, **(labels or {})}
+        env_vars = [
+            _secret_env_var(key, optional=secret_env_optional)
+            for key in secret_env_keys
+        ]
+        env_vars += [
+            k8s.V1EnvVar(name=name, value=value)
+            for name, value in (plain_env or {}).items()
+        ]
         operator_arguments = _KubernetesPodOperatorArguments(
             task_id=task_id,
             name=task_id.replace("_", "-"),
@@ -100,8 +131,11 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
             labels=pod_labels,
             node_selector=dict(_BATCH_SPOT_NODE_SELECTOR),
             tolerations=[dict(toleration) for toleration in _BATCH_SPOT_TOLERATIONS],
-            container_resources=container_resources,
+            container_resources=k8s.V1ResourceRequirements(
+                requests={"cpu": cpu_request, "memory": memory_request},
+                limits={"cpu": cpu_limit, "memory": memory_limit},
+            ),
         )
-        if env_vars is not None:
+        if env_vars:
             operator_arguments["env_vars"] = env_vars
         super().__init__(**operator_arguments, **kwargs)
