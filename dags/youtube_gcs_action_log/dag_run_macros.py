@@ -13,8 +13,12 @@ _CANDIDATES_PER_USER_CONF_KEY = "candidates_per_user"
 _QA_PREFIX_CONF_KEY = "qa_prefix"
 
 
-class DagRunConfigurationError(ValueError):
-    pass
+class DagConfigurationError(ValueError):
+    """DAG 파싱/실행 설정 오류의 공통 상위 예외입니다."""
+
+
+class DagRunConfigurationError(DagConfigurationError):
+    """dag_run.conf 값이 유효하지 않을 때 발생합니다."""
 
 
 def _path_conf(conf: Mapping[str, JsonValue] | None) -> dict[str, JsonValue]:

@@ -39,6 +39,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     ]
     assert len(shards) == 5
     assert len(dag.task_dict) == 8
+    # TaskGroup으로 묶여도 task_id에 group 접두어가 붙지 않아야 한다.
+    # (prefix_group_id=False 유지 → 기존 DAG run 이력/clear 호환 보장)
+    assert all("." not in task_id for task_id in dag.task_dict), sorted(dag.task_dict)
     assert all(
         task.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
         for task in dag.task_dict.values()

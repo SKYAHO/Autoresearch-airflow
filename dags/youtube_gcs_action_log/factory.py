@@ -26,6 +26,7 @@ from youtube_gcs_action_log.config import (
     build_public_youtube_trending_kpo_arguments,
 )
 from youtube_gcs_action_log.dag_run_macros import (
+    DagConfigurationError,
     resolve_candidates_per_user,
     resolve_dag_run_path,
 )
@@ -36,6 +37,8 @@ _PARTITION_DATE_TEMPLATE = (
     "{{ dag_run.conf.get('partition_date') "
     "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
 )
+
+
 def _airflow_env(name: str, default: str) -> str:
     return os.environ.get(f"AIRFLOW_VAR_{name}", default)
 
@@ -63,10 +66,6 @@ _OPENROUTER_ENV_DEFAULTS = {
     "OPENROUTER_RETRY_BACKOFF_BASE_SEC": "1",
     "OPENROUTER_RETRY_BACKOFF_MAX_SEC": "30",
 }
-
-
-class DagConfigurationError(ValueError):
-    pass
 
 
 def _positive_int_variable(name: str, default: int) -> int:

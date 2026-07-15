@@ -43,8 +43,14 @@ class FakeTaskGroup:
 class FakeKubernetesPodOperator:
     def __init__(self, **kwargs) -> None:
         self.kwargs = kwargs
-        self.task_id = kwargs["task_id"]
         self.task_group = FakeTaskGroup.current
+        # 실제 Airflow처럼 prefix_group_id=True인 TaskGroup 안에서는
+        # task_id에 group_id 접두어가 붙는다. prefix_group_id=False면 그대로 유지.
+        task_id = kwargs["task_id"]
+        group = self.task_group
+        if group is not None and group.prefix_group_id:
+            task_id = f"{group.group_id}.{task_id}"
+        self.task_id = task_id
         self.downstream_task_ids: set[str] = set()
         dag = FakeDAG.current
         assert dag is not None
