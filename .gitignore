@@ -30,3 +30,6 @@ deploy/**/Chart.lock
 
 # Local diagnostics
 airflow-diagnostics*.log
+
+# Playwright MCP browser snapshots
+.playwright-mcp/
