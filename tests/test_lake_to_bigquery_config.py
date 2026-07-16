@@ -142,7 +142,10 @@ def test_validation_query_asserts_all_four_checks() -> None:
         "OR event_timestamp IS NULL) AS null_key_count" in query
     )
     # (d) 파티션 내 중복 키 없음
-    assert "COUNT(*) - COUNT(DISTINCT event_id) AS duplicate_key_count" in query
+    assert (
+        "COUNTIF(event_id IS NOT NULL) - COUNT(DISTINCT event_id) "
+        "AS duplicate_key_count" in query
+    )
     # 위반 시 ERROR()로 태스크를 실패시킵니다.
     assert query.count("ERROR(") == 4
 
@@ -156,7 +159,10 @@ def test_validation_query_targets_fully_qualified_table() -> None:
         "'data_lake_youtube_trending_kr') }}`"
     ) in query
     assert "COUNTIF(video_id IS NULL) AS null_key_count" in query
-    assert "COUNT(*) - COUNT(DISTINCT video_id) AS duplicate_key_count" in query
+    assert (
+        "COUNTIF(video_id IS NOT NULL) - COUNT(DISTINCT video_id) "
+        "AS duplicate_key_count" in query
+    )
 
 
 def test_validation_job_reads_source_rows_from_external_definition() -> None:

@@ -177,7 +177,7 @@ WITH loaded AS (
   SELECT
     COUNT(*) AS row_count,
     COUNTIF({null_predicate}) AS null_key_count,
-    COUNT(*) - COUNT(DISTINCT {settings.unique_key}) AS duplicate_key_count
+    COUNTIF({settings.unique_key} IS NOT NULL) - COUNT(DISTINCT {settings.unique_key}) AS duplicate_key_count
   FROM {table_fqn}
   WHERE dt = {partition_literal}
 ),
