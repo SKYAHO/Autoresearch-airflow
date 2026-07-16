@@ -112,8 +112,11 @@ def test_legacy_batch_build_and_wrapper_sources_are_removed() -> None:
 def test_astro_airflow_image_has_required_build_context_files() -> None:
     context = ROOT / "docker" / "airflow"
 
-    assert (context / "packages.txt").read_text(encoding="utf-8").strip() == ""
-    assert (context / "requirements.txt").read_text(encoding="utf-8").strip() == ""
+    for filename in ("packages.txt", "requirements.txt"):
+        lines = (context / filename).read_text(encoding="utf-8").splitlines()
+        assert lines
+        assert all(not line.strip() or line.lstrip().startswith("#") for line in lines)
+
     assert not (ROOT / "packages.txt").exists()
     assert not (ROOT / "requirements.txt").exists()
 
