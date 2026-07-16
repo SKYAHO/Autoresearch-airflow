@@ -151,3 +151,77 @@ def build_load_job_configuration(settings: LakeDatasetSettings) -> dict:
             "hivePartitioningOptions": _hive_partitioning_options(settings),
         }
     }
+
+
+_SOURCE_TABLE_ALIAS = "source_files"
+
+
+def build_validation_query(settings: LakeDatasetSettings) -> str:
+    """적재 결과를 4가지 기준으로 검사하고 위반 시 ERROR()로 실패하는 SQL."""
+
+    table_fqn = (
+        "`"
+        + BQ_PROJECT_TEMPLATE
+        + "."
+        + BQ_DATASET_TEMPLATE
+        + "."
+        + _table_template(settings)
+        + "`"
+    )
+    partition_literal = "DATE('" + PARTITION_DATE_TEMPLATE + "')"
+    null_predicate = " OR ".join(
+        f"{column} IS NULL" for column in settings.required_columns
+    )
+    return f"""\
+WITH loaded AS (
+  SELECT
+    COUNT(*) AS row_count,
+    COUNTIF({null_predicate}) AS null_key_count,
+    COUNT(*) - COUNT(DISTINCT {settings.unique_key}) AS duplicate_key_count
+  FROM {table_fqn}
+  WHERE dt = {partition_literal}
+),
+source AS (
+  SELECT COUNT(*) AS row_count
+  FROM {_SOURCE_TABLE_ALIAS}
+  WHERE dt = {partition_literal}
+)
+SELECT
+  IF(loaded.row_count = 0,
+     ERROR('validation failed: partition is empty'),
+     'ok') AS non_empty_check,
+  IF(loaded.row_count != source.row_count,
+     ERROR(FORMAT(
+       'validation failed: row count mismatch bigquery=%d source=%d',
+       loaded.row_count, source.row_count)),
+     'ok') AS row_count_check,
+  IF(loaded.null_key_count > 0,
+     ERROR(FORMAT(
+       'validation failed: %d rows with NULL required columns',
+       loaded.null_key_count)),
+     'ok') AS required_columns_check,
+  IF(loaded.duplicate_key_count > 0,
+     ERROR(FORMAT(
+       'validation failed: %d duplicate {settings.unique_key} rows',
+       loaded.duplicate_key_count)),
+     'ok') AS unique_key_check
+FROM loaded CROSS JOIN source
+"""
+
+
+def build_validation_job_configuration(settings: LakeDatasetSettings) -> dict:
+    """소스 parquet을 임시 external table로 참조하는 검증 query job 설정."""
+
+    return {
+        "query": {
+            "query": build_validation_query(settings),
+            "useLegacySql": False,
+            "tableDefinitions": {
+                _SOURCE_TABLE_ALIAS: {
+                    "sourceUris": [_source_uri_template(settings)],
+                    "sourceFormat": "PARQUET",
+                    "hivePartitioningOptions": _hive_partitioning_options(settings),
+                }
+            },
+        }
+    }
