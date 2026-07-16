@@ -171,6 +171,25 @@ Secret key의 존재 여부에 의존시키지 않습니다.
 자세한 실행과 rollback 절차는
 [`docs/youtube-backfill.md`](docs/youtube-backfill.md)를 참고하십시오.
 
+## GCS → BigQuery 증분 적재
+
+`lake_to_bigquery_incremental` DAG는 매일 KST 00:00에 youtube trending과
+action-log의 GCS dt 파티션(`part-0.parquet`) 적재 완료를 센서로 감지한 뒤,
+BigQuery 대상 테이블의 해당 dt 파티션만 `WRITE_TRUNCATE`로 교체 적재하고
+검증(행 수, 소스 행 수 일치, 필수 컬럼 NULL, 중복 키)까지 수행합니다.
+
+- 적재가 파티션 단위 교체라 재실행해도 중복이 생기지 않습니다.
+- 과거 파티션은 `dag_run.conf.partition_date`(예: `2026-07-10`)로 수동
+  재적재할 수 있습니다.
+- 센서는 reschedule 모드로 12시간까지 대기하며, `retries=2`가 적용되어
+  파티션이 도착하지 않으면 최대 약 36시간까지 재시도합니다. 업스트림
+  지연이 길어지면 해당 run을 수동 정리해야 다음 일자 run이 지연되지
+  않습니다.
+- 대상 테이블 스키마는 terraform(autoresearch-infra)이 관리하며 이 DAG는
+  스키마를 변경하지 않습니다.
+- 선행 조건: Airflow Workload Identity SA에 BigQuery 잡 실행 권한과 대상
+  데이터셋 쓰기 권한이 필요합니다(autoresearch-infra 소관).
+
 ## 실행 설정
 
 ### 주요 Airflow 변수
@@ -193,6 +212,11 @@ Helm values에서는 Airflow Variable을 `AIRFLOW_VAR_<이름>` 환경변수로 
 | `ACTION_LOG_SHARD_COUNT` | DAG parse 시 생성할 shard task 수, 기본값 5 |
 | `ACTION_LOG_OPENROUTER_POOL` | shard task가 사용할 Airflow Pool |
 | `ACTION_LOG_MAX_CONCURRENCY` | shard pod 내부 요청 동시성 |
+| `LAKE_TO_BQ_PROJECT` | BigQuery 적재 대상 프로젝트, 기본값 `ar-infra-501607` |
+| `LAKE_TO_BQ_DATASET` | BigQuery 적재 대상 데이터셋, 기본값 `feast_offline_store` |
+| `LAKE_TO_BQ_YOUTUBE_TABLE` | youtube trending 대상 테이블, 기본값 `data_lake_youtube_trending_kr` |
+| `LAKE_TO_BQ_ACTION_LOG_TABLE` | action-log 대상 테이블, 기본값 `data_lake_action_log` |
+| `LAKE_TO_BQ_LOCATION` | BigQuery job location, 기본값 `asia-northeast3` (parse 시점에 환경변수로 읽음) |
 
 전체 dev 값은 `deploy/airflow/values.yaml`과 `deploy/airflow/values.example.yaml`에서 확인할 수
 있습니다. `ACTION_LOG_SHARD_COUNT`는 DAG parse 시 topology를 결정하므로 변경 후
