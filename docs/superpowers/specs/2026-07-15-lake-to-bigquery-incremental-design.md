@@ -73,8 +73,9 @@ wait_action_log_partition ─▶ load_action_log_partition ─▶ validate_actio
   - `destinationTable`: `<table>$<YYYYMMDD>` 파티션 데코레이터
   - `writeDisposition=WRITE_TRUNCATE` — 해당 dt 파티션만 교체하는 멱등 적재
   - `sourceFormat=PARQUET`
-  - `hivePartitioningOptions`: `mode=AUTO`,
-    `sourceUriPrefix=<base_path>` — 경로의 `dt`를 DATE 컬럼으로 주입
+  - `hivePartitioningOptions`: `mode=CUSTOM`,
+    `sourceUriPrefix=<base_path>/{dt:DATE}` — 경로의 `dt`를 DATE 타입으로
+    명시 주입 (AUTO 추론 대신 CUSTOM으로 타입을 고정)
   - autodetect로 테이블 스키마를 변경하지 않습니다(기존 terraform 스키마 준수,
     `schemaUpdateOptions` 미사용)
 - job `location=asia-northeast3`
