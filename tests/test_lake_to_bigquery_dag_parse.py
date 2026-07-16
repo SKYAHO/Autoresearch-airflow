@@ -147,6 +147,7 @@ def test_load_and_validate_run_in_dataset_location(monkeypatch) -> None:
     assert load_config["writeDisposition"] == "WRITE_TRUNCATE"
     assert load_config["createDisposition"] == "CREATE_NEVER"
     assert load_config["hivePartitioningOptions"]["mode"] == "CUSTOM"
+    assert load.kwargs["project_id"] == module.BQ_PROJECT_TEMPLATE
     assert load.kwargs["location"] == "asia-northeast3"
     assert load.kwargs["execution_timeout"] == timedelta(minutes=30)
 
@@ -155,4 +156,5 @@ def test_load_and_validate_run_in_dataset_location(monkeypatch) -> None:
     assert query_config["useLegacySql"] is False
     assert "source_files" in query_config["tableDefinitions"]
     assert query_config["query"].count("ERROR(") == 4
+    assert validate.kwargs["project_id"] == module.BQ_PROJECT_TEMPLATE
     assert validate.kwargs["location"] == "asia-northeast3"
