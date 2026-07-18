@@ -98,6 +98,10 @@ airflow:
       value: "ar-infra-501607-autoresearch-dev-raw-data"
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
       value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:8f6a258f403f33e5411926b95731ea330f3a000f61b2f6dd21a00a5f638ab188"
+    # #72: 학습 이미지(Dockerfile.train)는 아직 GAR push/digest 승격
+    # 자동화가 없다. 이미지가 준비되면 이 값을 실제 digest로 수동 갱신한다.
+    - name: AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE
+      value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-training@sha256:<pending-first-publish>"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
       value: "airflow"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
