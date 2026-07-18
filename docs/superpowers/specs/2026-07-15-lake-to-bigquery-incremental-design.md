@@ -62,9 +62,11 @@ wait_action_log_partition ─▶ load_action_log_partition ─▶ validate_actio
 
 - `GCSObjectExistenceSensor`로 각 데이터셋의
   `<base_path>/dt=<partition_date>/part-0.parquet` 오브젝트 존재를 감지
-- `mode="reschedule"`, `poke_interval=300`(5분), `timeout=43200`(12시간)
-  — 액션 로그 생성이 6시간 이상 걸릴 수 있음을 반영
-- 센서 타임아웃은 태스크 실패로 이어지며 retries 정책을 따릅니다.
+- `mode="reschedule"`, `poke_interval=300`(5분), `timeout=82800`(23시간)
+  — 업스트림 파티션 정상 도착 구간(KST 00:00~22:00) + 1시간 여유를
+  커버하되 `max_active_runs=1`이므로 다음 일자 run 시작 전에 확정
+- 센서 타임아웃(`AirflowSensorTimeout`)은 retry 없이 즉시 태스크 실패로
+  확정되며, `retries=2`는 poke 중 일시 오류에만 적용됩니다.
 
 ### 3.2 적재
 
