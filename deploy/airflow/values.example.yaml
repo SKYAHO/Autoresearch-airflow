@@ -49,6 +49,11 @@ airflow:
       value: "3"
     - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
       value: "1800"
+    # Google provider 오퍼레이터(GCS 센서, BigQuery 오퍼레이터)가 사용하는
+    # 기본 connection. 키 파일 없이 실행 파드의 Workload Identity(ADC)를
+    # 사용하므로 URI에 자격 증명을 담지 않는다.
+    - name: AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT
+      value: "google-cloud-platform://"
     - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
       value: "<gcs-bucket-name-without-gs-prefix>"
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
