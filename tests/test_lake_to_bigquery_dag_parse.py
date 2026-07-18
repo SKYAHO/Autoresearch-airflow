@@ -128,7 +128,7 @@ def test_sensor_waits_for_partition_file_in_reschedule_mode(monkeypatch) -> None
     wait = dag.task_dict["wait_youtube_trending_partition"]
     assert wait.kwargs["mode"] == "reschedule"
     assert wait.kwargs["poke_interval"] == 300
-    assert wait.kwargs["timeout"] == 60 * 60 * 12
+    assert wait.kwargs["timeout"] == 60 * 60 * 23
     assert wait.kwargs["bucket"] == (
         "{{ gcs_bucket(var.value.get('YOUTUBE_TRENDING_BASE_PATH', '')) }}"
     )
