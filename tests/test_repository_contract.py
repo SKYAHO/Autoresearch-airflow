@@ -133,6 +133,24 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "autoresearch-batch@sha256:<production-digest>" in values
 
 
+def test_scheduler_service_account_uses_workload_identity_for_google_operators() -> None:
+    production_values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(
+        encoding="utf-8"
+    )
+    example_values = (
+        ROOT / "deploy" / "airflow" / "values.example.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert re.search(
+        r"scheduler:\s*\n"
+        r"(?:.*\n)*?\s+serviceAccount:\s*\n"
+        r"(?:.*\n)*?\s+iam\.gke\.io/gcp-service-account:\s*"
+        r"autoresearch-dev-airflow@ar-infra-501607\.iam\.gserviceaccount\.com",
+        production_values,
+    )
+    assert "iam.gke.io/gcp-service-account:" in example_values
+
+
 def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(encoding="utf-8")
 

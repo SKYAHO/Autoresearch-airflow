@@ -172,6 +172,12 @@ airflow:
       value: "true"
 
   scheduler:
+    # lake_to_bigquery_incremental의 Google provider 오퍼레이터는 LocalExecutor로
+    # scheduler 파드에서 실행된다. 인프라 Terraform이 이 KSA에 대한 GSA 가장
+    # 권한을 관리하므로, Helm 소유 KSA에는 GSA annotation만 선언한다.
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: autoresearch-dev-airflow@ar-infra-501607.iam.gserviceaccount.com
     nodeSelector:
       cloud.google.com/gke-nodepool: airflow-dev
     logGroomerSidecar:
