@@ -131,6 +131,13 @@ airflow:
     - name: AIRFLOW_VAR_OPENROUTER_REQUIRE_PARAMETERS
       value: "true"
 
+  scheduler:
+    # Google provider 오퍼레이터는 scheduler 파드에서 직접 실행된다. 아래 GSA는
+    # Autoresearch-infra에서 airflow/airflow-scheduler KSA와 IAM으로 연결한다.
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: <airflow-scheduler-gsa>@<gcp-project>.iam.gserviceaccount.com
+
   migrateDatabaseJob:
     args:
       - bash
