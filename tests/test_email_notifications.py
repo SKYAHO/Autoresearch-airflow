@@ -136,6 +136,39 @@ def test_exception_message_redacts_extended_named_credentials(
     assert f"{label}=[REDACTED]" in body
 
 
+@pytest.mark.parametrize(
+    ("message", "secret", "redacted"),
+    [
+        (
+            '{"client_secret": "synthetic-json-value"}',
+            "synthetic-json-value",
+            '&quot;client_secret&quot;: &quot;[REDACTED]&quot;',
+        ),
+        (
+            "{'access_token': 'synthetic-python-value'}",
+            "synthetic-python-value",
+            "&#x27;access_token&#x27;: &#x27;[REDACTED]&#x27;",
+        ),
+    ],
+)
+def test_exception_message_redacts_quoted_named_credentials(
+    monkeypatch, message: str, secret: str, redacted: str
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(
+        _context(state="failed", exception=RuntimeError(message))
+    )
+
+    body = sent[0]["html_content"]
+    assert secret not in body
+    assert redacted in body
+
+
 def test_exception_message_redacts_uri_password(monkeypatch) -> None:
     module = _load_module(monkeypatch)
     monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
@@ -155,6 +188,48 @@ def test_exception_message_redacts_uri_password(monkeypatch) -> None:
     body = sent[0]["html_content"]
     assert "uri-password" not in body
     assert "postgresql://service:[REDACTED]@db.internal/app" in body
+
+
+def test_exception_message_redacts_token_only_uri_userinfo(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(
+        _context(
+            state="failed",
+            exception=RuntimeError(
+                "https://" + "synthetic-uri-token" + "@service.internal:8443/path"
+            ),
+        )
+    )
+
+    body = sent[0]["html_content"]
+    assert "synthetic-uri-token" not in body
+    assert "https://[REDACTED]@service.internal:8443/path" in body
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "https://service.internal:8443/path",
+        "https://[2001:db8::1]:8443/path",
+    ],
+)
+def test_exception_message_preserves_uri_without_userinfo(monkeypatch, uri: str) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(
+        _context(state="failed", exception=RuntimeError(uri))
+    )
+
+    assert uri in sent[0]["html_content"]
 
 
 def test_failure_email_uses_scheduler_reason_without_exception(monkeypatch) -> None:

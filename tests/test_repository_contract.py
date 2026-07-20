@@ -239,7 +239,7 @@ def test_gke_guide_documents_safe_email_notification_smoke_and_rollback() -> Non
         "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python -",
         "from common.email_notifications import notify_dag_failure, notify_dag_success",
         'dag_id = "email_notification_smoke"',
-        '"reason": "task_failure"',
+        '"reason": "task_failure client_secret=synthetic-smoke-secret"',
         "`[dev][Airflow][SUCCESS] email_notification_smoke`",
         "`[dev][Airflow][FAILED] email_notification_smoke`",
         "`Failure reason`과 `task_failure`",
@@ -326,6 +326,25 @@ def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> N
     )
     assert smoke.count("exit 0") == 1
     assert smoke.count("exit 1") >= 2
+
+
+def test_gke_guide_smoke_exercises_and_verifies_credential_redaction() -> None:
+    source = GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8")
+    smoke = _fenced_bash_block_containing(
+        source,
+        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python -",
+    )
+
+    assert re.search(
+        r'"reason":\s*"task_failure client_secret=synthetic-smoke-secret"',
+        smoke,
+    )
+    assert "! grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"" in smoke
+
+    inbox_contract = " ".join(source[source.index("수신함에서") :].split())
+    assert "실패 메일에는 `[REDACTED]`가 있고" in inbox_contract
+    assert "`synthetic-smoke-secret` 원문이 없어야" in inbox_contract
+    assert "로그만으로 메일 본문의 마스킹을 증명하지 않습니다" in inbox_contract
 
 
 def test_gke_guide_uses_dev_release_and_checks_secret_before_deletion() -> None:

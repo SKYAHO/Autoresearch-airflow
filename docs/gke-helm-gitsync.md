@@ -273,7 +273,7 @@ notify_dag_failure(
     {
         "dag_run": SyntheticDagRun("failed"),
         "task_instance": task_instance,
-        "reason": "task_failure",
+        "reason": "task_failure client_secret=synthetic-smoke-secret",
     }
 )
 PY
@@ -309,16 +309,18 @@ fi
 
 수신함에서 `[dev][Airflow][SUCCESS] email_notification_smoke`와
 `[dev][Airflow][FAILED] email_notification_smoke`가 성공 1통과 실패 1통인 정확히 두 통인지
-확인합니다. 실패 메일에는 `synthetic_task`, `Failure reason`과 `task_failure`가 보여야
-합니다. `Airflow link` 행은 context의
+확인합니다. 실패 메일에는 `synthetic_task`, `Failure reason`과 `task_failure`가
+보여야 합니다. 실패 메일에는 `[REDACTED]`가 있고
+`synthetic-smoke-secret` 원문이 없어야 합니다. `Airflow link` 행은 context의
 `task_instance` 또는 `ti`에 비어 있지 않은 `log_url`이 있을 때만 표시됩니다. 이
 smoke의 SUCCESS와 FAILED 메일 각각에서 `Airflow link`가 존재하고 기대 URL이
 `http://localhost:8080/dags/email_notification_smoke/grid`인지 확인합니다. `log_url`이
 없거나 비어 있으면 이 행이 표시되지 않습니다.
 
 합성 프로세스의 캡처에서 성공·실패 info 식별자, SMTP 오류 식별자와 `error_type`,
-마스킹 검증용 문자열 부재를 출력 없이 검사합니다. terminal에는 고정된 판정 문구만
-출력하며 캡처 원문을 출력하지 않습니다. 정상 `PASS`만 종료 코드 0이고 SMTP 오류와
+합성 credential 원문 부재를 출력 없이 검사합니다. callback log는 메일 본문을 기록하지
+않으므로 로그만으로 메일 본문의 마스킹을 증명하지 않습니다. terminal에는 고정된 판정
+문구만 출력하며 캡처 원문을 출력하지 않습니다. 정상 `PASS`만 종료 코드 0이고 SMTP 오류와
 그 밖의 실패는 종료 코드 1입니다. subshell을 사용하므로 실패의 `exit 1`은 운영자의
 상위 shell을 종료하지 않으면서 전체 smoke 명령에는 non-zero status를 반환합니다.
 `kubectl exec`의 종료 상태는 heredoc 직후 `KUBECTL_STATUS`에 보존하며, 값이 0일 때만

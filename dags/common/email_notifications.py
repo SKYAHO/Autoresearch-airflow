@@ -19,9 +19,20 @@ _NAMED_SECRET_PATTERN = re.compile(
     r"aws_secret_access_key)(\s*[=:]\s*)([^\s,;]+)",
     re.IGNORECASE,
 )
+_QUOTED_NAMED_SECRET_PATTERN = re.compile(
+    r"(?P<prefix>(?P<key_quote>[\"'])(?:password|token|api_key|client_secret|"
+    r"access_token|secret_key|aws_secret_access_key)(?P=key_quote)\s*[=:]\s*"
+    r"(?P<value_quote>[\"']))(?P<value>.*?)(?P=value_quote)",
+    re.IGNORECASE,
+)
 _BEARER_PATTERN = re.compile(r"\b(Bearer)(\s+)([^\s,;]+)", re.IGNORECASE)
 _URI_USERINFO_PATTERN = re.compile(
     r"(\b[a-z][a-z0-9+.-]*://[^/@\s:]+:)([^@\s]+)(@)", re.IGNORECASE
+)
+_URI_TOKEN_USERINFO_PATTERN = re.compile(
+    r"(\b[a-z][a-z0-9+.-]*://)([a-z0-9._~!$&'()*+,;=%-]+)"
+    r"(@(?=(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::\d+)?(?:[/?#\s]|$)))",
+    re.IGNORECASE,
 )
 _MAX_EXCEPTION_LENGTH = 2_000
 
@@ -56,6 +67,10 @@ def _format_value(value: Any) -> str:
 
 def _sanitize_text(value: Any) -> str:
     message = _URI_USERINFO_PATTERN.sub(r"\1[REDACTED]\3", str(value))
+    message = _URI_TOKEN_USERINFO_PATTERN.sub(r"\1[REDACTED]\3", message)
+    message = _QUOTED_NAMED_SECRET_PATTERN.sub(
+        r"\g<prefix>[REDACTED]\g<value_quote>", message
+    )
     message = _NAMED_SECRET_PATTERN.sub(r"\1\2[REDACTED]", message)
     message = _BEARER_PATTERN.sub(r"\1\2[REDACTED]", message)
     return message[:_MAX_EXCEPTION_LENGTH]
