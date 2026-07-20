@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- 적용 DAG ID는 `youtube_gcs_action_log_pipeline`, `youtube_gcs_action_log_pipeline_qa`, `youtube_backfill_kr`, `lake_to_bigquery_incremental`입니다.
+- 적용 대상은 DagBag이 발견하는 모든 DAG이며, 현재 ID는 `youtube_gcs_action_log_pipeline`, `youtube_gcs_action_log_pipeline_qa`, `youtube_backfill_kr`, `lake_to_bigquery_incremental`, `ctr_model_training`, `feast_online_store_materialize`입니다.
 - 알림은 task retry 중간이 아니라 정상적인 scheduler의 DagRun 최종 상태 전이에서만 보냅니다.
 - UI 또는 CLI로 상태를 직접 바꾼 경우와 callback 수동 재호출의 중복 방지는 범위 밖입니다.
 - Airflow listener/plugin, task 단위 email 옵션, 별도 provider package, 영속 deduplication 저장소를 추가하지 않습니다.
@@ -290,10 +290,29 @@ from airflow.utils.email import send_email
 _LOGGER = logging.getLogger(__name__)
 _RECIPIENT_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _NAMED_SECRET_PATTERN = re.compile(
-    r"\b(password|token|api_key)(\s*[=:]\s*)([^\s,;]+)",
+    r"(?<![a-z0-9])(password|token|api_key|client_secret|access_token|secret_key|"
+    r"aws_secret_access_key)(\s*[=:]\s*)([^\s,;]+)",
+    re.IGNORECASE,
+)
+_QUOTED_NAMED_SECRET_PATTERN = re.compile(
+    r"(?P<prefix>(?:(?P<key_quote>[\"'])_*(?:[a-z0-9]+_+)*"
+    r"(?:password|token|api_key|client_secret|access_token|secret_key|"
+    r"aws_secret_access_key)(?P=key_quote)|"
+    r"(?<![a-z0-9])(?:password|token|api_key|client_secret|access_token|secret_key|"
+    r"aws_secret_access_key))\s*[=:]\s*(?P<value_quote>[\"']))"
+    r"(?P<value>(?:\\[^\r\n]|(?!(?P=value_quote))[^\\\r\n])*)"
+    r"(?P=value_quote)",
     re.IGNORECASE,
 )
 _BEARER_PATTERN = re.compile(r"\b(Bearer)(\s+)([^\s,;]+)", re.IGNORECASE)
+_URI_USERINFO_PATTERN = re.compile(
+    r"(\b[a-z][a-z0-9+.-]*://[^/@\s:]+:)([^@/?#\s]+)(@)", re.IGNORECASE
+)
+_URI_TOKEN_USERINFO_PATTERN = re.compile(
+    r"(\b[a-z][a-z0-9+.-]*://)([a-z0-9._~!$&'()*+,;=%-]+)"
+    r"(@(?=(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::\d+)?(?:[/?#\s]|$)))",
+    re.IGNORECASE,
+)
 _MAX_EXCEPTION_LENGTH = 2_000
 
 
@@ -325,8 +344,13 @@ def _format_value(value: Any) -> str:
     return isoformat() if callable(isoformat) else str(value)
 
 
-def _sanitize_exception(exception: BaseException) -> str:
-    message = _NAMED_SECRET_PATTERN.sub(r"\1\2[REDACTED]", str(exception))
+def _sanitize_text(value: Any) -> str:
+    message = _URI_USERINFO_PATTERN.sub(r"\1[REDACTED]\3", str(value))
+    message = _URI_TOKEN_USERINFO_PATTERN.sub(r"\1[REDACTED]\3", message)
+    message = _QUOTED_NAMED_SECRET_PATTERN.sub(
+        r"\g<prefix>[REDACTED]\g<value_quote>", message
+    )
+    message = _NAMED_SECRET_PATTERN.sub(r"\1\2[REDACTED]", message)
     message = _BEARER_PATTERN.sub(r"\1\2[REDACTED]", message)
     return message[:_MAX_EXCEPTION_LENGTH]
 
@@ -371,7 +395,7 @@ def _build_email(
 
     environment = _required_environment()
     dag_id = _format_value(getattr(dag_run, "dag_id", None))
-    run_id = _format_value(getattr(dag_run, "run_id", None))
+    run_id = _sanitize_text(getattr(dag_run, "run_id", None))
     rows: list[tuple[str, Any]] = [
         ("Environment", environment),
         ("DAG ID", dag_id),
@@ -388,12 +412,14 @@ def _build_email(
             rows.extend(
                 [
                     ("Exception type", type(exception).__name__),
-                    ("Exception message", _sanitize_exception(exception)),
+                    ("Exception message", _sanitize_text(exception)),
                 ]
             )
+        else:
+            rows.append(("Failure reason", _sanitize_text(context.get("reason") or "unknown")))
     log_url = _task_log_url(context)
     if log_url:
-        rows.append(("Airflow link", log_url))
+        rows.append(("Airflow link", _sanitize_text(log_url)))
 
     subject = f"[{environment}][Airflow][{status}] {dag_id}"
     return subject, _render_rows(rows), dag_id, run_id
@@ -463,7 +489,7 @@ git commit -m "feat: DAG 실행 결과 메일 callback을 추가합니다 (#87)"
 **Interfaces:**
 - Consumes: Task 1의 `notify_dag_success`, `notify_dag_failure`
 - Produces: 현재와 앞으로 `DagBag`이 발견하는 모든 DAG의 동일한 callback 계약
-- Preserves: task 수 `8`, `8`, `1`, `6`과 기존 dependency topology
+- Preserves: task 수 `8`, `8`, `1`, `6`, `1`, `2`와 기존 dependency topology
 
 - [ ] **Step 1: parse 테스트에 callback 계약 assertion을 먼저 추가합니다**
 
@@ -539,7 +565,7 @@ Run:
 python -m pytest tests/test_action_log_dag_parse.py tests/test_youtube_backfill_dag_parse.py tests/test_lake_to_bigquery_dag_parse.py -v
 ```
 
-Expected: 모든 테스트 PASS, task 수는 production `8`, QA `8`, backfill `1`, BigQuery `6`.
+Expected: 모든 테스트 PASS, task 수는 production `8`, QA `8`, backfill `1`, BigQuery `6`, CTR training `1`, Feast materialize `2`.
 
 - [ ] **Step 5: 실제 DagBag 검사에 모든 발견 DAG의 callback 계약을 추가합니다**
 
@@ -888,7 +914,7 @@ docker build --file docker/airflow/Dockerfile --tag autoresearch-airflow-ci dock
 docker run --rm --volume "$PWD/dags:/usr/local/airflow/dags:ro" --volume "$PWD/scripts/check_airflow_dagbag.py:/tmp/check_airflow_dagbag.py:ro" autoresearch-airflow-ci python /tmp/check_airflow_dagbag.py
 ```
 
-Expected: `DAG runtime check passed` and task counts `8`, `8`, `1`, `6`.
+Expected: `DAG runtime check passed` and task counts `8`, `8`, `1`, `6`, `1`, `2`.
 
 - [ ] **Step 7: Helm과 whitespace 검증을 실행합니다**
 

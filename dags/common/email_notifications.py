@@ -15,14 +15,15 @@ from airflow.utils.email import send_email
 _LOGGER = logging.getLogger(__name__)
 _RECIPIENT_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _NAMED_SECRET_PATTERN = re.compile(
-    r"\b(password|token|api_key|client_secret|access_token|secret_key|"
+    r"(?<![a-z0-9])(password|token|api_key|client_secret|access_token|secret_key|"
     r"aws_secret_access_key)(\s*[=:]\s*)([^\s,;]+)",
     re.IGNORECASE,
 )
 _QUOTED_NAMED_SECRET_PATTERN = re.compile(
-    r"(?P<prefix>(?:(?P<key_quote>[\"'])(?:password|token|api_key|client_secret|"
-    r"access_token|secret_key|aws_secret_access_key)(?P=key_quote)|"
-    r"\b(?:password|token|api_key|client_secret|access_token|secret_key|"
+    r"(?P<prefix>(?:(?P<key_quote>[\"'])_*(?:[a-z0-9]+_+)*"
+    r"(?:password|token|api_key|client_secret|access_token|secret_key|"
+    r"aws_secret_access_key)(?P=key_quote)|"
+    r"(?<![a-z0-9])(?:password|token|api_key|client_secret|access_token|secret_key|"
     r"aws_secret_access_key))\s*[=:]\s*"
     r"(?P<value_quote>[\"']))"
     r"(?P<value>(?:\\[^\r\n]|(?!(?P=value_quote))[^\\\r\n])*)"
@@ -120,7 +121,7 @@ def _build_email(
 
     environment = _required_environment()
     dag_id = _format_value(getattr(dag_run, "dag_id", None))
-    run_id = _format_value(getattr(dag_run, "run_id", None))
+    run_id = _sanitize_text(getattr(dag_run, "run_id", None))
     rows: list[tuple[str, Any]] = [
         ("Environment", environment),
         ("DAG ID", dag_id),
@@ -144,7 +145,7 @@ def _build_email(
             rows.append(("Failure reason", _sanitize_text(context.get("reason") or "unknown")))
     log_url = _task_log_url(context)
     if log_url:
-        rows.append(("Airflow link", log_url))
+        rows.append(("Airflow link", _sanitize_text(log_url)))
 
     subject = f"[{environment}][Airflow][{status}] {dag_id}"
     return subject, _render_rows(rows), dag_id, run_id

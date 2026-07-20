@@ -64,9 +64,12 @@ def notify_dag_failure(context) -> None: ...
 - `youtube_gcs_action_log_pipeline_qa`
 - `youtube_backfill_kr`
 - `lake_to_bigquery_incremental`
+- `ctr_model_training`
+- `feast_online_store_materialize`
 
 production과 QA action-log DAG는 공통 factory의 `DAG(...)` 선언 한 곳에서
-등록한다. backfill과 BigQuery DAG는 각 `DAG(...)` 선언에 등록한다. callback은
+등록한다. 나머지 DAG는 각 `DAG(...)` 선언에 등록한다. 이후 추가되는 DAG도 실제
+DagBag 계약 검사를 통과하려면 같은 callback을 등록해야 한다. callback은
 Airflow 표준 email backend를 호출하므로 provider package나 plugin을 추가하지
 않는다. DAG와 helper는 기존처럼 git-sync로 전달한다.
 
@@ -122,7 +125,8 @@ Airflow가 DAG run 최종 상태 확정
 - 환경명, DAG ID, run ID, 최종 상태
 - 논리 실행일, 시작 시각, 종료 시각
 - 실패 및 `upstream_failed` task ID 목록
-- callback context가 제공하는 예외 타입과 예외 메시지
+- callback context가 예외 객체를 제공하면 예외 타입과 메시지, 그렇지 않으면
+  Airflow 2.10.5 scheduler가 제공하는 DagRun 실패 `reason`
 - 내부 Airflow task log 또는 DAG run 링크
 
 링크를 만들 수 없는 context에서는 링크 항목을 생략하고 메일 발송은 계속한다.
@@ -130,9 +134,12 @@ Airflow가 DAG run 최종 상태 확정
 
 ## 민감정보와 오류 처리
 
-메일에 전체 task log나 traceback을 복사하지 않는다. 예외 타입과 메시지만 포함하고,
-HTML escape와 길이 제한을 적용한다. `password`, `token`, `api_key`, `Bearer` 형태의
-값은 대소문자와 일반적인 `=` 또는 `:` 구분자를 고려해 마스킹한다. 범용 마스킹은
+메일에 전체 task log나 traceback을 복사하지 않는다. 외부 또는 운영 입력인 run ID,
+예외 메시지 또는 scheduler 실패 `reason`, Airflow link는 모두 credential 마스킹,
+2,000자 제한, HTML escape 순서로 처리한다.
+`password`, `token`, `api_key`, `client_secret`, `access_token`, `secret_key`,
+`Bearer`, URI userinfo와 query token 형태의 값은 대소문자, 일반적인 `=` 또는 `:`
+구분자, quoted underscore-prefixed key/value를 고려해 마스킹한다. 범용 마스킹은
 모든 비밀 형식을 보장할 수 없으므로 task 구현도 예외 메시지에 credential을 넣지
 않아야 한다.
 
@@ -158,7 +165,7 @@ callback 오류 로그에 대한 별도 모니터링은 후속 운영 과제로 
 
 ### DAG와 저장소 계약 테스트
 
-- 네 DAG가 성공·실패 공통 callback을 등록하는지 확인
+- DagBag이 발견하는 모든 DAG가 성공·실패 공통 callback을 등록하는지 확인
 - production과 QA factory 공유가 유지되는지 확인
 - 기존 task 수와 topology가 바뀌지 않는지 확인
 - 실제 Airflow DagBag에서 import error가 없고 callback이 등록되는지 확인
@@ -193,7 +200,7 @@ DAG revision으로 복원하며 Secret은 다른 workload가 사용하지 않는
 
 ## 완료 기준
 
-- 네 DAG의 정상 task 실행으로 확정된 최종 성공 또는 실패마다 수신자별 동일한 메일
+- DagBag이 발견하는 모든 DAG의 정상 task 실행으로 확정된 최종 성공 또는 실패마다 수신자별 동일한 메일
   한 통이 전송된다.
 - retry 중간 상태에서는 메일이 발송되지 않는다.
 - 메일에 합의한 진단 정보가 있고 비밀번호와 일반적인 token 패턴이 노출되지 않는다.

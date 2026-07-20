@@ -86,6 +86,56 @@ def test_success_email_contains_run_fields_without_failure_details(monkeypatch) 
     assert "Exception" not in sent[0]["html_content"]
 
 
+@pytest.mark.parametrize(
+    "run_id",
+    [
+        "token:synthetic-run-secret",
+        "AIRFLOW__SMTP__SMTP_PASSWORD=synthetic-run-secret",
+        "GOOGLE_OAUTH_CLIENT_SECRET=synthetic-run-secret",
+        '"AIRFLOW__SMTP__SMTP_PASSWORD": "synthetic-run-secret"',
+        '"GOOGLE_OAUTH_CLIENT_SECRET": "synthetic-run-secret"',
+        '"_AIRFLOW__SMTP__SMTP_PASSWORD": "synthetic-run-secret"',
+        "'_GOOGLE_OAUTH_CLIENT_SECRET': 'synthetic-run-secret'",
+    ],
+)
+def test_run_id_credentials_are_redacted_from_email_and_logs(
+    monkeypatch, caplog, run_id: str
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+    context = _context(state="success")
+    context["dag_run"].run_id = run_id
+
+    with caplog.at_level(logging.INFO):
+        module.notify_dag_success(context)
+
+    assert "synthetic-run-secret" not in sent[0]["html_content"]
+    assert "synthetic-run-secret" not in caplog.text
+    assert "[REDACTED]" in sent[0]["html_content"]
+    assert "[REDACTED]" in caplog.text
+
+
+def test_airflow_link_credentials_are_redacted(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+    context = _context(state="success")
+    context["task_instance"].log_url = (
+        "https://airflow.internal/task-log?token=synthetic-link-secret"
+    )
+
+    module.notify_dag_success(context)
+
+    body = sent[0]["html_content"]
+    assert "synthetic-link-secret" not in body
+    assert "token=[REDACTED]" in body
+
+
 def test_failure_email_lists_failed_tasks_and_safe_exception(monkeypatch) -> None:
     module = _load_module(monkeypatch)
     monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
