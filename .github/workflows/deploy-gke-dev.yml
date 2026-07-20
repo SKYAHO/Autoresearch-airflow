@@ -187,17 +187,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          scheduler_pod="$(
+            kubectl get pod -n "$AIRFLOW_NAMESPACE" \
+              -l component=scheduler \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          kubectl exec -i -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+            -c scheduler -- \
+            env PRODUCTION_DAG_ID="$PRODUCTION_DAG_ID" bash -s <<'REMOTE_WAIT'
+          set -euo pipefail
           while true; do
-            scheduler_pod="$(
-              kubectl get pod -n "$AIRFLOW_NAMESPACE" \
-                -l component=scheduler \
-                -o jsonpath='{.items[0].metadata.name}'
-            )"
             active_runs=0
             for state in queued running; do
               runs_json="$(
-                kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
-                  -c scheduler -- airflow dags list-runs \
+                airflow dags list-runs \
                   --dag-id "$PRODUCTION_DAG_ID" \
                   --state "$state" \
                   --output json 2>/dev/null \
@@ -217,6 +220,25 @@ jobs:
             echo "Waiting for $active_runs active production DAG run(s)."
             sleep 60
           done
+          REMOTE_WAIT
+
+      - name: Refresh GCP authentication after production wait
+        if: always()
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER_ID }}
+          service_account: ${{ env.GKE_DEPLOYER_SA }}
+
+      - name: Refresh GKE credentials after production wait
+        if: always()
+        uses: google-github-actions/get-gke-credentials@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_LOCATION }}
+          namespace: ${{ env.AIRFLOW_NAMESPACE }}
+          use_dns_based_endpoint: true
 
       - name: Upgrade Airflow release
         id: upgrade
