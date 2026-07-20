@@ -49,10 +49,37 @@ airflow:
       value: "3"
     - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
       value: "1800"
+    # Google provider 오퍼레이터(GCS 센서, BigQuery 오퍼레이터)가 사용하는
+    # 기본 connection. 키 파일 없이 실행 파드의 Workload Identity(ADC)를
+    # 사용하므로 URI에 자격 증명을 담지 않는다.
+    - name: AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT
+      value: "google-cloud-platform://"
     - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
       value: "<gcs-bucket-name-without-gs-prefix>"
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
       value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch@sha256:<production-digest>"
+    - name: AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE
+      value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-training@sha256:<production-digest>"
+    - name: AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE
+      value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-feast@sha256:<production-digest>"
+    - name: AIRFLOW_VAR_FEAST_CODE_ARTIFACTS_BUCKET
+      value: "<gcs-code-artifacts-bucket-name-without-gs-prefix>"
+    - name: AIRFLOW_VAR_FEAST_GCP_PROJECT_ID
+      value: "<gcp-project>"
+    - name: AIRFLOW_VAR_FEAST_BQ_DATASET
+      value: "feast_offline_store"
+    - name: AIRFLOW_VAR_FEAST_BQ_LOCATION
+      value: "asia-northeast3"
+    - name: AIRFLOW_VAR_FEAST_GCS_REGISTRY_PATH
+      value: "gs://<feast-registry-bucket>/registry.db"
+    - name: AIRFLOW_VAR_FEAST_GCS_STAGING_LOCATION
+      value: "gs://<feast-staging-bucket>/"
+    - name: AIRFLOW_VAR_FEAST_REDIS_HOST
+      value: "<redis-cluster-discovery-endpoint>"
+    - name: AIRFLOW_VAR_FEAST_REDIS_PORT
+      value: "6379"
+    - name: AIRFLOW_VAR_FEAST_REDIS_CA_SECRET_ID
+      value: "<redis-server-ca-secret-id>"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
       value: "airflow"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
@@ -176,6 +203,11 @@ airflow:
             name: airflow-email-alerts
             key: alert-recipients
             optional: false
+    # Google provider 오퍼레이터는 scheduler 파드에서 직접 실행된다. 아래 GSA는
+    # Autoresearch-infra에서 airflow/airflow-scheduler KSA와 IAM으로 연결한다.
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: <airflow-scheduler-gsa>@<gcp-project>.iam.gserviceaccount.com
 
   migrateDatabaseJob:
     args:

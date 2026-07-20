@@ -26,6 +26,7 @@ _EXPECTED_TASK_COUNTS = {
     "youtube_gcs_action_log_pipeline_qa": 8,
     "youtube_backfill_kr": 1,
     "lake_to_bigquery_incremental": 6,
+    "feast_online_store_materialize": 2,
 }
 
 

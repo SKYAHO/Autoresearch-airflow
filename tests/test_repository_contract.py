@@ -393,6 +393,24 @@ def test_gke_guide_uses_dev_release_and_checks_secret_before_deletion() -> None:
     assert "다른 workload 검사에서도 참조가 없어야" in guide
 
 
+def test_scheduler_service_account_uses_workload_identity_for_google_operators() -> None:
+    production_values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(
+        encoding="utf-8"
+    )
+    example_values = (
+        ROOT / "deploy" / "airflow" / "values.example.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert re.search(
+        r"scheduler:\s*\n"
+        r"(?:.*\n)*?\s+serviceAccount:\s*\n"
+        r"(?:.*\n)*?\s+iam\.gke\.io/gcp-service-account:\s*"
+        r"autoresearch-dev-airflow@ar-infra-501607\.iam\.gserviceaccount\.com",
+        production_values,
+    )
+    assert "iam.gke.io/gcp-service-account:" in example_values
+
+
 def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(encoding="utf-8")
 
@@ -521,6 +539,34 @@ def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
     assert "dag.on_success_callback is not notify_dag_success" in check_source
     assert "dag.on_failure_callback is not notify_dag_failure" in check_source
     assert "for dag_id, dag in sorted(dagbag.dags.items())" in check_source
+    assert '"feast_online_store_materialize": 2' in check_source
+
+
+def test_helm_values_define_feast_materialize_runtime_settings() -> None:
+    production_values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(
+        encoding="utf-8"
+    )
+    example_values = (
+        ROOT / "deploy" / "airflow" / "values.example.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert re.search(
+        r"autoresearch-feast@sha256:[0-9a-f]{64}", production_values
+    )
+    for variable_name in (
+        "AUTORESEARCH_FEAST_IMAGE",
+        "FEAST_CODE_ARTIFACTS_BUCKET",
+        "FEAST_GCP_PROJECT_ID",
+        "FEAST_BQ_DATASET",
+        "FEAST_BQ_LOCATION",
+        "FEAST_GCS_REGISTRY_PATH",
+        "FEAST_GCS_STAGING_LOCATION",
+        "FEAST_REDIS_HOST",
+        "FEAST_REDIS_PORT",
+        "FEAST_REDIS_CA_SECRET_ID",
+    ):
+        assert f"AIRFLOW_VAR_{variable_name}" in production_values
+        assert f"AIRFLOW_VAR_{variable_name}" in example_values
 
 
 def test_helm_ci_renders_the_concrete_dev_values() -> None:
@@ -545,8 +591,13 @@ def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> N
     assert "airflow dags unpause" in workflow
     assert "--atomic" in workflow
     assert "helm rollback" in workflow
-    assert "airflow dags list-import-errors" in workflow
-    assert "test \"$task_count\" -eq 8" in workflow
+    assert "      - .github/workflows/deploy-gke-dev.yml" in workflow
+    assert 'airflow_cli "DAG import error 조회" dags list-import-errors --output json' in workflow
+    assert "Airflow CLI가 아직 준비되지 않았습니다" in workflow
+    assert "for attempt in $(seq 1 12)" in workflow
+    assert "production DAG task 수가 기대값(8)과 다릅니다" in workflow
+    assert "feast_online_store_materialize" in workflow
+    assert "Feast materialize DAG task 수가 기대값(2)과 다릅니다" in workflow
     assert "action_log_openrouter" in workflow
     assert 'int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2' in workflow
 

@@ -66,7 +66,10 @@ with DAG(
             object=sensor_object_template(settings),
             mode="reschedule",
             poke_interval=300,
-            timeout=60 * 60 * 12,
+            # 업스트림 파티션은 KST 00:00~22:00 사이에 도착합니다. 22시 도착
+            # + 1시간 여유를 커버하되 max_active_runs=1이라 다음 run 시작
+            # (24시간 뒤) 전에는 실패로 확정되도록 23시간으로 둡니다.
+            timeout=60 * 60 * 23,
         )
         load_partition = BigQueryInsertJobOperator(
             task_id=f"load_{settings.key}_partition",

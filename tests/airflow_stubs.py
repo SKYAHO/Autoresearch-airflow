@@ -146,5 +146,7 @@ def forget_pipeline_packages() -> None:
         "youtube_gcs_action_log.config",
         "youtube_gcs_action_log.dag_run_macros",
         "youtube_gcs_action_log.factory",
+        "ctr_training",
+        "ctr_training.config",
     ):
         sys.modules.pop(name, None)

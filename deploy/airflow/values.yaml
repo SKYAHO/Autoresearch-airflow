@@ -89,10 +89,37 @@ airflow:
       value: "3"
     - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
       value: "1800"
+    # Google provider 오퍼레이터(GCS 센서, BigQuery 오퍼레이터)가 사용하는
+    # 기본 connection. 키 파일 없이 실행 파드의 Workload Identity(ADC)를
+    # 사용하므로 URI에 자격 증명을 담지 않는다.
+    - name: AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT
+      value: "google-cloud-platform://"
     - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
       value: "ar-infra-501607-autoresearch-dev-raw-data"
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
       value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:8f6a258f403f33e5411926b95731ea330f3a000f61b2f6dd21a00a5f638ab188"
+    - name: AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE
+      value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-training@sha256:06bace3b7d8769b83cb53b7d3e7bd820fbbddeb117baf4881d9614f75ef43cf1"
+    - name: AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE
+      value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-feast@sha256:edd8cd409d63e890242e43f707c2059ba601f1695be8748f04494d4825fc57d6"
+    - name: AIRFLOW_VAR_FEAST_CODE_ARTIFACTS_BUCKET
+      value: "ar-infra-501607-code-artifacts"
+    - name: AIRFLOW_VAR_FEAST_GCP_PROJECT_ID
+      value: "ar-infra-501607"
+    - name: AIRFLOW_VAR_FEAST_BQ_DATASET
+      value: "feast_offline_store"
+    - name: AIRFLOW_VAR_FEAST_BQ_LOCATION
+      value: "asia-northeast3"
+    - name: AIRFLOW_VAR_FEAST_GCS_REGISTRY_PATH
+      value: "gs://ar-infra-501607-feast-registry/registry.db"
+    - name: AIRFLOW_VAR_FEAST_GCS_STAGING_LOCATION
+      value: "gs://ar-infra-501607-feast-staging/"
+    - name: AIRFLOW_VAR_FEAST_REDIS_HOST
+      value: "10.10.16.3"
+    - name: AIRFLOW_VAR_FEAST_REDIS_PORT
+      value: "6379"
+    - name: AIRFLOW_VAR_FEAST_REDIS_CA_SECRET_ID
+      value: "autoresearch-dev-redis-server-ca"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
       value: "airflow"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
@@ -216,6 +243,12 @@ airflow:
             name: airflow-email-alerts
             key: alert-recipients
             optional: false
+    # lake_to_bigquery_incremental의 Google provider 오퍼레이터는 LocalExecutor로
+    # scheduler 파드에서 실행된다. 인프라 Terraform이 이 KSA에 대한 GSA 가장
+    # 권한을 관리하므로, Helm 소유 KSA에는 GSA annotation만 선언한다.
+    serviceAccount:
+      annotations:
+        iam.gke.io/gcp-service-account: autoresearch-dev-airflow@ar-infra-501607.iam.gserviceaccount.com
     nodeSelector:
       cloud.google.com/gke-nodepool: airflow-dev
     logGroomerSidecar:
