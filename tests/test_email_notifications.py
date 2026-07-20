@@ -179,6 +179,32 @@ def test_exception_message_redacts_quoted_named_credentials(
     assert redacted in body
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        r'password="synthetic alpha\\path\"quoted-tail"',
+        r"token='synthetic,beta\\path\'quoted-tail'",
+    ],
+)
+def test_exception_message_redacts_quoted_values_for_unquoted_keys(
+    monkeypatch, message: str
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(
+        _context(state="failed", exception=RuntimeError(message))
+    )
+
+    body = sent[0]["html_content"]
+    assert message not in body
+    assert "quoted-tail" not in body
+    assert "[REDACTED]" in body
+
+
 def test_exception_message_redacts_uri_password(monkeypatch) -> None:
     module = _load_module(monkeypatch)
     monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
