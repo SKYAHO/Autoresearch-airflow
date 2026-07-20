@@ -227,7 +227,9 @@ scheduler가 새 DAG revision을 읽었는지 확인해야 합니다.
 모든 DAG는 scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때 공통
 callback으로 메일을 한 통 보냅니다. task retry 중간, UI/CLI 상태 변경, callback
 수동 재호출은 한 통 보장 범위가 아닙니다. 실패 메일에는 실패 task ID와 제한·마스킹된
-예외 요약만 포함하며 전체 log와 traceback은 포함하지 않습니다.
+진단 요약만 포함합니다. 표준 DagRun callback은 scheduler가 제공하는 실패 reason을
+전달하며 task의 원본 exception이나 traceback은 보장되지 않습니다. 실제 exception이
+있는 context에서만 타입과 메시지를 표시하고, 전체 log와 traceback은 포함하지 않습니다.
 
 비밀값이 아닌 환경명은 `AUTORESEARCH_AIRFLOW_ENVIRONMENT`로, SMTP 설정과 수신자는
 `airflow-email-alerts` Secret으로 scheduler에만 주입합니다. Secret payload와 실제

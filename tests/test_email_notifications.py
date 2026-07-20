@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from airflow_stubs import forget_pipeline_packages, install_airflow_stubs
 
 
@@ -43,7 +45,12 @@ def _load_module(monkeypatch):
     return importlib.import_module("common.email_notifications")
 
 
-def _context(*, state: str, exception: Exception | None = None):
+def _context(
+    *,
+    state: str,
+    exception: Exception | None = None,
+    reason: str | None = None,
+):
     task_instances = [
         _TaskInstance("upstream", "upstream_failed"),
         _TaskInstance("failed_task", "failed"),
@@ -55,6 +62,8 @@ def _context(*, state: str, exception: Exception | None = None):
     }
     if exception is not None:
         context["exception"] = exception
+    if reason is not None:
+        context["reason"] = reason
     return context
 
 
@@ -98,6 +107,101 @@ def test_failure_email_lists_failed_tasks_and_safe_exception(monkeypatch) -> Non
     for secret in ("hunter2", "abc", "xyz", "jwt-value"):
         assert secret not in body
     assert "http://airflow.internal/task-log" in body
+
+
+@pytest.mark.parametrize(
+    ("label", "secret"),
+    [
+        ("client_secret", "client-value"),
+        ("ACCESS_TOKEN", "access-value"),
+        ("Secret_Key", "secret-value"),
+        ("AWS_SECRET_ACCESS_KEY", "aws-value"),
+    ],
+)
+def test_exception_message_redacts_extended_named_credentials(
+    monkeypatch, label: str, secret: str
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(
+        _context(state="failed", exception=RuntimeError(f"{label}={secret}"))
+    )
+
+    body = sent[0]["html_content"]
+    assert secret not in body
+    assert f"{label}=[REDACTED]" in body
+
+
+def test_exception_message_redacts_uri_password(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(
+        _context(
+            state="failed",
+            exception=RuntimeError(
+                "postgresql://service:" + "uri-password" + "@db.internal/app"
+            ),
+        )
+    )
+
+    body = sent[0]["html_content"]
+    assert "uri-password" not in body
+    assert "postgresql://service:[REDACTED]@db.internal/app" in body
+
+
+def test_failure_email_uses_scheduler_reason_without_exception(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(_context(state="failed", reason="task_failure"))
+
+    body = sent[0]["html_content"]
+    assert "Failure reason" in body
+    assert "task_failure" in body
+    assert "Exception type" not in body
+
+
+def test_failure_reason_is_sanitized_truncated_and_escaped(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+    reason = "<reason> access_token=reason-secret " + "x" * 2_100
+
+    module.notify_dag_failure(_context(state="failed", reason=reason))
+
+    body = sent[0]["html_content"]
+    assert "&lt;reason&gt;" in body
+    assert "reason-secret" not in body
+    assert "access_token=[REDACTED]" in body
+    assert "x" * 1_960 in body
+    assert "x" * 2_000 not in body
+
+
+def test_failure_email_uses_unknown_without_exception_or_reason(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS", PRIMARY_RECIPIENT)
+    sent = []
+    monkeypatch.setattr(module, "send_email", lambda **kwargs: sent.append(kwargs))
+
+    module.notify_dag_failure(_context(state="failed"))
+
+    body = sent[0]["html_content"]
+    assert "Failure reason" in body
+    assert "unknown" in body
 
 
 def test_exception_message_is_truncated_to_2000_characters_before_escape(monkeypatch) -> None:

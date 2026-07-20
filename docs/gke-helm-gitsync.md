@@ -95,24 +95,65 @@ kubectl create secret generic autoresearch-airflow-env \
 
 메일 알림 배포 전 운영 담당자는 SMTP provider와 발신 계정, 수신자 목록을 확정하고
 `airflow-email-alerts` Secret을 생성합니다. 각 값은 접근 제한된 로컬 파일에서 읽고
-그 파일은 저장소 밖에서 관리합니다.
+그 파일은 저장소 밖에서 관리합니다. `--from-file`에 사용하는 8개 파일은 빈 값이 아니고
+trailing CR/LF가 없어야 합니다. 실제 값을 shell argument나 history에 남기지 않도록
+숨김 입력으로 접근 제한 임시 파일을 만들고, payload를 출력하지 않는 로컬 검증을 먼저
+수행합니다.
+
+```bash
+umask 077
+EMAIL_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/airflow-email-secret.XXXXXX")"
+trap 'rm -f -- "$EMAIL_SECRET_DIR"/*; rmdir -- "$EMAIL_SECRET_DIR"' EXIT
+for key in smtp-host smtp-port smtp-starttls smtp-ssl smtp-user smtp-password smtp-mail-from alert-recipients; do
+  IFS= read -r -s -p "$key: " value
+  printf '\n'
+  printf '%s' "$value" >"$EMAIL_SECRET_DIR/$key"
+  unset value
+done
+
+python - "$EMAIL_SECRET_DIR" <<'PY'
+import pathlib
+import sys
+
+expected = {
+    "smtp-host", "smtp-port", "smtp-starttls", "smtp-ssl",
+    "smtp-user", "smtp-password", "smtp-mail-from", "alert-recipients",
+}
+root = pathlib.Path(sys.argv[1])
+actual = {path.name for path in root.iterdir() if path.is_file()}
+if actual != expected:
+    raise SystemExit(
+        f"Secret file key mismatch: missing={sorted(expected - actual)}, "
+        f"extra={sorted(actual - expected)}"
+    )
+for key in sorted(expected):
+    value = (root / key).read_bytes()
+    if not value:
+        raise SystemExit(f"Secret file is empty: key={key}")
+    if value.endswith((b"\n", b"\r")):
+        raise SystemExit(f"Secret file has trailing CR/LF: key={key}")
+print("Secret files validated without displaying payloads.")
+PY
+```
 
 ```bash
 kubectl create secret generic airflow-email-alerts \
   --namespace airflow \
-  --from-file=smtp-host=/secure/path/smtp-host \
-  --from-file=smtp-port=/secure/path/smtp-port \
-  --from-file=smtp-starttls=/secure/path/smtp-starttls \
-  --from-file=smtp-ssl=/secure/path/smtp-ssl \
-  --from-file=smtp-user=/secure/path/smtp-user \
-  --from-file=smtp-password=/secure/path/smtp-password \
-  --from-file=smtp-mail-from=/secure/path/smtp-mail-from \
-  --from-file=alert-recipients=/secure/path/alert-recipients
+  --from-file=smtp-host="$EMAIL_SECRET_DIR/smtp-host" \
+  --from-file=smtp-port="$EMAIL_SECRET_DIR/smtp-port" \
+  --from-file=smtp-starttls="$EMAIL_SECRET_DIR/smtp-starttls" \
+  --from-file=smtp-ssl="$EMAIL_SECRET_DIR/smtp-ssl" \
+  --from-file=smtp-user="$EMAIL_SECRET_DIR/smtp-user" \
+  --from-file=smtp-password="$EMAIL_SECRET_DIR/smtp-password" \
+  --from-file=smtp-mail-from="$EMAIL_SECRET_DIR/smtp-mail-from" \
+  --from-file=alert-recipients="$EMAIL_SECRET_DIR/alert-recipients"
 ```
 
 이 Secret은 `optional: false`이므로 없거나 key가 빠지면 scheduler가 시작하지 않습니다.
 Secret 생성과 key 확인을 마친 뒤 Helm upgrade를 수행합니다. `kubectl describe secret`로
-key 이름만 확인하고 payload를 terminal 또는 문서에 출력하지 않습니다.
+key 이름만 확인하고 payload를 terminal 또는 문서에 출력하지 않습니다. 자동 dev 배포
+preflight도 같은 조건을 강제하며, 정확한 8개 key, nonempty 값, trailing CR/LF 부재를
+production DAG pause 전에 확인합니다.
 
 ```bash
 
@@ -176,6 +217,9 @@ kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-im
 메일 알림을 배포할 때는 Secret 생성, Helm rollout, scheduler Ready,
 `airflow dags list-import-errors` 0건을 차례로 확인한 다음 운영 DAG를 실행하지 않고
 scheduler pod의 합성 context로 실제 callback 경로를 검증합니다.
+Airflow 2.10.5의 표준 DagRun 실패 callback은 scheduler가 제공하는 `reason`을 가지지만
+task 원본 exception이나 traceback은 보장되지 않습니다. 따라서 합성 실패 context도
+실제 scheduler 형태의 `reason`을 사용합니다.
 `kubectl exec ... python -`는 scheduler와 별도 프로세스이므로 scheduler container
 log에 남는다고 가정하지 않습니다. stdout/stderr 원문은 terminal에 표시하지 않고
 운영자 로컬의 임시 파일에만 캡처하며 접근 권한을 제한합니다. 아래 캡처·검사·삭제
@@ -229,7 +273,7 @@ notify_dag_failure(
     {
         "dag_run": SyntheticDagRun("failed"),
         "task_instance": task_instance,
-        "exception": RuntimeError("token=synthetic-smoke-secret <escaped>"),
+        "reason": "task_failure",
     }
 )
 PY
@@ -241,8 +285,8 @@ if [ "$KUBECTL_STATUS" -ne 0 ]; then
   IFS= read -r _
   exit 1
 elif [ "$KUBECTL_STATUS" -eq 0 ] \
-  && grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' "$SMOKE_LOG" \
-  && grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' "$SMOKE_LOG" \
+  && [ "$(grep -Fc 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' "$SMOKE_LOG")" -eq 1 ] \
   && ! grep -Fq 'DAG email notification failed' "$SMOKE_LOG" \
   && ! grep -Fq 'synthetic-smoke-secret' "$SMOKE_LOG"; then
   printf '%s\n' 'Smoke validation: PASS'
@@ -264,9 +308,9 @@ fi
 ```
 
 수신함에서 `[dev][Airflow][SUCCESS] email_notification_smoke`와
-`[dev][Airflow][FAILED] email_notification_smoke` 두 통을 확인합니다. 실패 메일에는
-`synthetic_task`, `RuntimeError`, `[REDACTED]`, `&lt;escaped&gt;`가 보여야 하고
-`synthetic-smoke-secret`은 없어야 합니다. `Airflow link` 행은 context의
+`[dev][Airflow][FAILED] email_notification_smoke`가 성공 1통과 실패 1통인 정확히 두 통인지
+확인합니다. 실패 메일에는 `synthetic_task`, `Failure reason`과 `task_failure`가 보여야
+합니다. `Airflow link` 행은 context의
 `task_instance` 또는 `ti`에 비어 있지 않은 `log_url`이 있을 때만 표시됩니다. 이
 smoke의 SUCCESS와 FAILED 메일 각각에서 `Airflow link`가 존재하고 기대 URL이
 `http://localhost:8080/dags/email_notification_smoke/grid`인지 확인합니다. `log_url`이

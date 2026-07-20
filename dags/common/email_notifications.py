@@ -15,10 +15,14 @@ from airflow.utils.email import send_email
 _LOGGER = logging.getLogger(__name__)
 _RECIPIENT_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _NAMED_SECRET_PATTERN = re.compile(
-    r"\b(password|token|api_key)(\s*[=:]\s*)([^\s,;]+)",
+    r"\b(password|token|api_key|client_secret|access_token|secret_key|"
+    r"aws_secret_access_key)(\s*[=:]\s*)([^\s,;]+)",
     re.IGNORECASE,
 )
 _BEARER_PATTERN = re.compile(r"\b(Bearer)(\s+)([^\s,;]+)", re.IGNORECASE)
+_URI_USERINFO_PATTERN = re.compile(
+    r"(\b[a-z][a-z0-9+.-]*://[^/@\s:]+:)([^@\s]+)(@)", re.IGNORECASE
+)
 _MAX_EXCEPTION_LENGTH = 2_000
 
 
@@ -50,8 +54,9 @@ def _format_value(value: Any) -> str:
     return isoformat() if callable(isoformat) else str(value)
 
 
-def _sanitize_exception(exception: BaseException) -> str:
-    message = _NAMED_SECRET_PATTERN.sub(r"\1\2[REDACTED]", str(exception))
+def _sanitize_text(value: Any) -> str:
+    message = _URI_USERINFO_PATTERN.sub(r"\1[REDACTED]\3", str(value))
+    message = _NAMED_SECRET_PATTERN.sub(r"\1\2[REDACTED]", message)
     message = _BEARER_PATTERN.sub(r"\1\2[REDACTED]", message)
     return message[:_MAX_EXCEPTION_LENGTH]
 
@@ -113,9 +118,11 @@ def _build_email(
             rows.extend(
                 [
                     ("Exception type", type(exception).__name__),
-                    ("Exception message", _sanitize_exception(exception)),
+                    ("Exception message", _sanitize_text(exception)),
                 ]
             )
+        else:
+            rows.append(("Failure reason", _sanitize_text(context.get("reason") or "unknown")))
     log_url = _task_log_url(context)
     if log_url:
         rows.append(("Airflow link", log_url))
