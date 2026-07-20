@@ -235,6 +235,48 @@ def test_gke_guide_documents_safe_email_notification_smoke_and_rollback() -> Non
         assert contract in guide
 
 
+def test_gke_guide_verifies_airflow_links_in_both_smoke_emails() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "`task_instance` 또는 `ti`에 비어 있지 않은 `log_url`이 있을 때만",
+        "SUCCESS와 FAILED 메일 각각에서 `Airflow link`",
+        "`http://localhost:8080/dags/email_notification_smoke/grid`",
+        "`log_url`이 없거나 비어 있으면 이 행이 표시되지 않습니다",
+    ):
+        assert contract in guide
+
+
+def test_gke_guide_identifies_success_and_failure_notification_logs() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "kubectl logs -n airflow airflow-scheduler-0 -c scheduler --since=10m",
+        "Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success",
+        "Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed",
+        "DAG email notification failed: state=<success|failed> error_type=<ExceptionClass>",
+    ):
+        assert contract in guide
+
+
+def test_gke_guide_checks_scheduler_secret_reference_before_deletion() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+    rollback = guide.index("helm rollback airflow <previous-helm-revision>")
+    scheduler_check = guide.index(
+        "kubectl get statefulset airflow-scheduler --namespace airflow"
+    )
+    workload_check = guide.index(
+        "kubectl get deploy,statefulset,daemonset,job,cronjob --namespace airflow"
+    )
+    secret_delete = guide.index(
+        "kubectl delete secret airflow-email-alerts --namespace airflow"
+    )
+
+    assert rollback < scheduler_check < workload_check < secret_delete
+    assert "컨테이너의 env에 `airflow-email-alerts`가 출력되지 않아야 합니다" in guide
+    assert "다른 workload 검사에서도 참조가 없어야" in guide
+
+
 def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(encoding="utf-8")
 

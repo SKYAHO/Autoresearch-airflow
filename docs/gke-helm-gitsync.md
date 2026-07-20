@@ -225,17 +225,78 @@ PY
 수신함에서 `[dev][Airflow][SUCCESS] email_notification_smoke`와
 `[dev][Airflow][FAILED] email_notification_smoke` 두 통을 확인합니다. 실패 메일에는
 `synthetic_task`, `RuntimeError`, `[REDACTED]`, `&lt;escaped&gt;`가 보여야 하고
-`synthetic-smoke-secret`은 없어야 합니다. scheduler log에는 두 성공 기록이 있어야
-합니다. 실제 SMTP provider 또는 credential이 준비되지 않았다면 배포하지 않고,
-미실행 사유와 후속 smoke 담당자를 PR 검증 기록에 남깁니다.
+`synthetic-smoke-secret`은 없어야 합니다. `Airflow link` 행은 context의
+`task_instance` 또는 `ti`에 비어 있지 않은 `log_url`이 있을 때만 표시됩니다. 이
+smoke의 SUCCESS와 FAILED 메일 각각에서 `Airflow link`가 존재하고 기대 URL이
+`http://localhost:8080/dags/email_notification_smoke/grid`인지 확인합니다. `log_url`이
+없거나 비어 있으면 이 행이 표시되지 않습니다.
+
+scheduler container의 최근 log를 조회합니다.
+scheduler log에는 두 성공 기록이 있어야 합니다.
+
+```bash
+kubectl logs -n airflow airflow-scheduler-0 -c scheduler --since=10m \
+  | grep -E 'Sent DAG email notification|DAG email notification failed'
+```
+
+정상 smoke에서는 다음 두 식별자가 각각 한 번 있어야 합니다.
+
+```text
+Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success
+Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed
+```
+
+실패한 callback은 다음 형식으로 기록됩니다.
+
+```text
+DAG email notification failed: state=<success|failed> error_type=<ExceptionClass>
+```
+
+해당 `state`와 `error_type`으로 SMTP 설정·연결 오류를 식별합니다. 실제 SMTP provider
+또는 credential이 준비되지 않았다면 배포하지 않고, 미실행 사유와 후속 smoke 담당자를
+PR 검증 기록에 남깁니다.
 
 메일이 오지 않으면 scheduler log에서 `DAG email notification failed`와
 `error_type`을 확인합니다. callback 오류는 DagRun 상태를 바꾸지 않으며 메일로 SMTP
 장애를 감지할 수 없으므로 scheduler callback 오류 log의 외부 모니터링은 후속 과제입니다.
 
-rollback은 이전 Helm revision과 DAG git revision으로 복원합니다. Secret은 다른
-workload가 참조하지 않는지 확인한 뒤 별도로 삭제합니다. Helm rollback 전에 Secret을
-먼저 삭제하면 현재 scheduler가 재시작하지 못하므로 삭제 순서를 바꾸지 않습니다.
+rollback은 이전 Helm revision과 DAG git revision으로 복원하며 다음 순서를 지킵니다.
+먼저 이전 Helm revision으로 복원하고 이전 DAG git revision을 `main`에 복원한 뒤
+scheduler rollout, git-sync SHA와 import error를 확인합니다.
+
+```bash
+helm rollback airflow <previous-helm-revision> --namespace airflow --wait
+kubectl rollout status statefulset/airflow-scheduler --namespace airflow
+kubectl logs -n airflow airflow-scheduler-0 -c git-sync --since=10m \
+  | grep '<previous-dag-git-sha>'
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- \
+  airflow dags list-import-errors
+```
+
+Helm/DAG rollback 완료 후 현재 StatefulSet의 scheduler 컨테이너가 참조하는 Secret
+이름을 조회합니다.
+
+```bash
+kubectl get statefulset airflow-scheduler --namespace airflow \
+  -o jsonpath='{range .spec.template.spec.containers[?(@.name=="scheduler")].env[*]}{.valueFrom.secretKeyRef.name}{"\n"}{end}'
+```
+
+scheduler 컨테이너의 env에 `airflow-email-alerts`가 출력되지 않아야 합니다. 이어서
+namespace의 다른 workload 참조를 확인합니다.
+
+```bash
+kubectl get deploy,statefulset,daemonset,job,cronjob --namespace airflow -o yaml \
+  | grep -n airflow-email-alerts
+```
+
+다른 workload 검사에서도 참조가 없어야 다음 명령으로 Secret을 삭제합니다.
+
+```bash
+kubectl delete secret airflow-email-alerts --namespace airflow
+```
+
+Helm rollback 전에 Secret을 먼저 삭제하면 현재 scheduler가 재시작하지 못하므로 이
+순서를 바꾸지 않습니다.
 
 `git-sync` 로그에서 새 commit hash가 sync되는지 확인하고, Airflow scheduler가
 DAG를 파싱하는지 `airflow dags list` 또는 Web UI에서 확인합니다.
