@@ -124,6 +124,59 @@ airflow:
     - name: AIRFLOW_VAR_OPENROUTER_REQUIRE_PARAMETERS
       value: "true"
 
+  scheduler:
+    env:
+      - name: AUTORESEARCH_AIRFLOW_ENVIRONMENT
+        value: "dev"
+      - name: AIRFLOW__SMTP__SMTP_HOST
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: smtp-host
+            optional: false
+      - name: AIRFLOW__SMTP__SMTP_PORT
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: smtp-port
+            optional: false
+      - name: AIRFLOW__SMTP__SMTP_STARTTLS
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: smtp-starttls
+            optional: false
+      - name: AIRFLOW__SMTP__SMTP_SSL
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: smtp-ssl
+            optional: false
+      - name: AIRFLOW__SMTP__SMTP_USER
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: smtp-user
+            optional: false
+      - name: AIRFLOW__SMTP__SMTP_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: smtp-password
+            optional: false
+      - name: AIRFLOW__SMTP__SMTP_MAIL_FROM
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: smtp-mail-from
+            optional: false
+      - name: AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS
+        valueFrom:
+          secretKeyRef:
+            name: airflow-email-alerts
+            key: alert-recipients
+            optional: false
+
   migrateDatabaseJob:
     args:
       - bash

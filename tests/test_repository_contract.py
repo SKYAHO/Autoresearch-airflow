@@ -10,6 +10,23 @@ ACTION_LOG_PROD_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_prod.py"
 ACTION_LOG_QA_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_qa.py"
 ACTION_LOG_CONFIG_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "config.py"
 BACKFILL_DAG_PATH = ROOT / "dags" / "youtube_backfill" / "dag_kr.py"
+EMAIL_SECRET_ENV = {
+    "AIRFLOW__SMTP__SMTP_HOST": "smtp-host",
+    "AIRFLOW__SMTP__SMTP_PORT": "smtp-port",
+    "AIRFLOW__SMTP__SMTP_STARTTLS": "smtp-starttls",
+    "AIRFLOW__SMTP__SMTP_SSL": "smtp-ssl",
+    "AIRFLOW__SMTP__SMTP_USER": "smtp-user",
+    "AIRFLOW__SMTP__SMTP_PASSWORD": "smtp-password",
+    "AIRFLOW__SMTP__SMTP_MAIL_FROM": "smtp-mail-from",
+    "AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS": "alert-recipients",
+}
+
+
+def _split_scheduler_values(values: str) -> tuple[str, str]:
+    match = re.search(r"\n  scheduler:\n(?P<body>[\s\S]*?)(?=\n  [a-zA-Z]|\Z)", values)
+    assert match is not None
+    outside_scheduler = values[: match.start()] + values[match.end() :]
+    return match.group("body"), outside_scheduler
 
 
 def test_dags_share_encapsulated_batch_pod_operator() -> None:
@@ -131,6 +148,28 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "subPath: dags" in values
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
     assert "autoresearch-batch@sha256:<production-digest>" in values
+
+
+def test_helm_values_inject_email_secret_only_into_scheduler() -> None:
+    for relative_path in (
+        "deploy/airflow/values.example.yaml",
+        "deploy/airflow/values.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+        scheduler, outside_scheduler = _split_scheduler_values(values)
+
+        assert "AUTORESEARCH_AIRFLOW_ENVIRONMENT" in scheduler
+        assert 'value: "dev"' in scheduler
+        for env_name, key in EMAIL_SECRET_ENV.items():
+            pattern = (
+                rf"- name: {env_name}\s+valueFrom:\s+secretKeyRef:\s+"
+                rf"name: airflow-email-alerts\s+key: {key}\s+optional: false"
+            )
+            assert re.search(pattern, scheduler)
+            assert env_name not in outside_scheduler
+
+        assert "<smtp-" not in values
+        assert "@example.com" not in values
 
 
 def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
