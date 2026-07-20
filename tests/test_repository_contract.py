@@ -254,12 +254,17 @@ def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> N
         "별도 프로세스이므로 scheduler container log에 남는다고 가정하지 않습니다",
         "umask 077",
         'SMOKE_LOG="$(mktemp "${TMPDIR:-/tmp}/airflow-email-smoke.XXXXXX")"',
-        "2>&1 <<'PY' | tee \"$SMOKE_LOG\"",
+        "<<'PY' >\"$SMOKE_LOG\" 2>&1",
         'logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)',
-        "grep -F 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' \"$SMOKE_LOG\"",
-        "grep -F 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' \"$SMOKE_LOG\"",
-        "grep -E 'DAG email notification failed: state=(success|failed) error_type=[A-Za-z_][A-Za-z0-9_]*' \"$SMOKE_LOG\"",
-        "grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"",
+        "grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' \"$SMOKE_LOG\"",
+        "grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' \"$SMOKE_LOG\"",
+        "grep -Eq 'DAG email notification failed: state=(success|failed) error_type=[A-Za-z_][A-Za-z0-9_]*' \"$SMOKE_LOG\"",
+        "! grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"",
+        "Smoke validation: PASS",
+        "Smoke validation: SMTP FAILURE - inspect protected log securely",
+        "Smoke validation: FAIL - inspect protected log securely",
+        "원문을 terminal에 출력하지 않습니다",
+        "안전한 환경에서 임시 파일을 직접 검사",
         'rm -f -- "$SMOKE_LOG"',
         "unset SMOKE_LOG",
         "Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success",
@@ -268,6 +273,7 @@ def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> N
     ):
         assert contract in guide
 
+    assert 'tee "$SMOKE_LOG"' not in guide
     assert "kubectl logs -n airflow airflow-scheduler-0 -c scheduler --since=10m" not in guide
 
 
