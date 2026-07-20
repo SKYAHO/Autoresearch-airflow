@@ -233,14 +233,22 @@ notify_dag_failure(
     }
 )
 PY
+KUBECTL_STATUS=$?
 
-if grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' "$SMOKE_LOG" \
+if [ "$KUBECTL_STATUS" -ne 0 ]; then
+  printf '%s\n' 'Smoke validation: REMOTE EXECUTION FAILURE - inspect protected log securely' >&2
+  printf '%s\n' 'Smoke validation: press Enter after secure inspection' >&2
+  IFS= read -r _
+  exit 1
+elif [ "$KUBECTL_STATUS" -eq 0 ] \
+  && grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' "$SMOKE_LOG" \
   && grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' "$SMOKE_LOG" \
   && ! grep -Fq 'DAG email notification failed' "$SMOKE_LOG" \
   && ! grep -Fq 'synthetic-smoke-secret' "$SMOKE_LOG"; then
   printf '%s\n' 'Smoke validation: PASS'
   exit 0
-elif grep -Eq 'DAG email notification failed: state=(success|failed) error_type=[A-Za-z_][A-Za-z0-9_]*' "$SMOKE_LOG" \
+elif [ "$KUBECTL_STATUS" -eq 0 ] \
+  && grep -Eq 'DAG email notification failed: state=(success|failed) error_type=[A-Za-z_][A-Za-z0-9_]*' "$SMOKE_LOG" \
   && ! grep -Fq 'synthetic-smoke-secret' "$SMOKE_LOG"; then
   printf '%s\n' 'Smoke validation: SMTP FAILURE - inspect protected log securely' >&2
   printf '%s\n' 'Smoke validation: press Enter after secure inspection' >&2
@@ -269,6 +277,9 @@ smoke의 SUCCESS와 FAILED 메일 각각에서 `Airflow link`가 존재하고 �
 출력하며 캡처 원문을 출력하지 않습니다. 정상 `PASS`만 종료 코드 0이고 SMTP 오류와
 그 밖의 실패는 종료 코드 1입니다. subshell을 사용하므로 실패의 `exit 1`은 운영자의
 상위 shell을 종료하지 않으면서 전체 smoke 명령에는 non-zero status를 반환합니다.
+`kubectl exec`의 종료 상태는 heredoc 직후 `KUBECTL_STATUS`에 보존하며, 값이 0일 때만
+로그 기반 PASS 또는 SMTP callback 오류 판정을 수행합니다. non-zero이면 보호 로그에
+성공 식별자가 남아 있더라도 원격 실행 실패로 판정합니다.
 
 정상 smoke의 보호 파일에는 다음 두 식별자가 각각 한 번 있어야 합니다.
 

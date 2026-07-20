@@ -277,6 +277,16 @@ def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> N
     assert re.search(r"(?m)^\(\s*$", smoke)
     assert re.search(r"(?m)^\)\s*$", smoke)
     assert "trap 'rm -f -- \"$SMOKE_LOG\"' EXIT" in smoke
+    assert re.search(r"(?m)^PY\nKUBECTL_STATUS=\$\?\s*$", smoke)
+    assert re.search(
+        r'if \[ "\$KUBECTL_STATUS" -ne 0 \]; then'
+        r"[\s\S]*?Smoke validation: REMOTE EXECUTION FAILURE - inspect protected log securely"
+        r"[\s\S]*?exit 1"
+        r'[\s\S]*?elif \[ "\$KUBECTL_STATUS" -eq 0 \]'
+        r"[\s\S]*?Smoke validation: PASS"
+        r"[\s\S]*?exit 0",
+        smoke,
+    )
     assert re.search(r"Smoke validation: PASS[\s\S]*?exit 0", smoke)
     assert re.search(
         r"Smoke validation: SMTP FAILURE - inspect protected log securely[\s\S]*?exit 1",
