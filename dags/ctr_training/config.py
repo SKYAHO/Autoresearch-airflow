@@ -16,6 +16,13 @@ def _airflow_env(name: str, default: str) -> str:
 
 TRAINING_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
 
+# 학습 이미지는 코드를 굽지 않고 파드 시작 시 GCS 코드 아카이브를 받아
+# 실행한다(Autoresearch#177/#196의 gcs_code_bootstrap.sh ENTRYPOINT).
+# feast_materialize/config.py의 CODE_ARTIFACTS_BUCKET과 같은 버킷·패턴.
+CODE_ARTIFACTS_BUCKET = _airflow_env(
+    "TRAINING_CODE_ARTIFACTS_BUCKET", "ar-infra-501607-code-artifacts"
+)
+
 # MLflow tracking server는 mlflow 네임스페이스의 ClusterIP로 노출되어 있고
 # artifact는 서버 proxy 모드로 기록되므로, 학습 Pod에는 GCS 자격 증명이
 # 필요 없다. 인프라 세부사항은 Autoresearch-infra의

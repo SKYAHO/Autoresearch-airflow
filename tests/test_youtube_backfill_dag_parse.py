@@ -30,12 +30,11 @@ def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
 
     task = dag.task_dict["backfill_youtube_partitions"]
     assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
-    assert task.kwargs["cmds"] == [
+    assert "cmds" not in task.kwargs
+    assert task.kwargs["arguments"] == [
         "python",
         "-m",
         "autoresearch.jobs.youtube_backfill",
-    ]
-    assert task.kwargs["arguments"] == [
         "--source-path",
         module.SOURCE_PATH_TEMPLATE,
         "--youtube-base-path",

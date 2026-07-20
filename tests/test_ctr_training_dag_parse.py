@@ -27,8 +27,11 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
 
     task = dag.task_dict["train_ctr_model"]
     assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
-    assert task.kwargs["cmds"] == ["python", "-m", "src.cli"]
+    assert "cmds" not in task.kwargs
     assert task.kwargs["arguments"] == [
+        "python",
+        "-m",
+        "src.cli",
         "run-pipeline",
         "--videos-source",
         "bigquery",
@@ -46,10 +49,11 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert task.kwargs["get_logs"] is True
     assert task.kwargs["do_xcom_push"] is False
 
-    env_names = {env_var.name for env_var in task.kwargs["env_vars"]}
-    assert env_names == {"MLFLOW_TRACKING_URI"}
-    mlflow_env = next(iter(task.kwargs["env_vars"]))
-    assert mlflow_env.value == "http://mlflow.mlflow:5000"
+    env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
+    assert env_by_name == {
+        "MLFLOW_TRACKING_URI": "http://mlflow.mlflow:5000",
+        "CODE_ARTIFACTS_BUCKET": "ar-infra-501607-code-artifacts",
+    }
 
 
 def test_ctr_training_dag_mlflow_env_respects_variable_override(monkeypatch) -> None:

@@ -77,12 +77,12 @@ def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -
     task = module.dag.task_dict["materialize_online_store"]
 
     assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
-    assert task.kwargs["cmds"] == [
+    assert "cmds" not in task.kwargs
+    assert task.kwargs["arguments"] == [
         "python",
         "-m",
         "autoresearch.jobs.feast_materialize",
     ]
-    assert task.kwargs["arguments"] == []
     assert task.kwargs["execution_timeout"] == timedelta(hours=2)
     assert task.kwargs["retries"] == 1
     assert task.kwargs["get_logs"] is True

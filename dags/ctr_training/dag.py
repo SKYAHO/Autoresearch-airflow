@@ -22,6 +22,7 @@ from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
 from ctr_training.config import (
+    CODE_ARTIFACTS_BUCKET,
     EVENTS_END_DATE_TEMPLATE,
     EVENTS_START_DATE_TEMPLATE,
     MLFLOW_TRACKING_URI,
@@ -55,7 +56,10 @@ with DAG(
             EVENTS_END_DATE_TEMPLATE,
         ],
         pipeline="ctr-training",
-        plain_env={"MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI},
+        plain_env={
+            "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
+            "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
+        },
         retries=1,
         execution_timeout=timedelta(hours=2),
         cpu_request="1",
