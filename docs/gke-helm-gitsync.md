@@ -79,7 +79,8 @@ deployer는 GKE DNS endpoint를 사용하며 GCP에서는 cluster viewer, Kubern
 2. Workload Identity용 Kubernetes ServiceAccount와 Google ServiceAccount 매핑을
    환경값에 맞게 설정합니다.
 3. Airflow 런타임 Secret을 생성합니다.
-4. Helm dependency를 갱신하고 chart를 배포합니다.
+4. 메일 알림 Secret을 생성하고 key를 확인합니다.
+5. Helm dependency를 갱신하고 chart를 배포합니다.
 
 ```bash
 kubectl create namespace airflow
@@ -90,6 +91,30 @@ kubectl create secret generic autoresearch-airflow-env \
   --from-literal=YOUTUBE_API_KEY='<youtube-api-key>' \
   --from-literal=OPENROUTER_API_KEY='<openrouter-api-key>' \
   --from-literal=YOUTUBE_LAKE_BUCKET='<gcs-bucket>'
+```
+
+메일 알림 배포 전 운영 담당자는 SMTP provider와 발신 계정, 수신자 목록을 확정하고
+`airflow-email-alerts` Secret을 생성합니다. 각 값은 접근 제한된 로컬 파일에서 읽고
+그 파일은 저장소 밖에서 관리합니다.
+
+```bash
+kubectl create secret generic airflow-email-alerts \
+  --namespace airflow \
+  --from-file=smtp-host=/secure/path/smtp-host \
+  --from-file=smtp-port=/secure/path/smtp-port \
+  --from-file=smtp-starttls=/secure/path/smtp-starttls \
+  --from-file=smtp-ssl=/secure/path/smtp-ssl \
+  --from-file=smtp-user=/secure/path/smtp-user \
+  --from-file=smtp-password=/secure/path/smtp-password \
+  --from-file=smtp-mail-from=/secure/path/smtp-mail-from \
+  --from-file=alert-recipients=/secure/path/alert-recipients
+```
+
+이 Secret은 `optional: false`이므로 없거나 key가 빠지면 scheduler가 시작하지 않습니다.
+Secret 생성과 key 확인을 마친 뒤 Helm upgrade를 수행합니다. `kubectl describe secret`로
+key 이름만 확인하고 payload를 terminal 또는 문서에 출력하지 않습니다.
+
+```bash
 
 helm repo add apache-airflow https://airflow.apache.org
 helm repo update
@@ -147,6 +172,70 @@ kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list
 kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow pools get action_log_openrouter
 kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-import-errors
 ```
+
+메일 알림을 배포할 때는 Secret 생성, Helm rollout, scheduler Ready,
+`airflow dags list-import-errors` 0건을 차례로 확인한 다음 운영 DAG를 실행하지 않고
+scheduler pod의 합성 context로 실제 callback 경로를 검증합니다.
+
+```bash
+kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python - <<'PY'
+import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+from airflow.configuration import conf
+
+sys.path.insert(0, conf.get("core", "dags_folder"))
+from common.email_notifications import notify_dag_failure, notify_dag_success
+
+
+class SyntheticDagRun:
+    dag_id = "email_notification_smoke"
+    run_id = "manual__email_notification_smoke"
+    logical_date = datetime.now(timezone.utc)
+    start_date = logical_date
+    end_date = logical_date
+
+    def __init__(self, state):
+        self.state = state
+
+    def get_task_instances(self):
+        return [SimpleNamespace(task_id="synthetic_task", state=self.state)]
+
+
+task_instance = SimpleNamespace(
+    task_id="synthetic_task",
+    state="success",
+    log_url="http://localhost:8080/dags/email_notification_smoke/grid",
+)
+notify_dag_success(
+    {"dag_run": SyntheticDagRun("success"), "task_instance": task_instance}
+)
+task_instance.state = "failed"
+notify_dag_failure(
+    {
+        "dag_run": SyntheticDagRun("failed"),
+        "task_instance": task_instance,
+        "exception": RuntimeError("token=synthetic-smoke-secret <escaped>"),
+    }
+)
+PY
+```
+
+수신함에서 `[dev][Airflow][SUCCESS] email_notification_smoke`와
+`[dev][Airflow][FAILED] email_notification_smoke` 두 통을 확인합니다. 실패 메일에는
+`synthetic_task`, `RuntimeError`, `[REDACTED]`, `&lt;escaped&gt;`가 보여야 하고
+`synthetic-smoke-secret`은 없어야 합니다. scheduler log에는 두 성공 기록이 있어야
+합니다. 실제 SMTP provider 또는 credential이 준비되지 않았다면 배포하지 않고,
+미실행 사유와 후속 smoke 담당자를 PR 검증 기록에 남깁니다.
+
+메일이 오지 않으면 scheduler log에서 `DAG email notification failed`와
+`error_type`을 확인합니다. callback 오류는 DagRun 상태를 바꾸지 않으며 메일로 SMTP
+장애를 감지할 수 없으므로 scheduler callback 오류 log의 외부 모니터링은 후속 과제입니다.
+
+rollback은 이전 Helm revision과 DAG git revision으로 복원합니다. Secret은 다른
+workload가 참조하지 않는지 확인한 뒤 별도로 삭제합니다. Helm rollback 전에 Secret을
+먼저 삭제하면 현재 scheduler가 재시작하지 못하므로 삭제 순서를 바꾸지 않습니다.
 
 `git-sync` 로그에서 새 commit hash가 sync되는지 확인하고, Airflow scheduler가
 DAG를 파싱하는지 `airflow dags list` 또는 Web UI에서 확인합니다.

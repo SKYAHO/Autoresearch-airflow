@@ -4,6 +4,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+README_PATH = ROOT / "README.md"
+GKE_HELM_GUIDE_PATH = ROOT / "docs" / "gke-helm-gitsync.md"
 KPO_PATH = ROOT / "dags" / "common" / "batch_pod_operator.py"
 ACTION_LOG_FACTORY_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "factory.py"
 ACTION_LOG_PROD_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_prod.py"
@@ -170,6 +172,67 @@ def test_helm_values_inject_email_secret_only_into_scheduler() -> None:
 
         assert "<smtp-" not in values
         assert "@example.com" not in values
+
+
+def test_readme_documents_dag_email_notification_operations_contract() -> None:
+    readme = " ".join(README_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "### DAG 실행 결과 메일 알림",
+        "scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때",
+        "task retry 중간, UI/CLI 상태 변경, callback 수동 재호출은 한 통 보장 범위가 아닙니다",
+        "실패 task ID와 제한·마스킹된 예외 요약",
+        "전체 log와 traceback은 포함하지 않습니다",
+        "`AUTORESEARCH_AIRFLOW_ENVIRONMENT`",
+        "`airflow-email-alerts` Secret으로 scheduler에만 주입",
+        "Secret payload와 실제 수신자 주소는 Git 밖에서 관리",
+        "Google OAuth 로그인 설정은 SMTP 인증과 무관",
+        "callback 전송 실패는 DagRun 상태를 바꾸지 않습니다",
+        "`DAG email notification failed`",
+    ):
+        assert contract in readme
+
+
+def test_gke_guide_documents_safe_email_notification_smoke_and_rollback() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+    secret_command = "kubectl create secret generic airflow-email-alerts"
+
+    assert guide.index(secret_command) < guide.index("helm upgrade --install")
+    for key in (
+        "smtp-host",
+        "smtp-port",
+        "smtp-starttls",
+        "smtp-ssl",
+        "smtp-user",
+        "smtp-password",
+        "smtp-mail-from",
+        "alert-recipients",
+    ):
+        assert f"--from-file={key}=/secure/path/{key}" in guide
+
+    for contract in (
+        "`optional: false`",
+        "`kubectl describe secret`",
+        "payload를 terminal 또는 문서에 출력하지 않습니다",
+        "운영 DAG를 실행하지 않고",
+        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python - <<'PY'",
+        "from common.email_notifications import notify_dag_failure, notify_dag_success",
+        'dag_id = "email_notification_smoke"',
+        'RuntimeError("token=synthetic-smoke-secret <escaped>")',
+        "`[dev][Airflow][SUCCESS] email_notification_smoke`",
+        "`[dev][Airflow][FAILED] email_notification_smoke`",
+        "`synthetic-smoke-secret`은 없어야 합니다",
+        "scheduler log에는 두 성공 기록",
+        "`DAG email notification failed`",
+        "`error_type`",
+        "callback 오류는 DagRun 상태를 바꾸지 않으며",
+        "scheduler callback 오류 log의 외부 모니터링은 후속 과제",
+        "이전 Helm revision과 DAG git revision으로 복원",
+        "Helm rollback 전에 Secret을 먼저 삭제하면 현재 scheduler가 재시작하지 못하므로",
+        "scheduler Ready",
+        "`airflow dags list-import-errors` 0건",
+    ):
+        assert contract in guide
 
 
 def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
