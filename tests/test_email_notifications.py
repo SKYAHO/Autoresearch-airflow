@@ -242,6 +242,22 @@ def test_exception_message_preserves_uri_without_userinfo(monkeypatch, uri: str)
     assert uri in sent[0]["html_content"]
 
 
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "https://service.invalid:8443/path@segment",
+        "https://service.invalid:8443/search?target=@segment",
+        "https://service.invalid:8443/path#section@segment",
+    ],
+)
+def test_sanitize_text_preserves_at_sign_outside_uri_authority(
+    monkeypatch, uri: str
+) -> None:
+    module = _load_module(monkeypatch)
+
+    assert module._sanitize_text(uri) == uri
+
+
 def test_failure_email_uses_scheduler_reason_without_exception(monkeypatch) -> None:
     module = _load_module(monkeypatch)
     monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")

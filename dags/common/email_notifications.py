@@ -29,7 +29,7 @@ _QUOTED_NAMED_SECRET_PATTERN = re.compile(
 )
 _BEARER_PATTERN = re.compile(r"\b(Bearer)(\s+)([^\s,;]+)", re.IGNORECASE)
 _URI_USERINFO_PATTERN = re.compile(
-    r"(\b[a-z][a-z0-9+.-]*://[^/@\s:]+:)([^@\s]+)(@)", re.IGNORECASE
+    r"(\b[a-z][a-z0-9+.-]*://[^/@\s:]+:)([^@/?#\s]+)(@)", re.IGNORECASE
 )
 _URI_TOKEN_USERINFO_PATTERN = re.compile(
     r"(\b[a-z][a-z0-9+.-]*://)([a-z0-9._~!$&'()*+,;=%-]+)"
