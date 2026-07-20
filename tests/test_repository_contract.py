@@ -328,8 +328,13 @@ def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> N
     assert "airflow dags unpause" in workflow
     assert "--atomic" in workflow
     assert "helm rollback" in workflow
-    assert "airflow dags list-import-errors" in workflow
-    assert "test \"$task_count\" -eq 8" in workflow
+    assert "      - .github/workflows/deploy-gke-dev.yml" in workflow
+    assert 'airflow_cli "DAG import error 조회" dags list-import-errors --output json' in workflow
+    assert "Airflow CLI가 아직 준비되지 않았습니다" in workflow
+    assert "for attempt in $(seq 1 12)" in workflow
+    assert "production DAG task 수가 기대값(8)과 다릅니다" in workflow
+    assert "feast_online_store_materialize" in workflow
+    assert "Feast materialize DAG task 수가 기대값(2)과 다릅니다" in workflow
     assert "action_log_openrouter" in workflow
     assert 'int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2' in workflow
 
