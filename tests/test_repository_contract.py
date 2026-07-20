@@ -31,6 +31,13 @@ def _split_scheduler_values(values: str) -> tuple[str, str]:
     return match.group("body"), outside_scheduler
 
 
+def _fenced_bash_block_containing(markdown: str, marker: str) -> str:
+    blocks = re.findall(r"```bash\n(?P<body>[\s\S]*?)\n```", markdown)
+    matches = [block for block in blocks if marker in block]
+    assert len(matches) == 1
+    return matches[0]
+
+
 def test_dags_share_encapsulated_batch_pod_operator() -> None:
     action_log_source = ACTION_LOG_FACTORY_PATH.read_text(encoding="utf-8")
     backfill_source = BACKFILL_DAG_PATH.read_text(encoding="utf-8")
@@ -248,33 +255,38 @@ def test_gke_guide_verifies_airflow_links_in_both_smoke_emails() -> None:
 
 
 def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> None:
-    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+    source = GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8")
+    smoke = _fenced_bash_block_containing(
+        source,
+        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python -",
+    )
 
-    for contract in (
-        "별도 프로세스이므로 scheduler container log에 남는다고 가정하지 않습니다",
-        "umask 077",
-        'SMOKE_LOG="$(mktemp "${TMPDIR:-/tmp}/airflow-email-smoke.XXXXXX")"',
-        "<<'PY' >\"$SMOKE_LOG\" 2>&1",
-        'logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)',
-        "grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' \"$SMOKE_LOG\"",
-        "grep -Fq 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' \"$SMOKE_LOG\"",
-        "grep -Eq 'DAG email notification failed: state=(success|failed) error_type=[A-Za-z_][A-Za-z0-9_]*' \"$SMOKE_LOG\"",
-        "! grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"",
-        "Smoke validation: PASS",
-        "Smoke validation: SMTP FAILURE - inspect protected log securely",
-        "Smoke validation: FAIL - inspect protected log securely",
-        "원문을 terminal에 출력하지 않습니다",
-        "안전한 환경에서 임시 파일을 직접 검사",
-        'rm -f -- "$SMOKE_LOG"',
-        "unset SMOKE_LOG",
-        "Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success",
-        "Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed",
-        "DAG email notification failed: state=<success|failed> error_type=<ExceptionClass>",
-    ):
-        assert contract in guide
+    assert re.search(
+        r"kubectl exec[^\n]*(?:\\\n[^\n]*)*<<'PY'\s*>\"\$SMOKE_LOG\"\s+2>&1",
+        smoke,
+    )
+    assert re.search(r"\btee\b", smoke) is None
+    assert "! grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"" in smoke
+    assert "grep -Fq 'Sent DAG email notification:" in smoke
+    assert "state=success' \"$SMOKE_LOG\"" in smoke
+    assert "state=failed' \"$SMOKE_LOG\"" in smoke
+    assert "grep -Eq 'DAG email notification failed:" in smoke
+    assert "error_type=[A-Za-z_][A-Za-z0-9_]*' \"$SMOKE_LOG\"" in smoke
 
-    assert 'tee "$SMOKE_LOG"' not in guide
-    assert "kubectl logs -n airflow airflow-scheduler-0 -c scheduler --since=10m" not in guide
+    assert re.search(r"(?m)^\(\s*$", smoke)
+    assert re.search(r"(?m)^\)\s*$", smoke)
+    assert "trap 'rm -f -- \"$SMOKE_LOG\"' EXIT" in smoke
+    assert re.search(r"Smoke validation: PASS[\s\S]*?exit 0", smoke)
+    assert re.search(
+        r"Smoke validation: SMTP FAILURE - inspect protected log securely[\s\S]*?exit 1",
+        smoke,
+    )
+    assert re.search(
+        r"Smoke validation: FAIL - inspect protected log securely[\s\S]*?exit 1",
+        smoke,
+    )
+    assert smoke.count("exit 0") == 1
+    assert smoke.count("exit 1") >= 2
 
 
 def test_gke_guide_checks_scheduler_secret_reference_before_deletion() -> None:
