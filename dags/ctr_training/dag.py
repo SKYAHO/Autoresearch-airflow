@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
+from common.email_notifications import notify_dag_failure, notify_dag_success
 from ctr_training.config import (
     EVENTS_END_DATE_TEMPLATE,
     EVENTS_START_DATE_TEMPLATE,
@@ -36,6 +37,8 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     default_args={"retries": 1},
+    on_success_callback=notify_dag_success,
+    on_failure_callback=notify_dag_failure,
     tags=["ctr", "training", "mlflow", "kubernetes"],
     doc_md=__doc__,
 ) as dag:

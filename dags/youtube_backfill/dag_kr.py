@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
+from common.email_notifications import notify_dag_failure, notify_dag_success
 from youtube_backfill.config import (
     SOURCE_PATH_TEMPLATE,
     YOUTUBE_BASE_PATH_TEMPLATE,
@@ -21,6 +22,8 @@ with DAG(
     max_active_runs=1,
     default_args={"retries": 1},
     tags=["youtube", "collection", "backfill", "gcs", "kubernetes"],
+    on_success_callback=notify_dag_success,
+    on_failure_callback=notify_dag_failure,
     user_defined_macros={"resolve_backfill_path": resolve_backfill_path},
     doc_md=__doc__,
 ) as dag:

@@ -16,6 +16,7 @@ from airflow import DAG
 from airflow.utils.task_group import TaskGroup
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
+from common.email_notifications import notify_dag_failure, notify_dag_success
 from youtube_gcs_action_log.config import (
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
@@ -229,6 +230,8 @@ def build_youtube_gcs_action_log_pipeline(
         default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
         tags=tags or ["youtube", "collection", "action-log", "gcs", "kubernetes"],
         params={"partition_date": "", "overwrite": False, "candidates_per_user": 24},
+        on_success_callback=notify_dag_success,
+        on_failure_callback=notify_dag_failure,
         user_defined_macros={
             "resolve_dag_run_path": resolve_dag_run_path,
             "resolve_candidates_per_user": resolve_candidates_per_user,

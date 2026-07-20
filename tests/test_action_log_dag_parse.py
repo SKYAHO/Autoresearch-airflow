@@ -27,6 +27,10 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     spec.loader.exec_module(module)
 
     dag = module.dag
+    from common.email_notifications import notify_dag_failure, notify_dag_success
+
+    assert dag.kwargs["on_success_callback"] is notify_dag_success
+    assert dag.kwargs["on_failure_callback"] is notify_dag_failure
     assert dag.kwargs["user_defined_macros"] == {
         "resolve_dag_run_path": module.resolve_dag_run_path,
         "resolve_candidates_per_user": module.resolve_candidates_per_user,
@@ -181,6 +185,10 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
     spec.loader.exec_module(module)
 
     dag = module.dag
+    from common.email_notifications import notify_dag_failure, notify_dag_success
+
+    assert dag.kwargs["on_success_callback"] is notify_dag_success
+    assert dag.kwargs["on_failure_callback"] is notify_dag_failure
     candidate_image = (
         "{{ var.value.get('AUTORESEARCH_BATCH_IMAGE_OVERRIDE', "
         "var.value.AUTORESEARCH_BATCH_IMAGE) }}"

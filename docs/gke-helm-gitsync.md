@@ -79,7 +79,8 @@ deployer는 GKE DNS endpoint를 사용하며 GCP에서는 cluster viewer, Kubern
 2. Workload Identity용 Kubernetes ServiceAccount와 Google ServiceAccount 매핑을
    환경값에 맞게 설정합니다.
 3. Airflow 런타임 Secret을 생성합니다.
-4. Helm dependency를 갱신하고 chart를 배포합니다.
+4. 메일 알림 Secret을 생성하고 key를 확인합니다.
+5. Helm dependency를 갱신하고 chart를 배포합니다.
 
 ```bash
 kubectl create namespace airflow
@@ -90,6 +91,71 @@ kubectl create secret generic autoresearch-airflow-env \
   --from-literal=YOUTUBE_API_KEY='<youtube-api-key>' \
   --from-literal=OPENROUTER_API_KEY='<openrouter-api-key>' \
   --from-literal=YOUTUBE_LAKE_BUCKET='<gcs-bucket>'
+```
+
+메일 알림 배포 전 운영 담당자는 SMTP provider와 발신 계정, 수신자 목록을 확정하고
+`airflow-email-alerts` Secret을 생성합니다. 각 값은 접근 제한된 로컬 파일에서 읽고
+그 파일은 저장소 밖에서 관리합니다. `--from-file`에 사용하는 8개 파일은 빈 값이 아니고
+trailing CR/LF가 없어야 합니다. 실제 값을 shell argument나 history에 남기지 않도록
+숨김 입력으로 접근 제한 임시 파일을 만들고, payload를 출력하지 않는 로컬 검증을 먼저
+수행합니다.
+
+```bash
+umask 077
+EMAIL_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/airflow-email-secret.XXXXXX")"
+trap 'rm -f -- "$EMAIL_SECRET_DIR"/*; rmdir -- "$EMAIL_SECRET_DIR"' EXIT
+for key in smtp-host smtp-port smtp-starttls smtp-ssl smtp-user smtp-password smtp-mail-from alert-recipients; do
+  IFS= read -r -s -p "$key: " value
+  printf '\n'
+  printf '%s' "$value" >"$EMAIL_SECRET_DIR/$key"
+  unset value
+done
+
+python - "$EMAIL_SECRET_DIR" <<'PY'
+import pathlib
+import sys
+
+expected = {
+    "smtp-host", "smtp-port", "smtp-starttls", "smtp-ssl",
+    "smtp-user", "smtp-password", "smtp-mail-from", "alert-recipients",
+}
+root = pathlib.Path(sys.argv[1])
+actual = {path.name for path in root.iterdir() if path.is_file()}
+if actual != expected:
+    raise SystemExit(
+        f"Secret file key mismatch: missing={sorted(expected - actual)}, "
+        f"extra={sorted(actual - expected)}"
+    )
+for key in sorted(expected):
+    value = (root / key).read_bytes()
+    if not value:
+        raise SystemExit(f"Secret file is empty: key={key}")
+    if value.endswith((b"\n", b"\r")):
+        raise SystemExit(f"Secret file has trailing CR/LF: key={key}")
+print("Secret files validated without displaying payloads.")
+PY
+```
+
+```bash
+kubectl create secret generic airflow-email-alerts \
+  --namespace airflow \
+  --from-file=smtp-host="$EMAIL_SECRET_DIR/smtp-host" \
+  --from-file=smtp-port="$EMAIL_SECRET_DIR/smtp-port" \
+  --from-file=smtp-starttls="$EMAIL_SECRET_DIR/smtp-starttls" \
+  --from-file=smtp-ssl="$EMAIL_SECRET_DIR/smtp-ssl" \
+  --from-file=smtp-user="$EMAIL_SECRET_DIR/smtp-user" \
+  --from-file=smtp-password="$EMAIL_SECRET_DIR/smtp-password" \
+  --from-file=smtp-mail-from="$EMAIL_SECRET_DIR/smtp-mail-from" \
+  --from-file=alert-recipients="$EMAIL_SECRET_DIR/alert-recipients"
+```
+
+이 Secret은 `optional: false`이므로 없거나 key가 빠지면 scheduler가 시작하지 않습니다.
+Secret 생성과 key 확인을 마친 뒤 Helm upgrade를 수행합니다. `kubectl describe secret`로
+key 이름만 확인하고 payload를 terminal 또는 문서에 출력하지 않습니다. 자동 dev 배포
+preflight도 같은 조건을 강제하며, 정확한 8개 key, nonempty 값, trailing CR/LF 부재를
+production DAG pause 전에 확인합니다.
+
+```bash
 
 helm repo add apache-airflow https://airflow.apache.org
 helm repo update
@@ -147,6 +213,191 @@ kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list
 kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow pools get action_log_openrouter
 kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-import-errors
 ```
+
+메일 알림을 배포할 때는 Secret 생성, Helm rollout, scheduler Ready,
+`airflow dags list-import-errors` 0건을 차례로 확인한 다음 운영 DAG를 실행하지 않고
+scheduler pod의 합성 context로 실제 callback 경로를 검증합니다.
+Airflow 2.10.5의 표준 DagRun 실패 callback은 scheduler가 제공하는 `reason`을 가지지만
+task 원본 exception이나 traceback은 보장되지 않습니다. 따라서 합성 실패 context도
+실제 scheduler 형태의 `reason`을 사용합니다.
+`kubectl exec ... python -`는 scheduler와 별도 프로세스이므로 scheduler container
+log에 남는다고 가정하지 않습니다. stdout/stderr 원문은 terminal에 표시하지 않고
+운영자 로컬의 임시 파일에만 캡처하며 접근 권한을 제한합니다. 아래 캡처·검사·삭제
+명령은 같은 로컬 shell session에서 순서대로 실행합니다.
+
+```bash
+(
+umask 077
+SMOKE_LOG="$(mktemp "${TMPDIR:-/tmp}/airflow-email-smoke.XXXXXX")"
+trap 'rm -f -- "$SMOKE_LOG"' EXIT
+
+kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python - \
+  <<'PY' >"$SMOKE_LOG" 2>&1
+import logging
+import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+from airflow.configuration import conf
+
+sys.path.insert(0, conf.get("core", "dags_folder"))
+from common.email_notifications import notify_dag_failure, notify_dag_success
+
+logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
+
+
+class SyntheticDagRun:
+    dag_id = "email_notification_smoke"
+    run_id = "manual__email_notification_smoke"
+    logical_date = datetime.now(timezone.utc)
+    start_date = logical_date
+    end_date = logical_date
+
+    def __init__(self, state):
+        self.state = state
+
+    def get_task_instances(self):
+        return [SimpleNamespace(task_id="synthetic_task", state=self.state)]
+
+
+task_instance = SimpleNamespace(
+    task_id="synthetic_task",
+    state="success",
+    log_url="http://localhost:8080/dags/email_notification_smoke/grid",
+)
+notify_dag_success(
+    {"dag_run": SyntheticDagRun("success"), "task_instance": task_instance}
+)
+task_instance.state = "failed"
+notify_dag_failure(
+    {
+        "dag_run": SyntheticDagRun("failed"),
+        "task_instance": task_instance,
+        "reason": "task_failure client_secret=synthetic-smoke-secret",
+    }
+)
+PY
+KUBECTL_STATUS=$?
+
+if [ "$KUBECTL_STATUS" -ne 0 ]; then
+  printf '%s\n' 'Smoke validation: REMOTE EXECUTION FAILURE - inspect protected log securely' >&2
+  printf '%s\n' 'Smoke validation: press Enter after secure inspection' >&2
+  IFS= read -r _
+  exit 1
+elif [ "$KUBECTL_STATUS" -eq 0 ] \
+  && [ "$(grep -Fc 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' "$SMOKE_LOG")" -eq 1 ] \
+  && ! grep -Fq 'DAG email notification failed' "$SMOKE_LOG" \
+  && ! grep -Fq 'synthetic-smoke-secret' "$SMOKE_LOG"; then
+  printf '%s\n' 'Smoke validation: PASS'
+  exit 0
+elif [ "$KUBECTL_STATUS" -eq 0 ] \
+  && grep -Eq 'DAG email notification failed: state=(success|failed) error_type=[A-Za-z_][A-Za-z0-9_]*' "$SMOKE_LOG" \
+  && ! grep -Fq 'synthetic-smoke-secret' "$SMOKE_LOG"; then
+  printf '%s\n' 'Smoke validation: SMTP FAILURE - inspect protected log securely' >&2
+  printf '%s\n' 'Smoke validation: press Enter after secure inspection' >&2
+  IFS= read -r _
+  exit 1
+else
+  printf '%s\n' 'Smoke validation: FAIL - inspect protected log securely' >&2
+  printf '%s\n' 'Smoke validation: press Enter after secure inspection' >&2
+  IFS= read -r _
+  exit 1
+fi
+)
+```
+
+수신함에서 `[dev][Airflow][SUCCESS] email_notification_smoke`와
+`[dev][Airflow][FAILED] email_notification_smoke`가 성공 1통과 실패 1통인 정확히 두 통인지
+확인합니다. 실패 메일에는 `synthetic_task`, `Failure reason`과 `task_failure`가
+보여야 합니다. 실패 메일에는 `[REDACTED]`가 있고
+`synthetic-smoke-secret` 원문이 없어야 합니다. `Airflow link` 행은 context의
+`task_instance` 또는 `ti`에 비어 있지 않은 `log_url`이 있을 때만 표시됩니다. 이
+smoke의 SUCCESS와 FAILED 메일 각각에서 `Airflow link`가 존재하고 기대 URL이
+`http://localhost:8080/dags/email_notification_smoke/grid`인지 확인합니다. `log_url`이
+없거나 비어 있으면 이 행이 표시되지 않습니다.
+
+합성 프로세스의 캡처에서 성공·실패 info 식별자, SMTP 오류 식별자와 `error_type`,
+합성 credential 원문 부재를 출력 없이 검사합니다. callback log는 메일 본문을 기록하지
+않으므로 로그만으로 메일 본문의 마스킹을 증명하지 않습니다. terminal에는 고정된 판정
+문구만 출력하며 캡처 원문을 출력하지 않습니다. 정상 `PASS`만 종료 코드 0이고 SMTP 오류와
+그 밖의 실패는 종료 코드 1입니다. subshell을 사용하므로 실패의 `exit 1`은 운영자의
+상위 shell을 종료하지 않으면서 전체 smoke 명령에는 non-zero status를 반환합니다.
+`kubectl exec`의 종료 상태는 heredoc 직후 `KUBECTL_STATUS`에 보존하며, 값이 0일 때만
+로그 기반 PASS 또는 SMTP callback 오류 판정을 수행합니다. non-zero이면 보호 로그에
+성공 식별자가 남아 있더라도 원격 실행 실패로 판정합니다.
+
+정상 smoke의 보호 파일에는 다음 두 식별자가 각각 한 번 있어야 합니다.
+
+```text
+Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success
+Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed
+```
+
+실패한 callback은 다음 형식으로 기록됩니다.
+
+```text
+DAG email notification failed: state=<success|failed> error_type=<ExceptionClass>
+```
+
+`Smoke validation: PASS`만 정상 판정입니다. SMTP 실패와 그 밖의 실패 판정에서도 원문을
+terminal에 출력하지 않습니다. 운영자는 공유·녹화·shell history 노출이 차단된 안전한
+환경에서 임시 파일을 직접 검사하고, 다른 위치로 복사하거나 저장소에 옮기지 않습니다.
+실패 시 subshell은 고정 안내 문구를 출력한 뒤 Enter 입력을 기다립니다. 운영자는 두 번째
+보안 local shell에서 owner-only `airflow-email-smoke.*` 임시 파일을 직접 검사하고 원래
+shell에서 Enter를 누릅니다. 이 가이드는 보호 파일 원문을 출력하는 명령을 제공하지
+않습니다.
+
+이 절차에서는 Secret payload나 환경변수를 조회·출력하지 않고 shell xtrace와 debug
+logging을 활성화하지 않습니다. 임시 파일은 `umask 077`로 운영자만 읽을 수 있으며
+저장소 밖의 OS 임시 디렉터리에 생성됩니다. 정상·실패 `exit`와 중간 shell 종료 모두
+subshell의 EXIT trap이 파일을 삭제합니다.
+
+실제 SMTP provider 또는 credential이 준비되지 않았다면 배포하지 않고, 미실행 사유와
+후속 smoke 담당자를 PR 검증 기록에 남깁니다.
+
+합성 smoke의 SMTP 실패는 위 임시 캡처에서 `DAG email notification failed`와
+`error_type`을 확인합니다. 실제 예약 DagRun의 callback 오류는 scheduler log에
+기록됩니다. callback 오류는 DagRun 상태를 바꾸지 않으며 메일로 SMTP 장애를 감지할 수
+없으므로 scheduler callback 오류 log의 외부 모니터링은 후속 과제입니다.
+
+rollback은 이전 Helm revision과 DAG git revision으로 복원하며 다음 순서를 지킵니다.
+먼저 이전 Helm revision으로 복원하고 이전 DAG git revision을 `main`에 복원한 뒤
+scheduler rollout, git-sync SHA와 import error를 확인합니다.
+
+```bash
+helm rollback airflow <previous-helm-revision> --namespace airflow --wait
+kubectl rollout status statefulset/airflow-scheduler --namespace airflow
+kubectl logs -n airflow airflow-scheduler-0 -c git-sync --since=10m \
+  | grep '<previous-dag-git-sha>'
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- \
+  airflow dags list-import-errors
+```
+
+Helm/DAG rollback 완료 후 현재 StatefulSet의 scheduler 컨테이너가 참조하는 Secret
+이름을 조회합니다.
+
+```bash
+kubectl get statefulset airflow-scheduler --namespace airflow \
+  -o jsonpath='{range .spec.template.spec.containers[?(@.name=="scheduler")].env[*]}{.valueFrom.secretKeyRef.name}{"\n"}{end}'
+```
+
+scheduler 컨테이너의 env에 `airflow-email-alerts`가 출력되지 않아야 합니다. 이어서
+namespace의 다른 workload 참조를 확인합니다.
+
+```bash
+kubectl get deploy,statefulset,daemonset,job,cronjob --namespace airflow -o yaml \
+  | grep -n airflow-email-alerts
+```
+
+다른 workload 검사에서도 참조가 없어야 다음 명령으로 Secret을 삭제합니다.
+
+```bash
+kubectl delete secret airflow-email-alerts --namespace airflow
+```
+
+Helm rollback 전에 Secret을 먼저 삭제하면 현재 scheduler가 재시작하지 못하므로 이
+순서를 바꾸지 않습니다.
 
 `git-sync` 로그에서 새 commit hash가 sync되는지 확인하고, Airflow scheduler가
 DAG를 파싱하는지 `airflow dags list` 또는 Web UI에서 확인합니다.

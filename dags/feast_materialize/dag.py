@@ -18,6 +18,7 @@ from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.utils.state import DagRunState
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
+from common.email_notifications import notify_dag_failure, notify_dag_success
 from feast_materialize.config import (
     BQ_DATASET,
     BQ_LOCATION,
@@ -43,6 +44,8 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     default_args={"retries": 1, "retry_delay": timedelta(minutes=10)},
+    on_success_callback=notify_dag_success,
+    on_failure_callback=notify_dag_failure,
     tags=["feast", "materialize", "redis", "online-store"],
     doc_md=__doc__,
 ) as dag:

@@ -21,6 +21,10 @@ def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
     spec.loader.exec_module(module)
 
     dag = module.dag
+    from common.email_notifications import notify_dag_failure, notify_dag_success
+
+    assert dag.kwargs["on_success_callback"] is notify_dag_success
+    assert dag.kwargs["on_failure_callback"] is notify_dag_failure
     assert dag.kwargs["schedule"] is None
     assert dag.kwargs["max_active_runs"] == 1
     assert dag.kwargs["user_defined_macros"] == {

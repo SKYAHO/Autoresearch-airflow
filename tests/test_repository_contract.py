@@ -4,12 +4,46 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+README_PATH = ROOT / "README.md"
+GKE_HELM_GUIDE_PATH = ROOT / "docs" / "gke-helm-gitsync.md"
+GKE_DEV_DEPLOY_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "deploy-gke-dev.yml"
 KPO_PATH = ROOT / "dags" / "common" / "batch_pod_operator.py"
 ACTION_LOG_FACTORY_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "factory.py"
 ACTION_LOG_PROD_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_prod.py"
 ACTION_LOG_QA_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_qa.py"
 ACTION_LOG_CONFIG_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "config.py"
 BACKFILL_DAG_PATH = ROOT / "dags" / "youtube_backfill" / "dag_kr.py"
+EMAIL_SECRET_ENV = {
+    "AIRFLOW__SMTP__SMTP_HOST": "smtp-host",
+    "AIRFLOW__SMTP__SMTP_PORT": "smtp-port",
+    "AIRFLOW__SMTP__SMTP_STARTTLS": "smtp-starttls",
+    "AIRFLOW__SMTP__SMTP_SSL": "smtp-ssl",
+    "AIRFLOW__SMTP__SMTP_USER": "smtp-user",
+    "AIRFLOW__SMTP__SMTP_PASSWORD": "smtp-password",
+    "AIRFLOW__SMTP__SMTP_MAIL_FROM": "smtp-mail-from",
+    "AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS": "alert-recipients",
+}
+
+
+def _split_scheduler_values(values: str) -> tuple[str, str]:
+    match = re.search(r"\n  scheduler:\n(?P<body>[\s\S]*?)(?=\n  [a-zA-Z]|\Z)", values)
+    assert match is not None
+    outside_scheduler = values[: match.start()] + values[match.end() :]
+    return match.group("body"), outside_scheduler
+
+
+def _fenced_bash_block_containing(markdown: str, marker: str) -> str:
+    blocks = re.findall(r"```bash\n(?P<body>[\s\S]*?)\n```", markdown)
+    matches = [block for block in blocks if marker in block]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _workflow_step(workflow: str, name: str) -> str:
+    marker = f"      - name: {name}\n"
+    start = workflow.index(marker)
+    end = workflow.find("\n      - name:", start + len(marker))
+    return workflow[start:] if end == -1 else workflow[start:end]
 
 
 def test_dags_share_encapsulated_batch_pod_operator() -> None:
@@ -131,6 +165,232 @@ def test_helm_values_enable_git_sync_to_airflow_repo() -> None:
     assert "subPath: dags" in values
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
     assert "autoresearch-batch@sha256:<production-digest>" in values
+
+
+def test_helm_values_inject_email_secret_only_into_scheduler() -> None:
+    for relative_path in (
+        "deploy/airflow/values.example.yaml",
+        "deploy/airflow/values.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+        scheduler, outside_scheduler = _split_scheduler_values(values)
+
+        assert "AUTORESEARCH_AIRFLOW_ENVIRONMENT" in scheduler
+        assert 'value: "dev"' in scheduler
+        for env_name, key in EMAIL_SECRET_ENV.items():
+            pattern = (
+                rf"- name: {env_name}\s+valueFrom:\s+secretKeyRef:\s+"
+                rf"name: airflow-email-alerts\s+key: {key}\s+optional: false"
+            )
+            assert re.search(pattern, scheduler)
+            assert env_name not in outside_scheduler
+
+        assert "<smtp-" not in values
+        assert "@example.com" not in values
+
+
+def test_readme_documents_dag_email_notification_operations_contract() -> None:
+    readme = " ".join(README_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "### DAG 실행 결과 메일 알림",
+        "scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때",
+        "task retry 중간, UI/CLI 상태 변경, callback 수동 재호출은 한 통 보장 범위가 아닙니다",
+        "실패 task ID와 제한·마스킹된 진단 요약",
+        "scheduler가 제공하는 실패 reason",
+        "task의 원본 exception이나 traceback은 보장되지 않습니다",
+        "전체 log와 traceback은 포함하지 않습니다",
+        "`AUTORESEARCH_AIRFLOW_ENVIRONMENT`",
+        "`airflow-email-alerts` Secret으로 scheduler에만 주입",
+        "Secret payload와 실제 수신자 주소는 Git 밖에서 관리",
+        "Google OAuth 로그인 설정은 SMTP 인증과 무관",
+        "callback 전송 실패는 DagRun 상태를 바꾸지 않습니다",
+        "`DAG email notification failed`",
+    ):
+        assert contract in readme
+
+
+def test_gke_guide_documents_safe_email_notification_smoke_and_rollback() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+    secret_command = "kubectl create secret generic airflow-email-alerts"
+
+    assert guide.index(secret_command) < guide.index("helm upgrade --install")
+    for key in (
+        "smtp-host",
+        "smtp-port",
+        "smtp-starttls",
+        "smtp-ssl",
+        "smtp-user",
+        "smtp-password",
+        "smtp-mail-from",
+        "alert-recipients",
+    ):
+        assert f'--from-file={key}="$EMAIL_SECRET_DIR/{key}"' in guide
+
+    for contract in (
+        "`optional: false`",
+        "`kubectl describe secret`",
+        "payload를 terminal 또는 문서에 출력하지 않습니다",
+        "빈 값이 아니고 trailing CR/LF가 없어야",
+        "자동 dev 배포 preflight도 같은 조건을 강제",
+        "scheduler가 제공하는 `reason`",
+        "task 원본 exception이나 traceback은 보장되지 않습니다",
+        "운영 DAG를 실행하지 않고",
+        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python -",
+        "from common.email_notifications import notify_dag_failure, notify_dag_success",
+        'dag_id = "email_notification_smoke"',
+        '"reason": "task_failure client_secret=synthetic-smoke-secret"',
+        "`[dev][Airflow][SUCCESS] email_notification_smoke`",
+        "`[dev][Airflow][FAILED] email_notification_smoke`",
+        "`Failure reason`과 `task_failure`",
+        "성공 1통과 실패 1통인 정확히 두 통",
+        "운영자 로컬의 임시 파일",
+        "`DAG email notification failed`",
+        "`error_type`",
+        "callback 오류는 DagRun 상태를 바꾸지 않으며",
+        "scheduler callback 오류 log의 외부 모니터링은 후속 과제",
+        "이전 Helm revision과 DAG git revision으로 복원",
+        "Helm rollback 전에 Secret을 먼저 삭제하면 현재 scheduler가 재시작하지 못하므로",
+        "scheduler Ready",
+        "`airflow dags list-import-errors` 0건",
+    ):
+        assert contract in guide
+
+    guide_source = GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8")
+    assert 'IFS= read -r -s -p "$key: " value' in guide_source
+    assert 'printf \'%s\' "$value" >"$EMAIL_SECRET_DIR/$key"' in guide_source
+    assert "value = (root / key).read_bytes()" in guide_source
+    assert 'value.endswith((b"\\n", b"\\r"))' in guide_source
+    assert "print(value" not in guide_source
+
+
+def test_gke_guide_verifies_airflow_links_in_both_smoke_emails() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "`task_instance` 또는 `ti`에 비어 있지 않은 `log_url`이 있을 때만",
+        "SUCCESS와 FAILED 메일 각각에서 `Airflow link`",
+        "`http://localhost:8080/dags/email_notification_smoke/grid`",
+        "`log_url`이 없거나 비어 있으면 이 행이 표시되지 않습니다",
+    ):
+        assert contract in guide
+
+
+def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> None:
+    source = GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8")
+    smoke = _fenced_bash_block_containing(
+        source,
+        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python -",
+    )
+
+    assert re.search(
+        r"kubectl exec[^\n]*(?:\\\n[^\n]*)*<<'PY'\s*>\"\$SMOKE_LOG\"\s+2>&1",
+        smoke,
+    )
+    assert re.search(r"\btee\b", smoke) is None
+    assert "! grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"" in smoke
+    assert re.search(
+        r'\[ "\$\(grep -Fc \'Sent DAG email notification:[^\n]*state=success\' '
+        r'"\$SMOKE_LOG"\)" -eq 1 \]',
+        smoke,
+    )
+    assert re.search(
+        r'\[ "\$\(grep -Fc \'Sent DAG email notification:[^\n]*state=failed\' '
+        r'"\$SMOKE_LOG"\)" -eq 1 \]',
+        smoke,
+    )
+    assert "grep -Eq 'DAG email notification failed:" in smoke
+    assert "error_type=[A-Za-z_][A-Za-z0-9_]*' \"$SMOKE_LOG\"" in smoke
+
+    assert re.search(r"(?m)^\(\s*$", smoke)
+    assert re.search(r"(?m)^\)\s*$", smoke)
+    assert "trap 'rm -f -- \"$SMOKE_LOG\"' EXIT" in smoke
+    assert re.search(r"(?m)^PY\nKUBECTL_STATUS=\$\?\s*$", smoke)
+    assert re.search(
+        r'if \[ "\$KUBECTL_STATUS" -ne 0 \]; then'
+        r"[\s\S]*?Smoke validation: REMOTE EXECUTION FAILURE - inspect protected log securely"
+        r"[\s\S]*?exit 1"
+        r'[\s\S]*?elif \[ "\$KUBECTL_STATUS" -eq 0 \]'
+        r"[\s\S]*?Smoke validation: PASS"
+        r"[\s\S]*?exit 0",
+        smoke,
+    )
+    assert re.search(r"Smoke validation: PASS[\s\S]*?exit 0", smoke)
+    assert re.search(
+        r"Smoke validation: SMTP FAILURE - inspect protected log securely[\s\S]*?exit 1",
+        smoke,
+    )
+    assert re.search(
+        r"Smoke validation: FAIL - inspect protected log securely[\s\S]*?exit 1",
+        smoke,
+    )
+    assert smoke.count("exit 0") == 1
+    assert smoke.count("exit 1") >= 2
+
+
+def test_gke_guide_smoke_exercises_and_verifies_credential_redaction() -> None:
+    source = GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8")
+    smoke = _fenced_bash_block_containing(
+        source,
+        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python -",
+    )
+
+    assert re.search(
+        r'"reason":\s*"task_failure client_secret=synthetic-smoke-secret"',
+        smoke,
+    )
+    assert "! grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"" in smoke
+
+    inbox_contract = " ".join(source[source.index("수신함에서") :].split())
+    assert "실패 메일에는 `[REDACTED]`가 있고" in inbox_contract
+    assert "`synthetic-smoke-secret` 원문이 없어야" in inbox_contract
+    assert "로그만으로 메일 본문의 마스킹을 증명하지 않습니다" in inbox_contract
+
+
+def test_gke_guide_uses_dev_release_and_checks_secret_before_deletion() -> None:
+    guide_source = GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8")
+    workflow = GKE_DEV_DEPLOY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    guide = " ".join(guide_source.split())
+
+    workflow_release = re.search(
+        r"^\s*AIRFLOW_RELEASE:\s*['\"]?(?P<release>[a-z0-9-]+)['\"]?\s*$",
+        workflow,
+        re.MULTILINE,
+    )
+    dev_upgrade_release = re.search(
+        r"helm upgrade (?P<release>[^\s]+) deploy/airflow[\s\S]*?"
+        r"--values deploy/airflow/values\.yaml",
+        guide_source,
+    )
+    rollback_release = re.search(
+        r"helm rollback (?P<release>[^\s]+) <previous-helm-revision> "
+        r"--namespace airflow --wait",
+        guide_source,
+    )
+
+    assert workflow_release is not None
+    assert dev_upgrade_release is not None
+    assert rollback_release is not None
+    assert (
+        workflow_release.group("release")
+        == dev_upgrade_release.group("release")
+        == rollback_release.group("release")
+    )
+
+    rollback = guide.index(rollback_release.group(0))
+    scheduler_check = guide.index(
+        "kubectl get statefulset airflow-scheduler --namespace airflow"
+    )
+    workload_check = guide.index(
+        "kubectl get deploy,statefulset,daemonset,job,cronjob --namespace airflow"
+    )
+    secret_delete = guide.index(
+        "kubectl delete secret airflow-email-alerts --namespace airflow"
+    )
+
+    assert rollback < scheduler_check < workload_check < secret_delete
+    assert "컨테이너의 env에 `airflow-email-alerts`가 출력되지 않아야 합니다" in guide
+    assert "다른 workload 검사에서도 참조가 없어야" in guide
 
 
 def test_scheduler_service_account_uses_workload_identity_for_google_operators() -> None:
@@ -276,6 +536,10 @@ def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
     assert '"youtube_gcs_action_log_pipeline": 8' in check_source
     assert '"youtube_gcs_action_log_pipeline_qa": 8' in check_source
     assert '"youtube_backfill_kr": 1' in check_source
+    assert '"ctr_model_training": 1' in check_source
+    assert "dag.on_success_callback is not notify_dag_success" in check_source
+    assert "dag.on_failure_callback is not notify_dag_failure" in check_source
+    assert "for dag_id, dag in sorted(dagbag.dags.items())" in check_source
     assert '"feast_online_store_materialize": 2' in check_source
 
 
@@ -337,6 +601,32 @@ def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> N
     assert "Feast materialize DAG task 수가 기대값(2)과 다릅니다" in workflow
     assert "action_log_openrouter" in workflow
     assert 'int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2' in workflow
+
+
+def test_gke_deploy_preflights_email_secret_before_pausing_dag() -> None:
+    workflow = GKE_DEV_DEPLOY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    step_name = "Preflight email alert Secret"
+    preflight = _workflow_step(workflow, step_name)
+    expected_keys = set(EMAIL_SECRET_ENV.values())
+
+    assert workflow.index(step_name) < workflow.index("Pause production DAG")
+    assert "set -euo pipefail" in preflight
+    assert (
+        'kubectl get secret airflow-email-alerts -n "$AIRFLOW_NAMESPACE" -o json'
+        in preflight
+    )
+    assert "| python -c" in preflight
+    keys_match = re.search(r"expected = \{(?P<keys>[^}]+)\}", preflight)
+    assert keys_match is not None
+    assert set(re.findall(r'"([a-z-]+)"', keys_match.group("keys"))) == expected_keys
+    assert "actual = set(data)" in preflight
+    assert "missing = sorted(expected - actual)" in preflight
+    assert "extra = sorted(actual - expected)" in preflight
+    assert "base64.b64decode(data[key], validate=True)" in preflight
+    assert "if not value:" in preflight
+    assert 'value.endswith((b"\\n", b"\\r"))' in preflight
+    assert "print(value" not in preflight
+    assert "decode()" not in preflight
 
 
 def test_helm_values_use_external_cloud_sql_metadata_db() -> None:

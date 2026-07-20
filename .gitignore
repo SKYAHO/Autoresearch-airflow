@@ -27,6 +27,7 @@ deploy/**/Chart.lock
 .DS_Store
 .idea/
 .vscode/
+.worktrees/
 
 # Local diagnostics
 airflow-diagnostics*.log

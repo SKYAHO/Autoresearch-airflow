@@ -73,6 +73,12 @@ def install_airflow_stubs(monkeypatch) -> None:
     airflow.DAG = FakeDAG
     airflow_models = ModuleType("airflow.models")
     airflow_utils = ModuleType("airflow.utils")
+    airflow_email = ModuleType("airflow.utils.email")
+
+    def send_email(*_args, **_kwargs) -> None:
+        return None
+
+    airflow_email.send_email = send_email
     airflow_task_group = ModuleType("airflow.utils.task_group")
     airflow_task_group.TaskGroup = FakeTaskGroup
 
@@ -105,6 +111,7 @@ def install_airflow_stubs(monkeypatch) -> None:
         "airflow": airflow,
         "airflow.models": airflow_models,
         "airflow.utils": airflow_utils,
+        "airflow.utils.email": airflow_email,
         "airflow.utils.task_group": airflow_task_group,
         "airflow.providers": airflow_providers,
         "airflow.providers.cncf": airflow_cncf,
@@ -132,6 +139,7 @@ def forget_pipeline_packages() -> None:
     for name in (
         "common",
         "common.batch_pod_operator",
+        "common.email_notifications",
         "youtube_backfill",
         "youtube_backfill.config",
         "youtube_gcs_action_log",

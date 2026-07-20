@@ -19,6 +19,7 @@ from airflow.providers.google.cloud.operators.bigquery import (
 )
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 
+from common.email_notifications import notify_dag_failure, notify_dag_success
 from lake_to_bigquery.config import (
     ACTION_LOG_SETTINGS,
     BQ_PROJECT_TEMPLATE,
@@ -50,6 +51,8 @@ with DAG(
     default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
     tags=["bigquery", "gcs", "incremental-load", "data-lake"],
     params={"partition_date": ""},
+    on_success_callback=notify_dag_success,
+    on_failure_callback=notify_dag_failure,
     user_defined_macros={
         "gcs_bucket": gcs_bucket,
         "gcs_partition_object": gcs_partition_object,
