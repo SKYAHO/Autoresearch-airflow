@@ -49,6 +49,9 @@ class _FakeOperator:
 def _install_airflow_stubs(monkeypatch) -> None:
     airflow = ModuleType("airflow")
     airflow.DAG = _FakeDAG
+    airflow_utils = ModuleType("airflow.utils")
+    airflow_email = ModuleType("airflow.utils.email")
+    airflow_email.send_email = lambda **_kwargs: None
     airflow_providers = ModuleType("airflow.providers")
     airflow_google = ModuleType("airflow.providers.google")
     airflow_google_cloud = ModuleType("airflow.providers.google.cloud")
@@ -63,6 +66,8 @@ def _install_airflow_stubs(monkeypatch) -> None:
 
     modules = {
         "airflow": airflow,
+        "airflow.utils": airflow_utils,
+        "airflow.utils.email": airflow_email,
         "airflow.providers": airflow_providers,
         "airflow.providers.google": airflow_google,
         "airflow.providers.google.cloud": airflow_google_cloud,
@@ -76,7 +81,12 @@ def _install_airflow_stubs(monkeypatch) -> None:
 
 
 def _forget_pipeline_packages() -> None:
-    for name in ("lake_to_bigquery", "lake_to_bigquery.config"):
+    for name in (
+        "common",
+        "common.email_notifications",
+        "lake_to_bigquery",
+        "lake_to_bigquery.config",
+    ):
         sys.modules.pop(name, None)
 
 
@@ -96,7 +106,10 @@ def _load_dag_module(monkeypatch):
 def test_dag_builds_sensor_load_validate_chain_per_dataset(monkeypatch) -> None:
     module = _load_dag_module(monkeypatch)
     dag = module.dag
+    from common.email_notifications import notify_dag_failure, notify_dag_success
 
+    assert dag.kwargs["on_success_callback"] is notify_dag_success
+    assert dag.kwargs["on_failure_callback"] is notify_dag_failure
     assert dag.kwargs["dag_id"] == "lake_to_bigquery_incremental"
     assert dag.kwargs["schedule"] == "0 0 * * *"
     assert dag.kwargs["catchup"] is False

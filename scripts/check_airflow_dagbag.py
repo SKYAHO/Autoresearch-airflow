@@ -43,6 +43,7 @@ def main() -> int:
         include_examples=False,
         safe_mode=False,
     )
+    from common.email_notifications import notify_dag_failure, notify_dag_success
 
     if dagbag.import_errors:
         for path, error in sorted(dagbag.import_errors.items()):
@@ -61,6 +62,12 @@ def main() -> int:
                 f"{dag_id}: expected {expected_task_count} tasks, "
                 f"found {actual_task_count}"
             )
+
+    for dag_id, dag in sorted(dagbag.dags.items()):
+        if dag.on_success_callback is not notify_dag_success:
+            failures.append(f"{dag_id}: missing shared success callback")
+        if dag.on_failure_callback is not notify_dag_failure:
+            failures.append(f"{dag_id}: missing shared failure callback")
 
     if failures:
         for failure in failures:
