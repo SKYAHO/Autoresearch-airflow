@@ -60,6 +60,26 @@ airflow:
       value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-batch@sha256:<production-digest>"
     - name: AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE
       value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-training@sha256:<production-digest>"
+    - name: AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE
+      value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-feast@sha256:<production-digest>"
+    - name: AIRFLOW_VAR_FEAST_CODE_ARTIFACTS_BUCKET
+      value: "<gcs-code-artifacts-bucket-name-without-gs-prefix>"
+    - name: AIRFLOW_VAR_FEAST_GCP_PROJECT_ID
+      value: "<gcp-project>"
+    - name: AIRFLOW_VAR_FEAST_BQ_DATASET
+      value: "feast_offline_store"
+    - name: AIRFLOW_VAR_FEAST_BQ_LOCATION
+      value: "asia-northeast3"
+    - name: AIRFLOW_VAR_FEAST_GCS_REGISTRY_PATH
+      value: "gs://<feast-registry-bucket>/registry.db"
+    - name: AIRFLOW_VAR_FEAST_GCS_STAGING_LOCATION
+      value: "gs://<feast-staging-bucket>/"
+    - name: AIRFLOW_VAR_FEAST_REDIS_HOST
+      value: "<redis-cluster-discovery-endpoint>"
+    - name: AIRFLOW_VAR_FEAST_REDIS_PORT
+      value: "6379"
+    - name: AIRFLOW_VAR_FEAST_REDIS_CA_SECRET_ID
+      value: "<redis-server-ca-secret-id>"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE
       value: "airflow"
     - name: AIRFLOW_VAR_AIRFLOW_KPO_SERVICE_ACCOUNT
