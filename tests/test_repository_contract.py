@@ -215,14 +215,14 @@ def test_gke_guide_documents_safe_email_notification_smoke_and_rollback() -> Non
         "`kubectl describe secret`",
         "payload를 terminal 또는 문서에 출력하지 않습니다",
         "운영 DAG를 실행하지 않고",
-        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python - <<'PY'",
+        "kubectl exec -i -n airflow airflow-scheduler-0 -c scheduler -- python -",
         "from common.email_notifications import notify_dag_failure, notify_dag_success",
         'dag_id = "email_notification_smoke"',
         'RuntimeError("token=synthetic-smoke-secret <escaped>")',
         "`[dev][Airflow][SUCCESS] email_notification_smoke`",
         "`[dev][Airflow][FAILED] email_notification_smoke`",
         "`synthetic-smoke-secret`은 없어야 합니다",
-        "scheduler log에는 두 성공 기록",
+        "운영자 로컬의 임시 파일",
         "`DAG email notification failed`",
         "`error_type`",
         "callback 오류는 DagRun 상태를 바꾸지 않으며",
@@ -247,21 +247,35 @@ def test_gke_guide_verifies_airflow_links_in_both_smoke_emails() -> None:
         assert contract in guide
 
 
-def test_gke_guide_identifies_success_and_failure_notification_logs() -> None:
+def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> None:
     guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
 
     for contract in (
-        "kubectl logs -n airflow airflow-scheduler-0 -c scheduler --since=10m",
+        "별도 프로세스이므로 scheduler container log에 남는다고 가정하지 않습니다",
+        "umask 077",
+        'SMOKE_LOG="$(mktemp "${TMPDIR:-/tmp}/airflow-email-smoke.XXXXXX")"',
+        "2>&1 <<'PY' | tee \"$SMOKE_LOG\"",
+        'logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)',
+        "grep -F 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success' \"$SMOKE_LOG\"",
+        "grep -F 'Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed' \"$SMOKE_LOG\"",
+        "grep -E 'DAG email notification failed: state=(success|failed) error_type=[A-Za-z_][A-Za-z0-9_]*' \"$SMOKE_LOG\"",
+        "grep -Fq 'synthetic-smoke-secret' \"$SMOKE_LOG\"",
+        'rm -f -- "$SMOKE_LOG"',
+        "unset SMOKE_LOG",
         "Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=success",
         "Sent DAG email notification: dag_id=email_notification_smoke run_id=manual__email_notification_smoke state=failed",
         "DAG email notification failed: state=<success|failed> error_type=<ExceptionClass>",
     ):
         assert contract in guide
 
+    assert "kubectl logs -n airflow airflow-scheduler-0 -c scheduler --since=10m" not in guide
+
 
 def test_gke_guide_checks_scheduler_secret_reference_before_deletion() -> None:
     guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
-    rollback = guide.index("helm rollback airflow <previous-helm-revision>")
+    rollback = guide.index(
+        "helm rollback autoresearch-airflow <previous-helm-revision>"
+    )
     scheduler_check = guide.index(
         "kubectl get statefulset airflow-scheduler --namespace airflow"
     )
@@ -273,6 +287,7 @@ def test_gke_guide_checks_scheduler_secret_reference_before_deletion() -> None:
     )
 
     assert rollback < scheduler_check < workload_check < secret_delete
+    assert "helm rollback airflow <previous-helm-revision>" not in guide
     assert "컨테이너의 env에 `airflow-email-alerts`가 출력되지 않아야 합니다" in guide
     assert "다른 workload 검사에서도 참조가 없어야" in guide
 
