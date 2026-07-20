@@ -276,6 +276,34 @@ def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
     assert '"youtube_gcs_action_log_pipeline": 8' in check_source
     assert '"youtube_gcs_action_log_pipeline_qa": 8' in check_source
     assert '"youtube_backfill_kr": 1' in check_source
+    assert '"feast_online_store_materialize": 2' in check_source
+
+
+def test_helm_values_define_feast_materialize_runtime_settings() -> None:
+    production_values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(
+        encoding="utf-8"
+    )
+    example_values = (
+        ROOT / "deploy" / "airflow" / "values.example.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert re.search(
+        r"autoresearch-feast@sha256:[0-9a-f]{64}", production_values
+    )
+    for variable_name in (
+        "AUTORESEARCH_FEAST_IMAGE",
+        "FEAST_CODE_ARTIFACTS_BUCKET",
+        "FEAST_GCP_PROJECT_ID",
+        "FEAST_BQ_DATASET",
+        "FEAST_BQ_LOCATION",
+        "FEAST_GCS_REGISTRY_PATH",
+        "FEAST_GCS_STAGING_LOCATION",
+        "FEAST_REDIS_HOST",
+        "FEAST_REDIS_PORT",
+        "FEAST_REDIS_CA_SECRET_ID",
+    ):
+        assert f"AIRFLOW_VAR_{variable_name}" in production_values
+        assert f"AIRFLOW_VAR_{variable_name}" in example_values
 
 
 def test_helm_ci_renders_the_concrete_dev_values() -> None:
