@@ -365,14 +365,15 @@ helm template airflow deploy/airflow \
 생성합니다. PR은 사람이 CI 결과와 digest를 확인해 merge합니다. 자동화 계정은
 직접 merge하지 않습니다.
 
-digest PR이 `main`에 merge되면 `Deploy Airflow dev` workflow가 실행됩니다.
+digest PR 또는 배포 workflow 변경이 `main`에 merge되면 `Deploy Airflow dev` workflow가 실행됩니다.
 
 1. values의 immutable digest 형식과 Helm chart를 검증합니다.
 2. GKE DNS endpoint로 인증하고 production DAG의 기존 pause 상태를 기록합니다.
 3. DAG를 pause한 뒤 queued/running run이 끝날 때까지 기다립니다.
 4. `helm upgrade --install --atomic`을 수행합니다.
-5. scheduler/webserver rollout, 배포 digest, import error 0건, 8-task topology와
-   `action_log_openrouter=2 slots`를 검증합니다.
+5. scheduler/webserver rollout 후 Airflow CLI 준비를 최대 2분간 대기하고, 배포 digest,
+   import error 0건, production 8-task topology, Feast materialize 2-task topology와
+   `action_log_openrouter=2 slots`를 재시도로 검증합니다.
 6. 검증 실패 시 이전 Helm revision으로 rollback하고, 성공·실패와 관계없이 원래
    DAG pause 상태를 복원합니다.
 

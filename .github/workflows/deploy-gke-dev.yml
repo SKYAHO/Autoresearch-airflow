@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - deploy/airflow/values.yaml
+      - .github/workflows/deploy-gke-dev.yml
   workflow_dispatch:
 
 permissions:
@@ -218,39 +219,86 @@ jobs:
               --values deploy/airflow/values.yaml \
               --check | sed -n 's/^digest_ref=//p'
           )"
-          deployed_image="$(
-            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
-              -c scheduler -- airflow variables get \
-              AUTORESEARCH_BATCH_IMAGE 2>/dev/null \
-              | grep -vE '^\[[0-9]{4}-'
-          )"
-          test "$deployed_image" = "$expected_image"
+
+          airflow_cli() {
+            local description="$1"
+            shift
+            local attempt output
+
+            for attempt in $(seq 1 12); do
+              if output="$(kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+                -c scheduler -- airflow "$@" 2>/dev/null)"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+
+              echo "Airflow CLI가 아직 준비되지 않았습니다 (${description}, ${attempt}/12)." >&2
+              sleep 10
+            done
+
+            echo "::error::Airflow CLI 준비 시간(2분)을 초과했습니다: ${description}" >&2
+            return 1
+          }
+
+          batch_image_ready=false
+          for attempt in $(seq 1 12); do
+            variable_output="$(
+              kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
+                -c scheduler -- airflow variables get \
+                AUTORESEARCH_BATCH_IMAGE 2>/dev/null || true
+            )"
+            deployed_image="$(grep -vE '^\[[0-9]{4}-' <<<"$variable_output" | tail -n 1 || true)"
+            if [[ "$deployed_image" == "$expected_image" ]]; then
+              batch_image_ready=true
+              break
+            fi
+
+            echo "Scheduler 초기화 대기 중입니다 (batch image ${attempt}/12)." >&2
+            sleep 10
+          done
+          if [[ "$batch_image_ready" != true ]]; then
+            echo "::error::AUTORESEARCH_BATCH_IMAGE가 기대 digest로 준비되지 않았습니다." >&2
+            echo "expected=${expected_image}" >&2
+            echo "actual=${deployed_image:-<empty>}" >&2
+            exit 1
+          fi
 
           import_errors="$(
-            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
-              -c scheduler -- airflow dags list-import-errors \
-              --output json 2>/dev/null \
+            airflow_cli "DAG import error 조회" dags list-import-errors --output json \
               | grep -vE '^\[[0-9]{4}-'
           )"
           IMPORT_ERRORS="$import_errors" python -c \
             'import json, os; assert json.loads(os.environ["IMPORT_ERRORS"]) == []'
 
           task_output="$(
-            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
-              -c scheduler -- airflow tasks list \
-              "$PRODUCTION_DAG_ID" 2>/dev/null
+            airflow_cli "production DAG task 조회" tasks list "$PRODUCTION_DAG_ID"
           )"
           task_count="$(
             grep -Ec \
               '^(collect_youtube_trending_partition|ensure_action_log_shard_[0-9]{3}|merge_action_log_partition|validate_action_log_partition)$' \
-              <<<"$task_output"
+              <<<"$task_output" || true
           )"
-          test "$task_count" -eq 8
+          if [[ "$task_count" -ne 8 ]]; then
+            echo "::error::production DAG task 수가 기대값(8)과 다릅니다: ${task_count}" >&2
+            printf '%s\n' "$task_output" >&2
+            exit 1
+          fi
+
+          feast_task_output="$(
+            airflow_cli "Feast materialize DAG task 조회" tasks list feast_online_store_materialize
+          )"
+          feast_task_count="$(
+            grep -Ec '^(materialize_online_store|wait_for_bigquery_incremental_load)$' \
+              <<<"$feast_task_output" || true
+          )"
+          if [[ "$feast_task_count" -ne 2 ]]; then
+            echo "::error::Feast materialize DAG task 수가 기대값(2)과 다릅니다: ${feast_task_count}" >&2
+            printf '%s\n' "$feast_task_output" >&2
+            exit 1
+          fi
 
           pool_json="$(
-            kubectl exec -n "$AIRFLOW_NAMESPACE" "$scheduler_pod" \
-              -c scheduler -- airflow pools get action_log_openrouter \
-              --output json 2>/dev/null \
+            airflow_cli "OpenRouter pool 조회" pools get action_log_openrouter --output json \
               | grep -vE '^\[[0-9]{4}-'
           )"
           POOL_JSON="$pool_json" python -c \
