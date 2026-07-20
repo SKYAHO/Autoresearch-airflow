@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 README_PATH = ROOT / "README.md"
 GKE_HELM_GUIDE_PATH = ROOT / "docs" / "gke-helm-gitsync.md"
+GKE_DEV_DEPLOY_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "deploy-gke-dev.yml"
 KPO_PATH = ROOT / "dags" / "common" / "batch_pod_operator.py"
 ACTION_LOG_FACTORY_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "factory.py"
 ACTION_LOG_PROD_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_prod.py"
@@ -289,11 +290,37 @@ def test_gke_guide_verifies_notification_logs_captured_from_smoke_process() -> N
     assert smoke.count("exit 1") >= 2
 
 
-def test_gke_guide_checks_scheduler_secret_reference_before_deletion() -> None:
-    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
-    rollback = guide.index(
-        "helm rollback autoresearch-airflow <previous-helm-revision>"
+def test_gke_guide_uses_dev_release_and_checks_secret_before_deletion() -> None:
+    guide_source = GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8")
+    workflow = GKE_DEV_DEPLOY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    guide = " ".join(guide_source.split())
+
+    workflow_release = re.search(
+        r"^\s*AIRFLOW_RELEASE:\s*['\"]?(?P<release>[a-z0-9-]+)['\"]?\s*$",
+        workflow,
+        re.MULTILINE,
     )
+    dev_upgrade_release = re.search(
+        r"helm upgrade (?P<release>[^\s]+) deploy/airflow[\s\S]*?"
+        r"--values deploy/airflow/values\.yaml",
+        guide_source,
+    )
+    rollback_release = re.search(
+        r"helm rollback (?P<release>[^\s]+) <previous-helm-revision> "
+        r"--namespace airflow --wait",
+        guide_source,
+    )
+
+    assert workflow_release is not None
+    assert dev_upgrade_release is not None
+    assert rollback_release is not None
+    assert (
+        workflow_release.group("release")
+        == dev_upgrade_release.group("release")
+        == rollback_release.group("release")
+    )
+
+    rollback = guide.index(rollback_release.group(0))
     scheduler_check = guide.index(
         "kubectl get statefulset airflow-scheduler --namespace airflow"
     )
@@ -305,7 +332,6 @@ def test_gke_guide_checks_scheduler_secret_reference_before_deletion() -> None:
     )
 
     assert rollback < scheduler_check < workload_check < secret_delete
-    assert "helm rollback airflow <previous-helm-revision>" not in guide
     assert "컨테이너의 env에 `airflow-email-alerts`가 출력되지 않아야 합니다" in guide
     assert "다른 workload 검사에서도 참조가 없어야" in guide
 

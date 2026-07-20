@@ -309,7 +309,7 @@ rollback은 이전 Helm revision과 DAG git revision으로 복원하며 다음 �
 scheduler rollout, git-sync SHA와 import error를 확인합니다.
 
 ```bash
-helm rollback autoresearch-airflow <previous-helm-revision> --namespace airflow --wait
+helm rollback airflow <previous-helm-revision> --namespace airflow --wait
 kubectl rollout status statefulset/airflow-scheduler --namespace airflow
 kubectl logs -n airflow airflow-scheduler-0 -c git-sync --since=10m \
   | grep '<previous-dag-git-sha>'
