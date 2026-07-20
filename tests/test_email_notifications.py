@@ -149,6 +149,16 @@ def test_exception_message_redacts_extended_named_credentials(
             "synthetic-python-value",
             "&#x27;access_token&#x27;: &#x27;[REDACTED]&#x27;",
         ),
+        (
+            r'{"client_secret": "synthetic\\path\"quoted-tail"}',
+            "quoted-tail",
+            '&quot;client_secret&quot;: &quot;[REDACTED]&quot;',
+        ),
+        (
+            r"{'access_token': 'synthetic\\path\'quoted-tail'}",
+            "quoted-tail",
+            "&#x27;access_token&#x27;: &#x27;[REDACTED]&#x27;",
+        ),
     ],
 )
 def test_exception_message_redacts_quoted_named_credentials(

@@ -22,7 +22,9 @@ _NAMED_SECRET_PATTERN = re.compile(
 _QUOTED_NAMED_SECRET_PATTERN = re.compile(
     r"(?P<prefix>(?P<key_quote>[\"'])(?:password|token|api_key|client_secret|"
     r"access_token|secret_key|aws_secret_access_key)(?P=key_quote)\s*[=:]\s*"
-    r"(?P<value_quote>[\"']))(?P<value>.*?)(?P=value_quote)",
+    r"(?P<value_quote>[\"']))"
+    r"(?P<value>(?:\\[^\r\n]|(?!(?P=value_quote))[^\\\r\n])*)"
+    r"(?P=value_quote)",
     re.IGNORECASE,
 )
 _BEARER_PATTERN = re.compile(r"\b(Bearer)(\s+)([^\s,;]+)", re.IGNORECASE)
