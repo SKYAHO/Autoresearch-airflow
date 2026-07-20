@@ -1,14 +1,16 @@
-"""CTR LightGBM 모델을 학습하고 MLflow에 기록하는 수동 KPO DAG.
+"""CTR LightGBM 모델을 BigQuery 실 데이터로 학습하고 MLflow에 기록하는
+수동 KPO DAG.
 
-SKYAHO/Autoresearch 저장소의 Dockerfile.train 이미지(src.cli train-model)를
-KubernetesPodOperator로 실행하고, MLFLOW_TRACKING_URI를 주입해 학습
-Run/Metric/Artifact가 MLflow tracking server(mlflow 네임스페이스)에
-기록되는지 검증하기 위한 DAG다.
+SKYAHO/Autoresearch 저장소의 Dockerfile.train 이미지(src.cli run-pipeline)를
+KubernetesPodOperator로 실행한다. build-features(BigQuery videos/events)와
+train-model을 한 Pod 안에서 순차 실행하는 run-pipeline으로 묶은 이유는,
+KubernetesPodOperator가 Task마다 격리된 Pod를 띄우기 때문에 여러 Task로
+나누면 build-features가 만든 training_dataset.csv를 train-model Task로
+넘길 방법이 없기 때문이다(issue #188).
 
-주의(#72 범위): 이 DAG는 학습 데이터(training_dataset.csv)가 Pod 안에
-이미 존재한다고 가정한다(src/pipeline/config.yaml 기본 경로 또는 이미지에
-포함된 목업 데이터). 실 데이터(Feast/BigQuery) 연동은 별도 이슈에서
-다룬다.
+events_start_date/events_end_date는 이 DAG가 schedule=None(수동 트리거
+전용)이라 dag_run.conf 오버라이드 + 계산된 기본값(트리거 시점 기준 최근
+7일)으로 결정한다 — lake_to_bigquery_incremental DAG와 동일한 컨벤션.
 """
 
 from __future__ import annotations
@@ -19,7 +21,12 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
-from ctr_training.config import MLFLOW_TRACKING_URI, TRAINING_IMAGE_TEMPLATE
+from ctr_training.config import (
+    EVENTS_END_DATE_TEMPLATE,
+    EVENTS_START_DATE_TEMPLATE,
+    MLFLOW_TRACKING_URI,
+    TRAINING_IMAGE_TEMPLATE,
+)
 
 
 with DAG(
@@ -36,7 +43,17 @@ with DAG(
         task_id="train_ctr_model",
         image=TRAINING_IMAGE_TEMPLATE,
         module="src.cli",
-        arguments=["train-model"],
+        arguments=[
+            "run-pipeline",
+            "--videos-source",
+            "bigquery",
+            "--events-source",
+            "bigquery",
+            "--events-start-date",
+            EVENTS_START_DATE_TEMPLATE,
+            "--events-end-date",
+            EVENTS_END_DATE_TEMPLATE,
+        ],
         pipeline="ctr-training",
         plain_env={"MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI},
         retries=1,

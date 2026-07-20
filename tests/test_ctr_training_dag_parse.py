@@ -28,7 +28,19 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     task = dag.task_dict["train_ctr_model"]
     assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
     assert task.kwargs["cmds"] == ["python", "-m", "src.cli"]
-    assert task.kwargs["arguments"] == ["train-model"]
+    assert task.kwargs["arguments"] == [
+        "run-pipeline",
+        "--videos-source",
+        "bigquery",
+        "--events-source",
+        "bigquery",
+        "--events-start-date",
+        "{{ dag_run.conf.get('events_start_date') "
+        "or data_interval_end.subtract(days=7).in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",
+        "--events-end-date",
+        "{{ dag_run.conf.get('events_end_date') "
+        "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",
+    ]
     assert task.kwargs["retries"] == 1
     assert task.kwargs["execution_timeout"] == timedelta(hours=2)
     assert task.kwargs["get_logs"] is True

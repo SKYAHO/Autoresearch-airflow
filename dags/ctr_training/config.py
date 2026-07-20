@@ -23,3 +23,21 @@ TRAINING_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
 MLFLOW_TRACKING_URI = _airflow_env(
     "MLFLOW_TRACKING_URI", "http://mlflow.mlflow:5000"
 )
+
+# 이 DAG는 schedule=None(수동 트리거 전용)이라 스케줄 간격에서 자연스럽게
+# 기간을 얻을 수 없다. lake_to_bigquery_incremental DAG의 dag_run.conf
+# 오버라이드 + 계산된 기본값 컨벤션을 그대로 따른다. 기본 lookback을 7일로
+# 짧게 잡은 이유는, 지금 단계의 목표가 "모델을 잘 학습시키는 것"이 아니라
+# "BigQuery 소스 -> build-features -> train-model 연결이 정상 동작하는지"
+# 검증하는 것이라 가벼운 값이면 충분하기 때문이다(issue #188).
+EVENTS_END_DATE_EXPRESSION = (
+    "dag_run.conf.get('events_end_date') "
+    "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d')"
+)
+EVENTS_END_DATE_TEMPLATE = "{{ " + EVENTS_END_DATE_EXPRESSION + " }}"
+
+EVENTS_START_DATE_EXPRESSION = (
+    "dag_run.conf.get('events_start_date') "
+    "or data_interval_end.subtract(days=7).in_timezone('Asia/Seoul').strftime('%Y-%m-%d')"
+)
+EVENTS_START_DATE_TEMPLATE = "{{ " + EVENTS_START_DATE_EXPRESSION + " }}"
