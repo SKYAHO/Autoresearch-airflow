@@ -60,12 +60,9 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
     )
     assert merge.task_group.group_id == "action_log_partition"
     assert quality.task_group.group_id == "action_log_partition"
-    assert collect.kwargs["cmds"] == [
-        "python",
-        "-m",
-        "autoresearch.jobs.youtube_trending",
-    ]
+    assert "cmds" not in collect.kwargs
     collect_arguments = collect.kwargs["arguments"]
+    assert collect_arguments[:3] == ["python", "-m", "autoresearch.jobs.youtube_trending"]
     assert "--bucket" not in collect_arguments
     assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in (
         collect_arguments
@@ -112,11 +109,8 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         assert task.kwargs["execution_timeout"] == timedelta(hours=6, minutes=30)
         assert task.kwargs["get_logs"] is True
         assert task.kwargs["do_xcom_push"] is False
-        assert task.kwargs["cmds"] == [
-            "python",
-            "-m",
-            "autoresearch.jobs.action_log",
-        ]
+        assert "cmds" not in task.kwargs
+        assert arguments[:3] == ["python", "-m", "autoresearch.jobs.action_log"]
         for forbidden_argument in (
             "--bucket",
             "--final-output-base-path",
@@ -165,7 +159,8 @@ def test_action_log_dag_imports_and_builds_shard_fanout(monkeypatch) -> None:
         merge_arguments
     )
     assert merge.downstream_task_ids == {quality.task_id}
-    assert quality.kwargs["cmds"] == [
+    assert "cmds" not in quality.kwargs
+    assert quality.kwargs["arguments"][:3] == [
         "python",
         "-m",
         "autoresearch.jobs.action_log_quality",
@@ -208,7 +203,8 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
         if task_id.startswith("ensure_action_log_shard_")
     ]
     assert len(shards) == 5
-    assert collect.kwargs["cmds"] == [
+    assert "cmds" not in collect.kwargs
+    assert collect.kwargs["arguments"][:3] == [
         "python",
         "-m",
         "autoresearch.jobs.youtube_trending",
@@ -220,11 +216,8 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
 
     for shard in shards:
         arguments = shard.kwargs["arguments"]
-        assert shard.kwargs["cmds"] == [
-            "python",
-            "-m",
-            "autoresearch.jobs.action_log",
-        ]
+        assert "cmds" not in shard.kwargs
+        assert arguments[:3] == ["python", "-m", "autoresearch.jobs.action_log"]
         assert arguments[arguments.index("--max-users") + 1] == "1000"
         for forbidden_argument in (
             "--bucket",
@@ -235,11 +228,8 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
         assert shard.downstream_task_ids == {merge.task_id}
 
     merge_arguments = merge.kwargs["arguments"]
-    assert merge.kwargs["cmds"] == [
-        "python",
-        "-m",
-        "autoresearch.jobs.action_log",
-    ]
+    assert "cmds" not in merge.kwargs
+    assert merge_arguments[:3] == ["python", "-m", "autoresearch.jobs.action_log"]
     for forbidden_argument in (
         "--bucket",
         "--quarantine-base-path",
@@ -251,12 +241,11 @@ def test_qa_dag_uses_public_image_contract_and_quality_gate(monkeypatch) -> None
     )
     assert merge.downstream_task_ids == {quality.task_id}
 
-    assert quality.kwargs["cmds"] == [
+    assert "cmds" not in quality.kwargs
+    assert quality.kwargs["arguments"] == [
         "python",
         "-m",
         "autoresearch.jobs.action_log_quality",
-    ]
-    assert quality.kwargs["arguments"] == [
         "--partition-date",
         "{{ dag_run.conf.get('partition_date') or "
         "data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",
