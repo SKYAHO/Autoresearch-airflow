@@ -42,5 +42,7 @@ def test_batch_operator_reads_parse_time_config_from_environment(monkeypatch) ->
     assert task.kwargs["namespace"] == "batch-jobs"
     assert task.kwargs["service_account_name"] == "batch-runner"
     assert task.kwargs["image_pull_policy"] == "Always"
+    assert "cmds" not in task.kwargs
+    assert task.kwargs["arguments"] == ["python", "-m", "example.job"]
     assert task.kwargs["params"] == {"partition_date": ""}
     assert task.kwargs["default_args"] == {"retries": 2}

@@ -35,7 +35,6 @@ class _KubernetesPodOperatorArguments(TypedDict, total=False):
     name: str
     namespace: str
     image: str
-    cmds: list[str]
     arguments: list[str]
     env_vars: list[k8s.V1EnvVar]
     service_account_name: str
@@ -113,8 +112,10 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
             name=task_id.replace("_", "-"),
             namespace=_KPO_NAMESPACE,
             image=image,
-            cmds=["python", "-m", module],
-            arguments=arguments,
+            # Kubernetes command(cmds)를 지정하면 이미지 ENTRYPOINT를 덮어쓴다.
+            # 코드 부트스트랩 ENTRYPOINT가 있는 이미지는 args를 받아 코드를
+            # 내려받은 뒤 exec "$@"로 실행하므로, 전체 명령을 args로 전달한다.
+            arguments=["python", "-m", module, *arguments],
             service_account_name=_KPO_SERVICE_ACCOUNT,
             image_pull_policy=_BATCH_IMAGE_PULL_POLICY,
             pool=pool,

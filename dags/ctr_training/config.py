@@ -16,6 +16,12 @@ def _airflow_env(name: str, default: str) -> str:
 
 TRAINING_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
 
+# 학습 이미지는 시작 시 GCS 코드 아카이브를 받아 실행한다. 이미지의
+# 부트스트랩 ENTRYPOINT가 이 값을 사용한다.
+CODE_ARTIFACTS_BUCKET = _airflow_env(
+    "TRAINING_CODE_ARTIFACTS_BUCKET", "ar-infra-501607-code-artifacts"
+)
+
 # MLflow tracking server는 mlflow 네임스페이스의 ClusterIP로 노출되어 있고
 # artifact는 서버 proxy 모드로 기록되므로, 학습 Pod에는 GCS 자격 증명이
 # 필요 없다. 인프라 세부사항은 Autoresearch-infra의

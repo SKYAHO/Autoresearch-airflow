@@ -253,6 +253,7 @@ Helm values에서는 Airflow Variable을 `AIRFLOW_VAR_<이름>` 환경변수로 
 | `AUTORESEARCH_BATCH_IMAGE` | 운영 KPO가 실행할 애플리케이션 이미지 digest |
 | `AUTORESEARCH_BATCH_IMAGE_OVERRIDE` | 수동 QA에서만 사용하는 후보 이미지 |
 | `AUTORESEARCH_TRAINING_IMAGE` | CTR 학습 KPO가 실행할 학습 이미지 digest (수동 갱신, 승격 자동화 없음) |
+| `TRAINING_CODE_ARTIFACTS_BUCKET` | 학습 이미지가 실행 코드를 내려받을 GCS 버킷 이름 |
 | `AUTORESEARCH_FEAST_IMAGE` | Feast materialize KPO가 실행할 Feast 전용 이미지 digest |
 | `FEAST_CODE_ARTIFACTS_BUCKET` | Feast 이미지가 실행 코드를 내려받을 GCS 버킷 이름 |
 | `FEAST_GCP_PROJECT_ID`, `FEAST_BQ_DATASET`, `FEAST_BQ_LOCATION` | Feast offline store의 GCP/BigQuery 설정 |
