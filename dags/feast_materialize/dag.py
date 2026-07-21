@@ -79,6 +79,9 @@ with DAG(
             "REDIS_PORT": REDIS_PORT,
             "REDIS_CA_SECRET_ID": REDIS_CA_SECRET_ID,
         },
+        # Spot 배치가 불가능해도 일반 node pool로 실행을 계속할 수 있게 한다.
+        # 빈 selector는 공통 operator의 batch-spot 기본 강제를 명시적으로 해제한다.
+        node_selector={},
         retries=1,
         execution_timeout=timedelta(hours=2),
         cpu_request="2",

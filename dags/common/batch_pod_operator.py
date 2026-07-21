@@ -89,6 +89,7 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
         secret_env_optional: bool = True,
         plain_env: Mapping[str, str] | None = None,
         labels: Mapping[str, str] | None = None,
+        node_selector: Mapping[str, str] | None = None,
         retries: int = 1,
         retry_delay: timedelta = timedelta(minutes=10),
         trigger_rule: str = "all_success",
@@ -135,7 +136,11 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
             execution_timeout=execution_timeout,
             startup_timeout_seconds=600,
             labels=pod_labels,
-            node_selector=dict(_BATCH_SPOT_NODE_SELECTOR),
+            node_selector=(
+                dict(_BATCH_SPOT_NODE_SELECTOR)
+                if node_selector is None
+                else dict(node_selector)
+            ),
             tolerations=[dict(toleration) for toleration in _BATCH_SPOT_TOLERATIONS],
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": cpu_request, "memory": memory_request},
