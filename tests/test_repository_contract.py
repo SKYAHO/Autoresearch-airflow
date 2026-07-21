@@ -603,6 +603,40 @@ def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> N
     assert 'int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2' in workflow
 
 
+def test_gke_deploy_refreshes_credentials_after_waiting_for_production() -> None:
+    workflow = GKE_DEV_DEPLOY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    wait_step = "Wait for active production run to finish"
+    refresh_auth_step = "Refresh GCP authentication after production wait"
+    refresh_gke_step = "Refresh GKE credentials after production wait"
+    upgrade_step = "Upgrade Airflow release"
+
+    assert workflow.count("google-github-actions/auth@v3") == 2
+    assert workflow.count("google-github-actions/get-gke-credentials@v3") == 2
+    wait = _workflow_step(workflow, wait_step)
+    refresh_auth = _workflow_step(workflow, refresh_auth_step)
+    refresh_gke = _workflow_step(workflow, refresh_gke_step)
+
+    assert wait.count("kubectl exec") == 1
+    assert wait.index("kubectl exec") < wait.index("while true")
+    assert 'kubectl exec -i -n "$AIRFLOW_NAMESPACE"' in wait
+    assert 'env PRODUCTION_DAG_ID="$PRODUCTION_DAG_ID" bash -s' in wait
+    assert "if: always()" in refresh_auth
+    assert "project_id: ${{ env.GCP_PROJECT_ID }}" in refresh_auth
+    assert "workload_identity_provider: ${{ env.WIF_PROVIDER_ID }}" in refresh_auth
+    assert "service_account: ${{ env.GKE_DEPLOYER_SA }}" in refresh_auth
+    assert "if: always()" in refresh_gke
+    assert "project_id: ${{ env.GCP_PROJECT_ID }}" in refresh_gke
+    assert "cluster_name: ${{ env.GKE_CLUSTER }}" in refresh_gke
+    assert "location: ${{ env.GKE_LOCATION }}" in refresh_gke
+    assert "use_dns_based_endpoint: true" in refresh_gke
+    assert (
+        workflow.index(wait_step)
+        < workflow.index(refresh_auth_step)
+        < workflow.index(refresh_gke_step)
+        < workflow.index(upgrade_step)
+    )
+
+
 def test_gke_deploy_preflights_email_secret_before_pausing_dag() -> None:
     workflow = GKE_DEV_DEPLOY_WORKFLOW_PATH.read_text(encoding="utf-8")
     step_name = "Preflight email alert Secret"
