@@ -44,3 +44,6 @@ def test_batch_operator_reads_parse_time_config_from_environment(monkeypatch) ->
     assert task.kwargs["image_pull_policy"] == "Always"
     assert task.kwargs["params"] == {"partition_date": ""}
     assert task.kwargs["default_args"] == {"retries": 2}
+    assert task.kwargs["node_selector"] == {
+        "cloud.google.com/gke-nodepool": "batch-spot"
+    }

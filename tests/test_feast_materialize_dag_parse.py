@@ -87,6 +87,15 @@ def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -
     assert task.kwargs["retries"] == 1
     assert task.kwargs["get_logs"] is True
     assert task.kwargs["do_xcom_push"] is False
+    assert task.kwargs["node_selector"] == {}
+    assert task.kwargs["tolerations"] == [
+        {
+            "key": "workload",
+            "operator": "Equal",
+            "value": "batch-spot",
+            "effect": "NoSchedule",
+        }
+    ]
 
     environment = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert environment == {

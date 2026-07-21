@@ -14,6 +14,14 @@ python -m autoresearch.jobs.feast_materialize
 registry에 기록된 watermark부터 현재 시각까지의 구간을 처리한다. Airflow task의
 재시도와 동일 logical date의 DAG 재실행은 별도의 날짜 범위 중복을 만들지 않는다.
 
+## GKE 배치
+
+`materialize_online_store`는 `batch-spot` node pool만 사용하도록 강제하지 않는다.
+Spot node의 taint toleration은 유지하므로 해당 node가 수용 가능하면 배치될 수 있다.
+그러나 Spot 용량이 없거나 CPU·메모리가 부족하면, selector 불일치로 대기하지 않고
+기존 일반 node pool에도 배치될 수 있다. 이 정책은 Feast materialize task에만
+적용하며, 다른 batch task의 `batch-spot` 기본 selector는 변경하지 않는다.
+
 ## 배포 변수
 
 아래 값은 Helm `airflow.env`에서 `AIRFLOW_VAR_` 접두어로 설정한다. 값은 Secret이
