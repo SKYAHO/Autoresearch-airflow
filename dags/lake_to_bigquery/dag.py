@@ -19,6 +19,7 @@ from airflow.providers.google.cloud.operators.bigquery import (
 )
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 
+from common.datasets import RAW_DATASETS_BY_KEY
 from common.email_notifications import notify_dag_failure, notify_dag_success
 from lake_to_bigquery.config import (
     ACTION_LOG_SETTINGS,
@@ -84,5 +85,9 @@ with DAG(
             project_id=BQ_PROJECT_TEMPLATE,
             location=_BQ_LOCATION,
             execution_timeout=timedelta(minutes=30),
+            # 검증까지 성공해야 raw 테이블이 갱신됐다고 본다. 이 outlet이
+            # feast_offline_feature_build를 트리거하므로, 과거 파티션을
+            # 수동 재적재해도 downstream이 곧바로 다시 돈다.
+            outlets=[RAW_DATASETS_BY_KEY[settings.key]],
         )
         wait_partition >> load_partition >> validate_partition

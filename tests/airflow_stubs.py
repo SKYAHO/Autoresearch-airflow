@@ -68,9 +68,27 @@ class FakeKubernetesPodOperator:
         return self
 
 
+class FakeDataset:
+    """airflow.datasets.Dataset 대역 — URI 동일성만 비교한다."""
+
+    def __init__(self, uri: str) -> None:
+        self.uri = uri
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, FakeDataset) and self.uri == other.uri
+
+    def __hash__(self) -> int:
+        return hash(self.uri)
+
+    def __repr__(self) -> str:
+        return f"FakeDataset({self.uri!r})"
+
+
 def install_airflow_stubs(monkeypatch) -> None:
     airflow = ModuleType("airflow")
     airflow.DAG = FakeDAG
+    airflow_datasets = ModuleType("airflow.datasets")
+    airflow_datasets.Dataset = FakeDataset
     airflow_models = ModuleType("airflow.models")
     airflow_utils = ModuleType("airflow.utils")
     airflow_email = ModuleType("airflow.utils.email")
@@ -109,6 +127,7 @@ def install_airflow_stubs(monkeypatch) -> None:
 
     modules = {
         "airflow": airflow,
+        "airflow.datasets": airflow_datasets,
         "airflow.models": airflow_models,
         "airflow.utils": airflow_utils,
         "airflow.utils.email": airflow_email,
@@ -139,6 +158,7 @@ def forget_pipeline_packages() -> None:
     for name in (
         "common",
         "common.batch_pod_operator",
+        "common.datasets",
         "common.email_notifications",
         "youtube_backfill",
         "youtube_backfill.config",
@@ -148,5 +168,9 @@ def forget_pipeline_packages() -> None:
         "youtube_gcs_action_log.factory",
         "ctr_training",
         "ctr_training.config",
+        "feast_materialize",
+        "feast_materialize.config",
+        "feature_store_build",
+        "feature_store_build.config",
     ):
         sys.modules.pop(name, None)

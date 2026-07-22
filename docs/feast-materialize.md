@@ -1,8 +1,13 @@
 # Feast offline → online store materialize DAG 운영 절차
 
-`feast_online_store_materialize`는 매일 KST 00:00에 생성되며 같은 logical date의
-`lake_to_bigquery_incremental`이 성공한 뒤에만 실행된다. BigQuery dt 파티션의
-적재·검증이 끝나기 전에는 sensor가 5분 간격으로 재예약(reschedule)된다.
+`feast_online_store_materialize`는 cron이 아니라 Airflow Dataset
+(`bigquery://<project>/feast_offline_store`)으로 트리거된다.
+`feast_offline_feature_build`의 배치 task가 feature 테이블 재구축과 검증까지
+성공해 이 Dataset을 갱신하면 실행된다. 그 DAG는 다시 raw 테이블 Dataset으로
+트리거되므로 raw 적재 → feature build → materialize 순서가 보장되고, 과거
+파티션을 수동 재적재해도 같은 사슬이 그대로 다시 돈다. ExternalTaskSensor는
+쓰지 않는다. feature build 상세는
+[`docs/feature-store-build.md`](feature-store-build.md)를 참고한다.
 
 materialize task는 Feast 전용 이미지에서 다음 공개 명령을 실행한다.
 
@@ -72,15 +77,15 @@ BigQuery job/read session, Feast registry/staging bucket 권한은 batch GSA에 
    실행한다. materialize DAG는 registry를 변경하지 않는다.
 2. 위 인프라 선행 조건을 Terraform apply로 반영한다.
 3. Airflow 배포가 새 Feast image digest와 DAG를 반영했는지 확인한다.
-4. `feast_online_store_materialize`를 unpause하고, 성공한
-   `lake_to_bigquery_incremental` logical date에 맞춰 실행한다.
+4. `feast_online_store_materialize`를 unpause한다. 이후 실행은
+   `feast_offline_feature_build` 성공 시 Dataset으로 자동 트리거된다.
 5. materialize task log의 `job_summary`에서 `status=succeeded`,
    `mode=incremental`을 확인한다.
 
 ## 장애 대응과 롤백
 
-- upstream load가 실패하면 sensor는 `failed_states`를 감지해 materialize run을
-  실패 처리한다. BigQuery 적재를 먼저 고친 뒤 해당 logical date를 재실행한다.
+- upstream이 실패하면 Dataset이 갱신되지 않아 이 DAG의 run 자체가 생기지 않는다.
+  BigQuery 적재나 feature build를 먼저 고치면 그 run 성공 시 자동으로 트리거된다.
 - Redis 연결 실패는 batch GSA의 IAM, CA Secret accessor, PSC 6379 egress를 순서대로
   확인한다.
 - image 또는 code archive 호환성 문제는 마지막 정상
