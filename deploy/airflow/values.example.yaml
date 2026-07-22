@@ -66,6 +66,9 @@ airflow:
       value: "<gcs-code-artifacts-bucket-name-without-gs-prefix>"
     - name: AIRFLOW_VAR_FEAST_GCP_PROJECT_ID
       value: "<gcp-project>"
+    # feast_offline_store는 Feast feature 테이블 4종 전용 dataset이다.
+    # raw 테이블(data_lake_*)은 아래 LAKE_TO_BQ_DATASET /
+    # CTR_TRAINING_BQ_RAW_DATASET가 가리키는 data_lake_raw로 분리됐다.
     - name: AIRFLOW_VAR_FEAST_BQ_DATASET
       value: "feast_offline_store"
     - name: AIRFLOW_VAR_FEAST_BQ_LOCATION
@@ -150,6 +153,17 @@ airflow:
       value: "true"
     - name: AIRFLOW_VAR_OPENROUTER_REQUIRE_PARAMETERS
       value: "true"
+    # BigQuery raw dataset 분리(Autoresearch-infra) 이후 raw 테이블
+    # (data_lake_youtube_trending_kr / data_lake_action_log)은
+    # feast_offline_store가 아니라 data_lake_raw에 있다. 코드 기본값과 동일한
+    # 값을 배포 설정에 명시해 dataset 소유 관계가 드러나게 한다.
+    # lake_to_bigquery(쓰기측) 적재 대상 dataset.
+    - name: AIRFLOW_VAR_LAKE_TO_BQ_DATASET
+      value: "data_lake_raw"
+    # ctr_model_training(읽기측) 학습 Pod에 주입되어 앱이 raw 테이블
+    # dataset을 해석할 때 사용하는 값.
+    - name: AIRFLOW_VAR_CTR_TRAINING_BQ_RAW_DATASET
+      value: "data_lake_raw"
 
   scheduler:
     env:

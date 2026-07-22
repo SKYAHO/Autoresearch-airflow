@@ -570,6 +570,31 @@ def test_helm_values_define_feast_materialize_runtime_settings() -> None:
         assert f"AIRFLOW_VAR_{variable_name}" in example_values
 
 
+def test_helm_values_point_raw_tables_at_the_separated_dataset() -> None:
+    """raw 테이블 dataset 분리 의도가 배포 설정에 명시되어 있는지 확인합니다."""
+
+    for values_path in (
+        ROOT / "deploy" / "airflow" / "values.yaml",
+        ROOT / "deploy" / "airflow" / "values.example.yaml",
+    ):
+        values = values_path.read_text(encoding="utf-8")
+
+        assert re.search(
+            r'- name: AIRFLOW_VAR_LAKE_TO_BQ_DATASET\n\s+value: "data_lake_raw"',
+            values,
+        ), values_path
+        assert re.search(
+            r'- name: AIRFLOW_VAR_CTR_TRAINING_BQ_RAW_DATASET\n'
+            r'\s+value: "data_lake_raw"',
+            values,
+        ), values_path
+        # Feast feature 테이블 dataset은 계속 feast_offline_store를 가리킵니다.
+        assert re.search(
+            r'- name: AIRFLOW_VAR_FEAST_BQ_DATASET\n\s+value: "feast_offline_store"',
+            values,
+        ), values_path
+
+
 def test_helm_ci_renders_the_concrete_dev_values() -> None:
     workflow = (ROOT / ".github" / "workflows" / "helm-lint.yml").read_text(
         encoding="utf-8"

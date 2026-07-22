@@ -16,9 +16,11 @@ PARTITION_DATE_COMPACT_TEMPLATE = (
 )
 
 BQ_PROJECT_TEMPLATE = "{{ var.value.get('LAKE_TO_BQ_PROJECT', 'ar-infra-501607') }}"
-BQ_DATASET_TEMPLATE = (
-    "{{ var.value.get('LAKE_TO_BQ_DATASET', 'feast_offline_store') }}"
-)
+# raw 테이블(data_lake_*)은 feast_offline_store에서 분리되어 전용
+# data_lake_raw dataset으로 이전됐다. feast_offline_store는 Feast feature
+# 테이블 4종 전용이며, 그 dataset 포인터는 feast_materialize/config.py의
+# FEAST_BQ_DATASET가 계속 담당한다.
+BQ_DATASET_TEMPLATE = "{{ var.value.get('LAKE_TO_BQ_DATASET', 'data_lake_raw') }}"
 
 
 @dataclass(frozen=True)

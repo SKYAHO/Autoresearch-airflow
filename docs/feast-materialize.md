@@ -38,6 +38,12 @@ Spot node의 taint toleration은 유지하므로 해당 node가 수용 가능하
 | `FEAST_REDIS_HOST` / `FEAST_REDIS_PORT` | Redis Cluster discovery endpoint / `6379` |
 | `FEAST_REDIS_CA_SECRET_ID` | `autoresearch-dev-redis-server-ca` |
 
+`FEAST_BQ_DATASET`(`feast_offline_store`)은 Feast feature 테이블 4종 전용
+dataset이다. raw 테이블(`data_lake_youtube_trending_kr`,
+`data_lake_action_log`)은 이 dataset에서 분리되어 raw 전용 `data_lake_raw`로
+이전됐고, 해당 dataset은 `LAKE_TO_BQ_DATASET`(쓰기측)과
+`CTR_TRAINING_BQ_RAW_DATASET`(읽기측)이 가리킨다.
+
 `AUTORESEARCH_FEAST_IMAGE`는 코드 아카이브를 이미지에 포함하지 않는다. 시작할 때
 `CODE_ARTIFACTS_BUCKET`의 `code/latest.txt`가 가리키는 아카이브를 읽으므로, 해당
 이미지 digest와 호환되는 애플리케이션 코드 아카이브가 먼저 publish돼 있어야 한다.
