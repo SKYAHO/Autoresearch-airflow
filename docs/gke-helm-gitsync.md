@@ -408,6 +408,46 @@ webserver memory limit을 `1Gi`로 둡니다. 운영 중 `airflow dags list` 또
 trigger CLI가 `exit code 137`로 끝나면 Helm live values가 이 값보다 낮아졌는지
 먼저 확인합니다.
 
+### scheduler CPU와 DAG 파싱 타임아웃
+
+`workers.replicas`가 `0`이고 executor가 LocalExecutor이므로, DAG 파싱과 태스크
+실행이 모두 scheduler 파드 안에서 일어납니다. `lake_to_bigquery/dag.py`의
+`BigQueryInsertJobOperator` import는 provider의 openlineage mixin을 거쳐
+`google.cloud.dataproc_v1` 전체를 로딩하는데, scheduler CPU limit이 `500m`이던
+동안에는 이 import가 CPU throttling으로 기본 `dagbag_import_timeout`인 30초를
+넘겼습니다. 그 결과 다음 두 증상이 함께 나타났습니다.
+
+- `airflow tasks run` 프로세스가 `AirflowTaskTimeout: DagBag import timeout ...
+  after 30.0s`로 죽어, 센서 태스크가 실행되지도 못한 채 재시도를 소진하고 DAG
+  run이 실패합니다. (`lake_to_bigquery_incremental`의 `wait_*_partition`)
+- `Liveness probe failed: airflow jobs check ... timed out after 30s`로 scheduler
+  컨테이너가 재시작됩니다.
+
+이에 따라 `deploy/airflow/values.yaml`은 다음 값을 사용합니다.
+
+| 값 | 설정 | 비고 |
+| --- | --- | --- |
+| `scheduler.resources.requests.cpu` | `200m` | `airflow-dev` 노드의 남은 request 여유(약 300m) 안에서만 상향 |
+| `scheduler.resources.limits.cpu` | `1500m` | limit은 스케줄링 비용이 없어 노드 allocatable(1930m) 안에서 상향 |
+| `config.core.dagbag_import_timeout` | `120` | provider import가 느린 순간에도 태스크가 죽지 않도록 |
+| `config.core.dag_file_processor_timeout` | `150` | `dagbag_import_timeout`보다 커야 함 |
+
+`airflow-dev` 노드는 allocatable CPU가 `1930m`이고 이미 약 84%가 request로
+예약돼 있습니다. request를 더 올릴 때는 아래로 여유를 먼저 확인하고, 부족하면
+node pool 증설을 `Autoresearch-infra`에서 진행합니다.
+
+```bash
+kubectl describe node -l cloud.google.com/gke-nodepool=airflow-dev \
+  | sed -n '/Allocated resources/,+6p'
+```
+
+증상이 재발하면 live values에 위 네 값이 반영돼 있는지 먼저 확인합니다.
+
+```bash
+helm get values autoresearch-airflow --namespace airflow \
+  | grep -A4 -E 'dagbag_import_timeout|resources:'
+```
+
 ## dev Webserver 내부 접근
 
 dev Airflow Webserver는 공용 URL로 열지 않습니다. 인프라 저장소의 #47/#48

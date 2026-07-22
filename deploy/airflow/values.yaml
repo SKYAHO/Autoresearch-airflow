@@ -17,6 +17,15 @@ airflow:
   webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
 
   config:
+    core:
+      # lake_to_bigquery/dag.py의 BigQueryInsertJobOperator import는 provider
+      # openlineage mixin을 거쳐 google.cloud.dataproc_v1 전체를 로딩하므로,
+      # CPU가 눌린 scheduler에서 기본값 30초를 넘겨 AirflowTaskTimeout으로
+      # `airflow tasks run` 프로세스가 죽는다. 그 결과 센서 태스크가 실행도
+      # 못 한 채 재시도를 소진하고 DAG run이 실패한다.
+      dagbag_import_timeout: "120"
+      # DagFileProcessor 타임아웃은 dagbag_import_timeout보다 커야 한다.
+      dag_file_processor_timeout: "150"
     logging:
       base_log_folder: /tmp/airflow/logs
       dag_processor_manager_log_location: /tmp/airflow/logs/dag_processor_manager/dag_processor_manager.log
@@ -273,12 +282,18 @@ airflow:
       failureThreshold: 30
       periodSeconds: 10
       timeoutSeconds: 30
+    # workers.replicas=0 + LocalExecutor라 DAG 파싱과 태스크 실행이 모두 이
+    # 파드에서 일어난다. limit 500m에서는 provider import가 throttling으로
+    # 30초를 넘겨 DagBag import timeout과 liveness probe timeout이 함께
+    # 발생했다. limit은 스케줄링 비용이 없으므로 노드 allocatable(1930m)
+    # 안에서 넉넉히 올리고, request는 airflow-dev 노드의 남은 예약 여유
+    # (약 300m) 안에서만 올린다. memory는 OOM 근거가 없어 유지한다.
     resources:
       requests:
-        cpu: 100m
+        cpu: 200m
         memory: 512Mi
       limits:
-        cpu: 500m
+        cpu: 1500m
         memory: 1536Mi
 
   webserver:
