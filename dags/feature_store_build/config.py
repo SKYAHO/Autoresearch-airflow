@@ -22,11 +22,15 @@ BQ_RAW_DATASET = _airflow_env("FEATURE_BUILD_BQ_RAW_DATASET", "data_lake_raw")
 BQ_DATASET = _airflow_env("FEATURE_BUILD_BQ_DATASET", "feast_offline_store")
 BQ_LOCATION = _airflow_env("FEATURE_BUILD_BQ_LOCATION", "asia-northeast3")
 
-# batch CLI가 재구축하는 Feast source 테이블. user_category_similarity는
-# 원본 embedding artifact 테이블(user_topic_embedding, category_embedding)을
-# 만드는 배치가 아직 없어 제외되어 있다.
+# batch CLI가 재구축하는 Feast source 테이블. 이 DAG는 raw 테이블 Dataset으로
+# 트리거되므로 raw 데이터에서 파생되는 테이블만 대상으로 한다.
+#
+# 제외된 테이블:
+# - user_static_feature: 원본이 가상 유저 asset뿐이라 raw 파티션이 늘어도 결과가
+#   바뀌지 않는다. asset 갱신 시에만 --tables를 좁혀 수동 실행한다(#104).
+# - user_category_similarity: 원본 embedding artifact 테이블
+#   (user_topic_embedding, category_embedding)을 만드는 배치가 아직 없다.
 FEATURE_TABLES = (
-    "user_static_feature",
     "user_dynamic_feature",
     "video_feature",
 )

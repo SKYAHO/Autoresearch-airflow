@@ -57,7 +57,6 @@ RAW_DATASETS_BY_KEY = {
 # Datasets 화면의 lineage 표시와, 이후 Dataset 트리거로 되돌릴 때의 접점으로
 # 유지한다.
 FEAST_FEATURE_TABLE_NAMES = (
-    "user_static_feature",
     "user_dynamic_feature",
     "video_feature",
 )
