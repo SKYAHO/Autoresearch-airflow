@@ -57,9 +57,6 @@ def test_feature_build_publishes_offline_store_dataset(monkeypatch) -> None:
     # 배치 대상 테이블별 Dataset을 outlet으로 선언한다.
     assert task.kwargs["outlets"] == [
         FakeDataset(
-            "bigquery://ar-infra-501607/feast_offline_store/user_static_feature"
-        ),
-        FakeDataset(
             "bigquery://ar-infra-501607/feast_offline_store/user_dynamic_feature"
         ),
         FakeDataset(
@@ -71,6 +68,18 @@ def test_feature_build_publishes_offline_store_dataset(monkeypatch) -> None:
     tables_arg = arguments[arguments.index("--tables") + 1]
     outlet_tables = [d.uri.rsplit("/", 1)[1] for d in task.kwargs["outlets"]]
     assert tables_arg == ",".join(outlet_tables)
+
+
+def test_feature_build_excludes_raw_independent_tables(monkeypatch) -> None:
+    task = _load_dag_module(monkeypatch).dag.task_dict["build_offline_features"]
+
+    arguments = task.kwargs["arguments"]
+    tables = arguments[arguments.index("--tables") + 1].split(",")
+    # 이 DAG는 raw 테이블 Dataset으로 트리거되므로 raw에서 파생되지 않는 테이블을
+    # 대상에 넣지 않는다. user_static_feature는 가상 유저 asset에서만 파생돼
+    # raw 파티션이 늘어도 결과가 같고, 소스 부재 시 뒤 테이블 빌드까지 막는다.
+    assert "user_static_feature" not in tables
+    assert "user_category_similarity" not in tables
 
 
 def test_feature_build_uses_public_batch_contract(monkeypatch) -> None:
@@ -91,7 +100,7 @@ def test_feature_build_uses_public_batch_contract(monkeypatch) -> None:
         "--location",
         "asia-northeast3",
         "--tables",
-        "user_static_feature,user_dynamic_feature,video_feature",
+        "user_dynamic_feature,video_feature",
     ]
     assert task.kwargs["execution_timeout"] == timedelta(hours=2)
     assert task.kwargs["retries"] == 1
