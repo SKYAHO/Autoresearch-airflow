@@ -1,13 +1,17 @@
-"""offline feature build 성공 후 Feast offline store를 Redis online store로 동기화한다.
+"""Feast offline store를 Redis online store로 매일 1회 동기화한다.
 
-트리거는 cron이나 ExternalTaskSensor가 아니라 Dataset이다.
-``feast_offline_feature_build``의 배치 task가 feature 테이블 재구축과 검증까지
-성공해 offline store Dataset을 갱신하면 이 DAG가 실행된다. 그 DAG는 다시
-``lake_to_bigquery_incremental``의 raw 테이블 Dataset으로 트리거되므로 raw 적재 →
-feature build → materialize 순서가 보장되고, 과거 파티션을 수동 재적재해도 같은
-사슬이 그대로 다시 돈다. 실제 materialize 범위는
-``autoresearch.jobs.feast_materialize``의 Feast registry watermark가 관리하므로,
-Airflow 재시도나 수동 재실행도 이미 반영된 구간을 중복 범위로 처리하지 않는다.
+KST 00:00 cron으로 하루 한 번만 실행한다. upstream(``feast_offline_feature_build``)
+의 완료를 기다리지 않으므로, 실행 시점에 offline store에 반영돼 있는 데이터까지만
+online store로 넘어간다. 그날 늦게 만들어진 feature는 다음 날 run이 가져간다.
+materialize 범위는 Airflow 날짜가 아니라
+``autoresearch.jobs.feast_materialize``의 Feast registry watermark가 관리하므로
+누락 없이 이어붙고, Airflow 재시도나 수동 재실행도 이미 반영된 구간을 중복
+범위로 처리하지 않는다.
+
+upstream 완료 직후 동기화가 필요해지면 Dataset 트리거(``common.datasets``의
+``FEAST_OFFLINE_FEATURES``)로 되돌리거나 ``DatasetOrTimeSchedule``로 cron과
+병행할 수 있다.
+
 FeatureView 정의 변경은 이 DAG와 분리해 ``feast apply``로 먼저 registry에 반영해야
 한다.
 """
@@ -20,7 +24,6 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
-from common.datasets import FEAST_OFFLINE_FEATURES
 from common.email_notifications import notify_dag_failure, notify_dag_success
 from feast_materialize.config import (
     BQ_DATASET,
@@ -41,7 +44,7 @@ _KST = ZoneInfo("Asia/Seoul")
 
 with DAG(
     dag_id="feast_online_store_materialize",
-    schedule=list(FEAST_OFFLINE_FEATURES),
+    schedule="0 0 * * *",
     start_date=datetime(2026, 7, 14, tzinfo=_KST),
     catchup=False,
     max_active_runs=1,

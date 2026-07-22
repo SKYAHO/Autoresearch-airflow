@@ -3,11 +3,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
-from airflow_stubs import (
-    FakeDataset,
-    forget_pipeline_packages,
-    install_airflow_stubs,
-)
+from airflow_stubs import forget_pipeline_packages, install_airflow_stubs
 
 
 DAGS_ROOT = Path(__file__).resolve().parents[1] / "dags"
@@ -29,7 +25,7 @@ def _load_dag_module(monkeypatch):
     return module
 
 
-def test_feast_materialize_is_triggered_by_offline_store_dataset(monkeypatch) -> None:
+def test_feast_materialize_runs_once_daily_on_cron(monkeypatch) -> None:
     module = _load_dag_module(monkeypatch)
     dag = module.dag
 
@@ -40,18 +36,8 @@ def test_feast_materialize_is_triggered_by_offline_store_dataset(monkeypatch) ->
         "retries": 1,
         "retry_delay": timedelta(minutes=10),
     }
-    # feature build가 feature 테이블 Dataset 3종을 모두 갱신하면 트리거된다.
-    assert dag.kwargs["schedule"] == [
-        FakeDataset(
-            "bigquery://ar-infra-501607/feast_offline_store/user_static_feature"
-        ),
-        FakeDataset(
-            "bigquery://ar-infra-501607/feast_offline_store/user_dynamic_feature"
-        ),
-        FakeDataset(
-            "bigquery://ar-infra-501607/feast_offline_store/video_feature"
-        ),
-    ]
+    # 하루 1회 KST 00:00 cron. upstream Dataset을 기다리지 않는다.
+    assert dag.kwargs["schedule"] == "0 0 * * *"
     assert list(dag.task_dict) == ["materialize_online_store"]
 
 

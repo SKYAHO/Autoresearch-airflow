@@ -49,9 +49,13 @@ RAW_DATASETS_BY_KEY = {
 # feature 테이블 재구축·검증이 성공하면 갱신되는 Dataset. bigquery:// 스킴은
 # AIP-60 상 project/dataset/table 3단 URI가 강제되므로(2단 dataset 집계 URI는
 # Airflow 3에서 예외) 테이블 단위 Dataset을 배치 대상 테이블 수만큼 선언한다.
-# 배치 한 run이 세 테이블을 모두 재구축하므로 downstream의 AND 조건과
-# 어긋나지 않는다. 테이블 목록은 feature_store_build/config.py의
-# FEATURE_TABLES와 일치해야 한다(parse 테스트가 검증).
+# 테이블 목록은 feature_store_build/config.py의 FEATURE_TABLES와 일치해야
+# 한다(parse 테스트가 검증).
+#
+# 현재 이 Dataset을 schedule로 소비하는 DAG는 없다 —
+# feast_online_store_materialize는 KST 00:00 cron으로 되돌렸다. outlet은 Airflow
+# Datasets 화면의 lineage 표시와, 이후 Dataset 트리거로 되돌릴 때의 접점으로
+# 유지한다.
 FEAST_FEATURE_TABLE_NAMES = (
     "user_static_feature",
     "user_dynamic_feature",
