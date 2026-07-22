@@ -8,6 +8,11 @@ KubernetesPodOperator가 Task마다 격리된 Pod를 띄우기 때문에 여러 
 나누면 build-features가 만든 training_dataset.csv를 train-model Task로
 넘길 방법이 없기 때문이다(issue #188).
 
+build-features가 읽는 raw 테이블(data_lake_youtube_trending_kr /
+data_lake_action_log)은 feast_offline_store에서 분리되어 data_lake_raw
+dataset으로 이전됐다. 앱이 raw dataset을 해석하는 CTR_TRAINING_BQ_RAW_DATASET
+환경변수를 Pod에 주입해 dataset 분리 이후에도 읽기가 깨지지 않게 한다.
+
 events_start_date/events_end_date는 이 DAG가 schedule=None(수동 트리거
 전용)이라 dag_run.conf 오버라이드 + 계산된 기본값(트리거 시점 기준 최근
 7일)으로 결정한다 — lake_to_bigquery_incremental DAG와 동일한 컨벤션.
@@ -23,6 +28,7 @@ from airflow import DAG
 from common.batch_pod_operator import AutoresearchBatchPodOperator
 from common.email_notifications import notify_dag_failure, notify_dag_success
 from ctr_training.config import (
+    BQ_RAW_DATASET,
     CODE_ARTIFACTS_BUCKET,
     EVENTS_END_DATE_TEMPLATE,
     EVENTS_START_DATE_TEMPLATE,
@@ -62,6 +68,7 @@ with DAG(
         plain_env={
             "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
+            "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
         },
         retries=1,
         execution_timeout=timedelta(hours=2),

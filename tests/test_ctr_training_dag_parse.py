@@ -53,6 +53,8 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert env_by_name == {
         "MLFLOW_TRACKING_URI": "http://mlflow.mlflow:5000",
         "CODE_ARTIFACTS_BUCKET": "ar-infra-501607-code-artifacts",
+        # raw 테이블은 feast_offline_store가 아니라 data_lake_raw에 있다.
+        "CTR_TRAINING_BQ_RAW_DATASET": "data_lake_raw",
     }
 
 
@@ -73,3 +75,22 @@ def test_ctr_training_dag_mlflow_env_respects_variable_override(monkeypatch) -> 
     task = module.dag.task_dict["train_ctr_model"]
     mlflow_env = next(iter(task.kwargs["env_vars"]))
     assert mlflow_env.value == "http://mlflow-qa.mlflow:5000"
+
+
+def test_ctr_training_dag_raw_dataset_env_respects_variable_override(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AIRFLOW_VAR_CTR_TRAINING_BQ_RAW_DATASET", "data_lake_raw_qa")
+    install_airflow_stubs(monkeypatch)
+    monkeypatch.syspath_prepend(str(DAGS_ROOT))
+    forget_pipeline_packages()
+    spec = importlib.util.spec_from_file_location(
+        "_ctr_training_dag_under_test_raw_dataset", CTR_TRAINING_DAG_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    task = module.dag.task_dict["train_ctr_model"]
+    env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
+    assert env_by_name["CTR_TRAINING_BQ_RAW_DATASET"] == "data_lake_raw_qa"

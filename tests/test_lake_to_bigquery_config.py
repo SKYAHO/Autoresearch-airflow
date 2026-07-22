@@ -29,6 +29,15 @@ def test_partition_date_template_matches_existing_dag_contract() -> None:
     assert PARTITION_DATE_TEMPLATE == "{{ " + PARTITION_DATE_EXPRESSION + " }}"
 
 
+def test_bq_dataset_template_defaults_to_the_separated_raw_dataset() -> None:
+    # raw 테이블은 feast_offline_store에서 분리되어 data_lake_raw로 이전됐고,
+    # feast_offline_store는 Feast feature 테이블 전용 dataset이 됐습니다.
+    assert BQ_DATASET_TEMPLATE == (
+        "{{ var.value.get('LAKE_TO_BQ_DATASET', 'data_lake_raw') }}"
+    )
+    assert "feast_offline_store" not in BQ_DATASET_TEMPLATE
+
+
 def test_dataset_settings_declare_source_and_target() -> None:
     assert YOUTUBE_TRENDING_SETTINGS.key == "youtube_trending"
     assert (

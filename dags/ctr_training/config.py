@@ -31,6 +31,14 @@ MLFLOW_TRACKING_URI = _airflow_env(
     "MLFLOW_TRACKING_URI", "http://mlflow.mlflow:5000"
 )
 
+# run-pipeline의 build-features 단계가 BigQuery에서 읽는 raw 테이블
+# (data_lake_youtube_trending_kr / data_lake_action_log)이 들어 있는 dataset.
+# raw 테이블이 feast_offline_store에서 data_lake_raw로 분리 이전됐기 때문에,
+# 앱이 raw dataset을 해석할 때 쓰는 CTR_TRAINING_BQ_RAW_DATASET 환경변수를
+# 학습 Pod에 명시적으로 주입한다. Feast feature/서빙 테이블용 dataset 변수는
+# 계속 feast_offline_store를 가리키므로 여기서 건드리지 않는다.
+BQ_RAW_DATASET = _airflow_env("CTR_TRAINING_BQ_RAW_DATASET", "data_lake_raw")
+
 # 이 DAG는 schedule=None(수동 트리거 전용)이라 스케줄 간격에서 자연스럽게
 # 기간을 얻을 수 없다. lake_to_bigquery_incremental DAG의 dag_run.conf
 # 오버라이드 + 계산된 기본값 컨벤션을 그대로 따른다. 기본 lookback을 7일로
