@@ -13,6 +13,11 @@ from airflow_stubs import (
 DAGS_ROOT = Path(__file__).resolve().parents[1] / "dags"
 DAG_PATH = DAGS_ROOT / "feature_store_build" / "dag.py"
 
+PARTITION_DATE_TEMPLATE = (
+    "{{ dag_run.conf.get('partition_date') "
+    "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}"
+)
+
 
 def _load_dag_module(monkeypatch):
     install_airflow_stubs(monkeypatch)
@@ -48,6 +53,8 @@ def test_feature_build_is_triggered_by_both_raw_table_datasets(monkeypatch) -> N
         FakeDataset("bigquery://ar-infra-501607/data_lake_raw/data_lake_action_log"),
     ]
     assert list(dag.task_dict) == ["build_offline_features"]
+    # 과거 날짜 재적재 진입점. 비우면 data_interval_end의 KST 날짜를 쓴다.
+    assert dag.kwargs["params"] == {"partition_date": ""}
 
 
 def test_feature_build_publishes_offline_store_dataset(monkeypatch) -> None:
@@ -75,9 +82,9 @@ def test_feature_build_excludes_raw_independent_tables(monkeypatch) -> None:
 
     arguments = task.kwargs["arguments"]
     tables = arguments[arguments.index("--tables") + 1].split(",")
-    # 이 DAG는 raw 테이블 Dataset으로 트리거되므로 raw에서 파생되지 않는 테이블을
-    # 대상에 넣지 않는다. user_static_feature는 가상 유저 asset에서만 파생돼
-    # raw 파티션이 늘어도 결과가 같고, 소스 부재 시 뒤 테이블 빌드까지 막는다.
+    # user_static_feature와 user_category_similarity는 event_timestamp가
+    # 고정값이라 대상 날짜라는 개념이 없다. batch CLI 대상이 아니며 지정하면
+    # unknown table로 exit 2다.
     assert "user_static_feature" not in tables
     assert "user_category_similarity" not in tables
 
@@ -99,13 +106,29 @@ def test_feature_build_uses_public_batch_contract(monkeypatch) -> None:
         "data_lake_raw",
         "--location",
         "asia-northeast3",
+        "--partition-date",
+        PARTITION_DATE_TEMPLATE,
         "--tables",
         "user_dynamic_feature,video_feature",
     ]
-    assert task.kwargs["execution_timeout"] == timedelta(hours=2)
+    # 하루치만 계산하므로 전체 재구축 시절의 2시간 여유는 필요 없다.
+    assert task.kwargs["execution_timeout"] == timedelta(minutes=30)
     assert task.kwargs["retries"] == 1
     assert task.kwargs["get_logs"] is True
     assert task.kwargs["do_xcom_push"] is False
+
+
+def test_feature_build_passes_a_renderable_partition_date(monkeypatch) -> None:
+    task = _load_dag_module(monkeypatch).dag.task_dict["build_offline_features"]
+
+    arguments = task.kwargs["arguments"]
+    value = arguments[arguments.index("--partition-date") + 1]
+    # KubernetesPodOperator의 arguments는 template field이므로 실행 시점에
+    # 렌더링된다(같은 task의 image도 같은 방식으로 var를 읽는다). conf가 비면
+    # data_interval_end의 KST 날짜로 떨어진다.
+    assert value == PARTITION_DATE_TEMPLATE
+    # 렌더링되지 않은 채 CLI에 닿으면 exit 2이므로 표현식 형태를 고정한다.
+    assert value.startswith("{{ ") and value.endswith(" }}")
 
 
 def test_feature_build_reads_raw_layer_and_writes_feature_layer(monkeypatch) -> None:

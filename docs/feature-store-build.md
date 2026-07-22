@@ -15,8 +15,13 @@ python -m autoresearch.jobs.feature_store_build \
   --dataset feast_offline_store \
   --raw-dataset data_lake_raw \
   --location asia-northeast3 \
+  --partition-date <대상 날짜> \
   --tables user_dynamic_feature,video_feature
 ```
+
+`--partition-date`는 적재할 하루(KST)다. `dag_run.conf.partition_date`가 있으면 그
+값, 없으면 `data_interval_end`의 KST 날짜를 쓴다. `lake_to_bigquery_incremental`과
+같은 규칙이며, DAG `params`에 `partition_date` 항목으로 노출된다.
 
 ## 파이프라인 위치
 
@@ -55,26 +60,18 @@ Dataset 트리거는 logical date를 보지 않고 "upstream task가 성공해 D
 DAG run 단위로 살아 있으므로 날짜를 넘어 상주하지는 않으며, `max_active_runs=1`과
 23시간 timeout이 다음 일자 run 시작 전에 결과를 확정하도록 직렬화한다.
 
-## 재구축 대상과 계약
+## 적재 대상과 계약
 
 | 대상 테이블 | 원본 | Feast Feature View |
 | --- | --- | --- |
 | `user_dynamic_feature` | `data_lake_raw.data_lake_action_log` + `data_lake_raw.data_lake_youtube_trending_kr` | `UserDynamicView` |
 | `video_feature` | `data_lake_raw.data_lake_youtube_trending_kr` | `VideoFeatureView` |
 
-이 DAG는 raw 테이블 Dataset으로 트리거되므로 **raw 데이터에서 파생되는 테이블만**
-대상으로 한다. batch CLI가 지원하는 나머지 두 테이블은 제외된다.
-
-| 제외 테이블 | 원본 | 제외 사유 |
-| --- | --- | --- |
-| `user_static_feature` | `feast_offline_store.asset_virtual_user_vu_1000` | 가상 유저 asset에서만 파생돼 raw 파티션이 늘어도 결과가 바뀌지 않는다 |
-| `user_category_similarity` | `user_topic_embedding` + `category_embedding` | 원본 artifact 테이블을 적재하는 배치가 아직 없다 |
-
-두 테이블의 기존 데이터는 그대로 유지된다. 가상 유저 asset이 갱신되어
-`user_static_feature`를 다시 만들어야 할 때는 `--tables user_static_feature`로
-좁혀 수동 실행한다. 단, 현재 원본 `asset_virtual_user_vu_1000` 테이블이 어느
-dataset에도 존재하지 않는다(가상 유저 데이터는 GCS parquet으로만 있다). 수동
-실행 전에 원본 테이블을 먼저 확보해야 한다 — 이슈 #104 참조.
+`user_static_feature`와 `user_category_similarity`는 `event_timestamp`가 고정값인
+정적 feature라 대상 날짜라는 개념이 없다. batch CLI 대상이 아니며
+(`SKYAHO/Autoresearch#261`), 지정하면 unknown table로 exit 2다. persona나 카테고리
+설명문이 바뀔 때 `SKYAHO/Autoresearch`의 `scripts/build_static_features.py`로
+수동 갱신한다. 이 저장소가 소유하지 않는다.
 
 SQL 계약의 단일 출처는 `SKYAHO/Autoresearch`의
 `docs/guides/data-warehouse.md`이며, 구현은
@@ -83,16 +80,18 @@ SQL 계약의 단일 출처는 `SKYAHO/Autoresearch`의
 
 ## 멱등성과 스키마 보호
 
-- 테이블마다 `TRUNCATE TABLE` + `INSERT INTO ... SELECT`를 하나의 BigQuery
-  multi-statement script로 실행한다. 전체 재구축이므로 같은 날 재실행해도
-  결과가 같다.
-- `CREATE OR REPLACE TABLE`과 `WRITE_TRUNCATE`는 쓰지 않는다. 두 방식 모두 대상
-  테이블 스키마를 query 결과 스키마로 교체해, terraform이 선언한 REQUIRED /
-  REPEATED mode를 파괴한다(`Autoresearch-infra` `terraform/envs/dev/bigquery.tf`
-  참조).
-- `TRUNCATE` 직후 `INSERT`가 실패하면 대상 테이블은 빈 상태로 남는다. 이때는
-  task가 실패해 offline store Dataset이 갱신되지 않으므로 materialize가 트리거되지
-  않고 online store에는 반영되지 않는다. 원인을 고쳐 재실행하면 복구된다.
+- 테이블마다 대상 날짜 `DELETE` + `INSERT INTO ... SELECT`를 하나의 BigQuery
+  multi-statement script로 실행한다. 같은 날짜로 재실행하면 그 날짜 행만 다시
+  만들어지므로 결과가 같고, 다른 날짜 행은 건드리지 않는다.
+- `CREATE OR REPLACE TABLE`, `WRITE_TRUNCATE`, `TRUNCATE TABLE`은 쓰지 않는다.
+  앞의 두 방식은 대상 테이블 스키마를 query 결과 스키마로 교체해 terraform이
+  선언한 REQUIRED / REPEATED mode를 파괴하고(`Autoresearch-infra`
+  `terraform/envs/dev/bigquery.tf` 참조), `TRUNCATE`는 다른 날짜까지 지운다.
+- `DELETE` 직후 `INSERT`가 실패하면 그 날짜만 빈 상태로 남는다. 이때는 task가
+  실패해 offline store Dataset이 갱신되지 않으므로 materialize가 트리거되지 않고
+  online store에는 반영되지 않는다. 원인을 고쳐 재실행하면 복구된다.
+- 전체 기간을 다시 만드는 모드는 없다. SQL 로직이 바뀌어 과거를 재계산해야 하면
+  `partition_date`를 바꿔 가며 DAG를 반복 trigger한다.
 
 ## 검증
 
@@ -154,8 +153,10 @@ DAG를 unpause한다.
   자동으로 트리거된다.
 - 검증 실패(`validation failed: ...`)는 원본 데이터 품질 문제다. 재시도해도
   같은 결과가 나오므로 raw 테이블을 먼저 확인한다.
+- 특정 날짜를 다시 만들려면 `{"partition_date": "YYYY-MM-DD"}` conf로 DAG를
+  trigger한다. 그 날짜 행만 교체된다.
 - 일부 테이블만 다시 만들려면 `--tables`를 좁힌 값으로 task를 수동 실행한다.
-  DAG 기본값은 위 재구축 대상 두 테이블이다.
+  DAG 기본값은 위 적재 대상 두 테이블이다.
 - batch CLI는 `--tables` 순서대로 테이블을 처리하고 하나가 실패하면 거기서
   중단한다. 앞선 테이블의 원본이 사라지면 뒤 테이블은 시도조차 되지 않으므로,
   `job_summary`의 `tables`에 대상이 모두 있는지 확인한다(#104).
