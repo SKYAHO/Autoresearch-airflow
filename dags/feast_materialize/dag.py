@@ -1,7 +1,11 @@
-"""BigQuery 증분 적재 성공 후 Feast offline store를 Redis online store로 동기화한다.
+"""offline feature build 성공 후 Feast offline store를 Redis online store로 동기화한다.
 
-동일한 KST 일일 logical date의 ``lake_to_bigquery_incremental`` DAG가 두 raw
-테이블 검증까지 성공한 경우에만 실행한다. 실제 materialize 범위는
+트리거는 cron이나 ExternalTaskSensor가 아니라 Dataset이다.
+``feast_offline_feature_build``의 배치 task가 feature 테이블 재구축과 검증까지
+성공해 offline store Dataset을 갱신하면 이 DAG가 실행된다. 그 DAG는 다시
+``lake_to_bigquery_incremental``의 raw 테이블 Dataset으로 트리거되므로 raw 적재 →
+feature build → materialize 순서가 보장되고, 과거 파티션을 수동 재적재해도 같은
+사슬이 그대로 다시 돈다. 실제 materialize 범위는
 ``autoresearch.jobs.feast_materialize``의 Feast registry watermark가 관리하므로,
 Airflow 재시도나 수동 재실행도 이미 반영된 구간을 중복 범위로 처리하지 않는다.
 FeatureView 정의 변경은 이 DAG와 분리해 ``feast apply``로 먼저 registry에 반영해야
@@ -14,10 +18,9 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from airflow import DAG
-from airflow.sensors.external_task import ExternalTaskSensor
-from airflow.utils.state import DagRunState
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
+from common.datasets import FEAST_OFFLINE_FEATURES
 from common.email_notifications import notify_dag_failure, notify_dag_success
 from feast_materialize.config import (
     BQ_DATASET,
@@ -34,12 +37,11 @@ from feast_materialize.config import (
 
 
 _KST = ZoneInfo("Asia/Seoul")
-_UPSTREAM_DAG_ID = "lake_to_bigquery_incremental"
 
 
 with DAG(
     dag_id="feast_online_store_materialize",
-    schedule="0 0 * * *",
+    schedule=list(FEAST_OFFLINE_FEATURES),
     start_date=datetime(2026, 7, 14, tzinfo=_KST),
     catchup=False,
     max_active_runs=1,
@@ -49,18 +51,6 @@ with DAG(
     tags=["feast", "materialize", "redis", "online-store"],
     doc_md=__doc__,
 ) as dag:
-    wait_for_bigquery_incremental_load = ExternalTaskSensor(
-        task_id="wait_for_bigquery_incremental_load",
-        external_dag_id=_UPSTREAM_DAG_ID,
-        # 두 DAG가 같은 schedule/start_date를 사용하므로 기본 logical date
-        # 매핑을 그대로 사용한다. upstream이 실패하면 즉시 이 run도 실패한다.
-        allowed_states=[DagRunState.SUCCESS],
-        failed_states=[DagRunState.FAILED],
-        mode="reschedule",
-        poke_interval=300,
-        timeout=60 * 60 * 23,
-    )
-
     materialize_online_store = AutoresearchBatchPodOperator(
         task_id="materialize_online_store",
         image=FEAST_IMAGE_TEMPLATE,
@@ -89,5 +79,3 @@ with DAG(
         cpu_limit="4",
         memory_limit="8Gi",
     )
-
-    wait_for_bigquery_incremental_load >> materialize_online_store

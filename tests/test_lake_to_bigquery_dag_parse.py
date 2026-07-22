@@ -46,9 +46,27 @@ class _FakeOperator:
         return self
 
 
+class FakeDataset:
+    """airflow.datasets.Dataset 대역 — URI 동일성만 비교한다."""
+
+    def __init__(self, uri: str) -> None:
+        self.uri = uri
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, FakeDataset) and self.uri == other.uri
+
+    def __hash__(self) -> int:
+        return hash(self.uri)
+
+    def __repr__(self) -> str:
+        return f"FakeDataset({self.uri!r})"
+
+
 def _install_airflow_stubs(monkeypatch) -> None:
     airflow = ModuleType("airflow")
     airflow.DAG = _FakeDAG
+    airflow_datasets = ModuleType("airflow.datasets")
+    airflow_datasets.Dataset = FakeDataset
     airflow_utils = ModuleType("airflow.utils")
     airflow_email = ModuleType("airflow.utils.email")
     airflow_email.send_email = lambda **_kwargs: None
@@ -66,6 +84,7 @@ def _install_airflow_stubs(monkeypatch) -> None:
 
     modules = {
         "airflow": airflow,
+        "airflow.datasets": airflow_datasets,
         "airflow.utils": airflow_utils,
         "airflow.utils.email": airflow_email,
         "airflow.providers": airflow_providers,
@@ -83,6 +102,7 @@ def _install_airflow_stubs(monkeypatch) -> None:
 def _forget_pipeline_packages() -> None:
     for name in (
         "common",
+        "common.datasets",
         "common.email_notifications",
         "lake_to_bigquery",
         "lake_to_bigquery.config",
@@ -171,3 +191,19 @@ def test_load_and_validate_run_in_dataset_location(monkeypatch) -> None:
     assert query_config["query"].count("ERROR(") == 4
     assert validate.kwargs["project_id"] == module.BQ_PROJECT_TEMPLATE
     assert validate.kwargs["location"] == "asia-northeast3"
+
+
+def test_validate_task_publishes_raw_table_dataset(monkeypatch) -> None:
+    dag = _load_dag_module(monkeypatch).dag
+
+    expected = {
+        "youtube_trending": (
+            "bigquery://ar-infra-501607/data_lake_raw/data_lake_youtube_trending_kr"
+        ),
+        "action_log": "bigquery://ar-infra-501607/data_lake_raw/data_lake_action_log",
+    }
+    for key, uri in expected.items():
+        validate = dag.task_dict[f"validate_{key}_partition"]
+        # 검증까지 성공해야 downstream feature build가 트리거된다.
+        assert validate.kwargs["outlets"] == [FakeDataset(uri)]
+        assert "outlets" not in dag.task_dict[f"load_{key}_partition"].kwargs

@@ -2,36 +2,20 @@ import importlib.util
 import sys
 from datetime import timedelta
 from pathlib import Path
-from types import ModuleType
 
-from airflow_stubs import forget_pipeline_packages, install_airflow_stubs
+from airflow_stubs import (
+    FakeDataset,
+    forget_pipeline_packages,
+    install_airflow_stubs,
+)
 
 
 DAGS_ROOT = Path(__file__).resolve().parents[1] / "dags"
 DAG_PATH = DAGS_ROOT / "feast_materialize" / "dag.py"
 
 
-def _install_external_task_sensor_stub(monkeypatch) -> None:
-    external_task = ModuleType("airflow.sensors.external_task")
-    pod = sys.modules["airflow.providers.cncf.kubernetes.operators.pod"]
-    external_task.ExternalTaskSensor = pod.KubernetesPodOperator
-
-    airflow_sensors = ModuleType("airflow.sensors")
-    airflow_utils_state = ModuleType("airflow.utils.state")
-
-    class DagRunState:
-        SUCCESS = "success"
-        FAILED = "failed"
-
-    airflow_utils_state.DagRunState = DagRunState
-    monkeypatch.setitem(sys.modules, "airflow.sensors", airflow_sensors)
-    monkeypatch.setitem(sys.modules, "airflow.sensors.external_task", external_task)
-    monkeypatch.setitem(sys.modules, "airflow.utils.state", airflow_utils_state)
-
-
 def _load_dag_module(monkeypatch):
     install_airflow_stubs(monkeypatch)
-    _install_external_task_sensor_stub(monkeypatch)
     monkeypatch.syspath_prepend(str(DAGS_ROOT))
     forget_pipeline_packages()
     for name in ("feast_materialize", "feast_materialize.config"):
@@ -45,31 +29,30 @@ def _load_dag_module(monkeypatch):
     return module
 
 
-def test_feast_materialize_waits_for_matching_bigquery_dag_run(monkeypatch) -> None:
+def test_feast_materialize_is_triggered_by_offline_store_dataset(monkeypatch) -> None:
     module = _load_dag_module(monkeypatch)
     dag = module.dag
 
     assert dag.kwargs["dag_id"] == "feast_online_store_materialize"
-    assert dag.kwargs["schedule"] == "0 0 * * *"
     assert dag.kwargs["catchup"] is False
     assert dag.kwargs["max_active_runs"] == 1
     assert dag.kwargs["default_args"] == {
         "retries": 1,
         "retry_delay": timedelta(minutes=10),
     }
-    assert list(dag.task_dict) == [
-        "wait_for_bigquery_incremental_load",
-        "materialize_online_store",
+    # feature build가 feature 테이블 Dataset 3종을 모두 갱신하면 트리거된다.
+    assert dag.kwargs["schedule"] == [
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/user_static_feature"
+        ),
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/user_dynamic_feature"
+        ),
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/video_feature"
+        ),
     ]
-
-    wait = dag.task_dict["wait_for_bigquery_incremental_load"]
-    assert wait.kwargs["external_dag_id"] == "lake_to_bigquery_incremental"
-    assert wait.kwargs["allowed_states"] == ["success"]
-    assert wait.kwargs["failed_states"] == ["failed"]
-    assert wait.kwargs["mode"] == "reschedule"
-    assert wait.kwargs["poke_interval"] == 300
-    assert wait.kwargs["timeout"] == 60 * 60 * 23
-    assert wait.downstream_task_ids == {"materialize_online_store"}
+    assert list(dag.task_dict) == ["materialize_online_store"]
 
 
 def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -> None:
