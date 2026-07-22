@@ -343,12 +343,23 @@ jobs:
             airflow_cli "Feast materialize DAG task 조회" tasks list feast_online_store_materialize
           )"
           feast_task_count="$(
-            grep -Ec '^(materialize_online_store|wait_for_bigquery_incremental_load)$' \
-              <<<"$feast_task_output" || true
+            grep -Ec '^materialize_online_store$' <<<"$feast_task_output" || true
           )"
-          if [[ "$feast_task_count" -ne 2 ]]; then
-            echo "::error::Feast materialize DAG task 수가 기대값(2)과 다릅니다: ${feast_task_count}" >&2
+          if [[ "$feast_task_count" -ne 1 ]]; then
+            echo "::error::Feast materialize DAG task 수가 기대값(1)과 다릅니다: ${feast_task_count}" >&2
             printf '%s\n' "$feast_task_output" >&2
+            exit 1
+          fi
+
+          feature_build_task_output="$(
+            airflow_cli "offline feature build DAG task 조회" tasks list feast_offline_feature_build
+          )"
+          feature_build_task_count="$(
+            grep -Ec '^build_offline_features$' <<<"$feature_build_task_output" || true
+          )"
+          if [[ "$feature_build_task_count" -ne 1 ]]; then
+            echo "::error::offline feature build DAG task 수가 기대값(1)과 다릅니다: ${feature_build_task_count}" >&2
+            printf '%s\n' "$feature_build_task_output" >&2
             exit 1
           fi
 

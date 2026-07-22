@@ -624,7 +624,9 @@ def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> N
     assert "for attempt in $(seq 1 12)" in workflow
     assert "production DAG task 수가 기대값(8)과 다릅니다" in workflow
     assert "feast_online_store_materialize" in workflow
-    assert "Feast materialize DAG task 수가 기대값(2)과 다릅니다" in workflow
+    assert "Feast materialize DAG task 수가 기대값(1)과 다릅니다" in workflow
+    assert "feast_offline_feature_build" in workflow
+    assert "offline feature build DAG task 수가 기대값(1)과 다릅니다" in workflow
     assert "action_log_openrouter" in workflow
     assert 'int(json.loads(os.environ["POOL_JSON"])[0]["slots"]) == 2' in workflow
 
