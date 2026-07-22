@@ -41,7 +41,7 @@ _KST = ZoneInfo("Asia/Seoul")
 
 with DAG(
     dag_id="feast_online_store_materialize",
-    schedule=[FEAST_OFFLINE_FEATURES],
+    schedule=list(FEAST_OFFLINE_FEATURES),
     start_date=datetime(2026, 7, 14, tzinfo=_KST),
     catchup=False,
     max_active_runs=1,

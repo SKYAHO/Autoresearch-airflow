@@ -40,9 +40,17 @@ def test_feast_materialize_is_triggered_by_offline_store_dataset(monkeypatch) ->
         "retries": 1,
         "retry_delay": timedelta(minutes=10),
     }
-    # feature build가 offline store Dataset을 갱신하면 트리거된다.
+    # feature build가 feature 테이블 Dataset 3종을 모두 갱신하면 트리거된다.
     assert dag.kwargs["schedule"] == [
-        FakeDataset("bigquery://ar-infra-501607/feast_offline_store")
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/user_static_feature"
+        ),
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/user_dynamic_feature"
+        ),
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/video_feature"
+        ),
     ]
     assert list(dag.task_dict) == ["materialize_online_store"]
 

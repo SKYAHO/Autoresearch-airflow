@@ -53,9 +53,24 @@ def test_feature_build_is_triggered_by_both_raw_table_datasets(monkeypatch) -> N
 def test_feature_build_publishes_offline_store_dataset(monkeypatch) -> None:
     task = _load_dag_module(monkeypatch).dag.task_dict["build_offline_features"]
 
+    # bigquery:// 스킴은 3단(project/dataset/table) URI가 강제되므로
+    # 배치 대상 테이블별 Dataset을 outlet으로 선언한다.
     assert task.kwargs["outlets"] == [
-        FakeDataset("bigquery://ar-infra-501607/feast_offline_store")
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/user_static_feature"
+        ),
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/user_dynamic_feature"
+        ),
+        FakeDataset(
+            "bigquery://ar-infra-501607/feast_offline_store/video_feature"
+        ),
     ]
+    # outlet 테이블 목록은 batch CLI --tables 인자와 일치해야 한다.
+    arguments = task.kwargs["arguments"]
+    tables_arg = arguments[arguments.index("--tables") + 1]
+    outlet_tables = [d.uri.rsplit("/", 1)[1] for d in task.kwargs["outlets"]]
+    assert tables_arg == ",".join(outlet_tables)
 
 
 def test_feature_build_uses_public_batch_contract(monkeypatch) -> None:

@@ -77,7 +77,7 @@ with DAG(
         # batch CLI가 테이블별로 적재 직후 검증 query까지 실행하므로, 이 task가
         # 성공하면 feature 테이블이 검증된 상태다. outlet이
         # feast_online_store_materialize를 트리거한다.
-        outlets=[FEAST_OFFLINE_FEATURES],
+        outlets=list(FEAST_OFFLINE_FEATURES),
         # 쿼리는 BigQuery가 실행하므로 pod은 job 제출·대기만 한다.
         retries=1,
         execution_timeout=timedelta(hours=2),

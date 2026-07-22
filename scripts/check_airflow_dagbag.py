@@ -27,7 +27,8 @@ _EXPECTED_TASK_COUNTS = {
     "youtube_backfill_kr": 1,
     "lake_to_bigquery_incremental": 6,
     "ctr_model_training": 1,
-    "feast_online_store_materialize": 2,
+    "feast_offline_feature_build": 1,
+    "feast_online_store_materialize": 1,
 }
 
 

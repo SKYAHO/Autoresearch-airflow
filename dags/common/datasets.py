@@ -46,8 +46,18 @@ RAW_DATASETS_BY_KEY = {
     "action_log": RAW_ACTION_LOG,
 }
 
-# feature 테이블 재구축·검증이 성공하면 갱신되는 Dataset. 테이블 3종을 한
-# 배치가 한꺼번에 만들므로 테이블별로 쪼개지 않는다.
-FEAST_OFFLINE_FEATURES = Dataset(
-    f"bigquery://{_BQ_PROJECT}/{_FEATURE_DATASET}"
+# feature 테이블 재구축·검증이 성공하면 갱신되는 Dataset. bigquery:// 스킴은
+# AIP-60 상 project/dataset/table 3단 URI가 강제되므로(2단 dataset 집계 URI는
+# Airflow 3에서 예외) 테이블 단위 Dataset을 배치 대상 테이블 수만큼 선언한다.
+# 배치 한 run이 세 테이블을 모두 재구축하므로 downstream의 AND 조건과
+# 어긋나지 않는다. 테이블 목록은 feature_store_build/config.py의
+# FEATURE_TABLES와 일치해야 한다(parse 테스트가 검증).
+FEAST_FEATURE_TABLE_NAMES = (
+    "user_static_feature",
+    "user_dynamic_feature",
+    "video_feature",
+)
+FEAST_OFFLINE_FEATURES = tuple(
+    bigquery_table_dataset(_FEATURE_DATASET, table)
+    for table in FEAST_FEATURE_TABLE_NAMES
 )

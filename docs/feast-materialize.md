@@ -1,7 +1,8 @@
 # Feast offline → online store materialize DAG 운영 절차
 
-`feast_online_store_materialize`는 cron이 아니라 Airflow Dataset
-(`bigquery://<project>/feast_offline_store`)으로 트리거된다.
+`feast_online_store_materialize`는 cron이 아니라 Airflow Dataset으로 트리거된다.
+feature 테이블 3종의 테이블 단위 Dataset
+(`bigquery://<project>/feast_offline_store/<table>`)이 모두 갱신되면 실행된다.
 `feast_offline_feature_build`의 배치 task가 feature 테이블 재구축과 검증까지
 성공해 이 Dataset을 갱신하면 실행된다. 그 DAG는 다시 raw 테이블 Dataset으로
 트리거되므로 raw 적재 → feature build → materialize 순서가 보장되고, 과거
