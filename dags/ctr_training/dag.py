@@ -100,5 +100,13 @@ with DAG(
         cpu_request="1",
         memory_request="2Gi",
         cpu_limit="4",
-        memory_limit="8Gi",
+        # Autoresearch#285가 online_features OOM(#271)은 고쳤으나(~600MB로 통과),
+        # 그 다음 build-features의 training_dataset 조립(joined) 단계가 177만행
+        # × 21컬럼(문자열 다수)을 pandas로 materialize하며 ~8GB로 튀어 8Gi에서
+        # OOMKilled됐다(2026-07-23 실측). 이는 pathological 폭발이 아니라 학습셋
+        # 자체 크기라, 파드 상한을 올려 재학습을 완주시킨다(n2-highmem-4=32GB).
+        # request는 네임스페이스 쿼터(requests.memory 8Gi) 안에 두고 limit만 올린다
+        # (쿼터는 limits.memory를 제한하지 않는다). joined 단계 자체의 메모리
+        # 최적화(청크/스트리밍)는 Autoresearch#271 후속.
+        memory_limit="20Gi",
     )

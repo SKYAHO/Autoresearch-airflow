@@ -70,7 +70,7 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
         }
     ]
     resources = task.kwargs["container_resources"]
-    assert resources.limits["memory"] == "8Gi"
+    assert resources.limits["memory"] == "20Gi"
     assert resources.requests["memory"] == "2Gi"
 
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
