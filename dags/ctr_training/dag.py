@@ -33,6 +33,7 @@ from ctr_training.config import (
     EVENTS_END_DATE_TEMPLATE,
     EVENTS_START_DATE_TEMPLATE,
     MLFLOW_TRACKING_URI,
+    PERSONAS_PATH,
     TRAINING_IMAGE_TEMPLATE,
 )
 
@@ -65,6 +66,10 @@ with DAG(
             # (Autoresearch#244)에 다시 막히므로 실 데이터 학습에서는 필수다.
             "--topic-similarity-source",
             "bigquery",
+            # personas는 BigQuery가 아니라 GCS parquet에서 읽는다. 명시하지 않으면
+            # 존재하지 않는 로컬 CSV 기본값으로 떨어져 build-features가 즉시 실패한다.
+            "--personas-path",
+            PERSONAS_PATH,
             "--events-start-date",
             EVENTS_START_DATE_TEMPLATE,
             "--events-end-date",

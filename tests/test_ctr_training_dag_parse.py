@@ -39,6 +39,8 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
         "bigquery",
         "--topic-similarity-source",
         "bigquery",
+        "--personas-path",
+        "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet",
         "--events-start-date",
         "{{ dag_run.conf.get('events_start_date') "
         "or data_interval_end.subtract(days=7).in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",

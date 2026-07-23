@@ -39,6 +39,17 @@ MLFLOW_TRACKING_URI = _airflow_env(
 # 계속 feast_offline_store를 가리키므로 여기서 건드리지 않는다.
 BQ_RAW_DATASET = _airflow_env("CTR_TRAINING_BQ_RAW_DATASET", "data_lake_raw")
 
+# build-features가 읽는 가상 유저(페르소나) parquet 경로. run-pipeline은
+# videos/events를 BigQuery에서 읽지만 personas는 GCS parquet에서 읽는다.
+# --personas-path를 주지 않으면 앱이 존재하지 않는 로컬 CSV 기본값
+# (<raw_dir>/personas.csv)으로 떨어져, GCS 코드 부트스트랩 컨테이너에는
+# 그 파일이 없으므로 build-features가 즉시 FileNotFoundError로 실패한다.
+# action-log DAG가 쓰는 동일한 vu_1000.parquet(가상 유저 6,983명)을 가리킨다.
+PERSONAS_PATH = _airflow_env(
+    "AUTORESEARCH_TRAINING_PERSONAS_PATH",
+    "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet",
+)
+
 # 이 DAG는 schedule=None(수동 트리거 전용)이라 스케줄 간격에서 자연스럽게
 # 기간을 얻을 수 없다. lake_to_bigquery_incremental DAG의 dag_run.conf
 # 오버라이드 + 계산된 기본값 컨벤션을 그대로 따른다. 기본 lookback을 7일로
