@@ -95,9 +95,16 @@ with DAG(
         # e2-standard-8(allocatable ~26Gi) 기준. memory_limit이 파드 상한이므로,
         # 노드가 커도 이 값이 낮으면 online_features 피크에서 파드 레벨 OOM이
         # 난다 — 실측된 피크(미상, batch-spot 5.88Gi 초과)를 넉넉히 덮도록 24Gi로
-        # 올리고, 시스템/DaemonSet 몫으로 노드에 여유를 남긴다.
-        cpu_request="2",
-        memory_request="8Gi",
+        # 올린다. limits.memory는 네임스페이스 쿼터 대상이 아니라 크게 잡아도 된다.
+        #
+        # 반면 request는 낮게 유지한다: airflow 네임스페이스 ResourceQuota
+        # (airflow-quota)가 requests.memory를 8Gi로 제한하는데, 다른 pod가 이미
+        # ~1.8Gi를 쓰고 있어 큰 request는 쿼터 초과로 pod 생성이 403 거부된다.
+        # 학습 pod는 전용 격리 노드(다른 워크로드 없음)에 뜨므로, request가 낮아도
+        # 실제로는 limit(24Gi)까지 메모리를 쓸 수 있다 — request는 스케줄링/쿼터
+        # 회계용일 뿐 실사용 상한이 아니다.
+        cpu_request="1",
+        memory_request="2Gi",
         cpu_limit="7",
         memory_limit="24Gi",
     )
