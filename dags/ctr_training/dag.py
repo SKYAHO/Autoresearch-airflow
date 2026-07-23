@@ -81,12 +81,20 @@ with DAG(
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
             "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
         },
-        # 학습 Pod는 operator 기본값인 batch-spot 노드풀(e2-standard-2)에서
-        # 실행한다. 예전엔 build-features의 online_features 계산이 batch-spot
-        # (5.88Gi)에서 OOM되어(Autoresearch#271) 전용 큰 노드풀로 우회했으나,
-        # Autoresearch#284/#285가 이 계산을 (user, day) 그레인 daily 집계로
-        # 리팩터해 메모리 피크를 ~수백MB 수준으로 낮췄다(합성 168만 이벤트
-        # 4.4s / py-peak ~580MB). 따라서 batch-spot로 복귀하고 리소스도 원복한다.
+        # Autoresearch#284/#285가 online_features를 daily 집계로 리팩터해 메모리
+        # 피크가 ~수백MB로 낮아져(합성 168만 이벤트 4.4s/py-peak ~580MB) 작은
+        # 노드로 충분하다. 다만 operator 기본값 batch-spot(E2)은 리전 E2_CPUS
+        # 쿼터(한도 8, 기존 E2 노드가 소진)로 scale-up이 실패하므로, N2 쿼터에
+        # 여유가 있는 ctr-model-retrain(n2-highmem-4) 노드풀로 보낸다.
+        node_selector={"cloud.google.com/gke-nodepool": "ctr-model-retrain"},
+        tolerations=[
+            {
+                "key": "dedicated",
+                "operator": "Equal",
+                "value": "ctr-model-retrain",
+                "effect": "NoSchedule",
+            }
+        ],
         retries=1,
         execution_timeout=timedelta(hours=2),
         cpu_request="1",

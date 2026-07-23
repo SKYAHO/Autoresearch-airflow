@@ -59,13 +59,13 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     # DAG가 node_selector/tolerations를 지정하지 않으면 operator가 batch-spot
     # 기본값을 채운다.
     assert task.kwargs["node_selector"] == {
-        "cloud.google.com/gke-nodepool": "batch-spot"
+        "cloud.google.com/gke-nodepool": "ctr-model-retrain"
     }
     assert task.kwargs["tolerations"] == [
         {
-            "key": "workload",
+            "key": "dedicated",
             "operator": "Equal",
-            "value": "batch-spot",
+            "value": "ctr-model-retrain",
             "effect": "NoSchedule",
         }
     ]
