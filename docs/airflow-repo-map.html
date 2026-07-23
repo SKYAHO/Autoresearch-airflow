@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autoresearch Airflow 레포 맵</title>
+  <style>
+    :root {
+      --ground:#0b0f18; --surface:#121927; --surface-2:#192235; --sunken:#080c14;
+      --line:#2b3850; --line-soft:#202b3e;
+      --text:#edf2fb; --text-2:#a8b5c9; --text-3:#718099;
+      --accent:#8f9dff; --accent-2:#6573dc; --accent-soft:#1d2549;
+      --ok:#58d2a0; --ok-soft:#123a31;
+      --warn:#e6b15a; --warn-soft:#3a2b16;
+      --stop:#f1848f; --stop-soft:#411e2b;
+      --mono:ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+      --sans:system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    }
+
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body {
+      margin:0; background:var(--ground); color:var(--text); font-family:var(--sans);
+      font-size:15px; line-height:1.65; word-break:keep-all;
+    }
+    a { color:var(--accent); }
+    code, .mono { font-family:var(--mono); overflow-wrap:anywhere; }
+    .wrap { max-width:76rem; margin:0 auto; padding:0 1.4rem 5rem; }
+
+    header.top { padding:2.8rem 0 1.8rem; border-bottom:2px solid var(--text); margin-bottom:2.6rem; }
+    .kicker { color:var(--accent); font-family:var(--mono); font-size:.68rem; letter-spacing:.18em; margin:0 0 .8rem; }
+    h1 { font-size:clamp(1.75rem,4vw,2.6rem); letter-spacing:-.035em; line-height:1.2; margin:0 0 .8rem; }
+    h2 { font-size:1.16rem; letter-spacing:-.02em; line-height:1.3; margin:0 0 .35rem; }
+    h3 { font-size:.96rem; line-height:1.35; margin:0 0 .4rem; }
+    p { margin:.25rem 0 0; }
+    .lede { color:var(--text-2); max-width:56rem; font-size:1rem; }
+    .hero-meta { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:1.25rem; }
+    .chip {
+      display:inline-flex; align-items:center; width:max-content; max-width:100%;
+      border:1px solid var(--line); border-radius:2px; background:var(--surface-2);
+      color:var(--text-2); font-family:var(--mono); font-size:.66rem; line-height:1.35;
+      padding:.2rem .48rem; overflow-wrap:anywhere;
+    }
+    .chip-accent { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
+    .chip-ok { border-color:var(--ok); background:var(--ok-soft); color:var(--ok); }
+    .chip-warn { border-color:var(--warn); background:var(--warn-soft); color:var(--warn); }
+    .chip-stop { border-color:var(--stop); background:var(--stop-soft); color:var(--stop); }
+
+    .entry-nav {
+      display:flex; flex-wrap:wrap; gap:.5rem; margin-top:1.6rem;
+      border-top:1px solid var(--line); padding-top:1rem;
+    }
+    .entry-nav a {
+      display:inline-flex; align-items:center; border:1px solid var(--accent-2);
+      background:var(--accent-soft); color:var(--text); padding:.48rem .7rem;
+      text-decoration:none; font-size:.82rem;
+    }
+    .entry-nav a:hover, .entry-nav a:focus-visible { border-color:var(--accent); color:var(--accent); outline:none; }
+
+    section { margin-bottom:3.5rem; scroll-margin-top:1.2rem; }
+    .section-head { display:flex; align-items:baseline; gap:.65rem; margin-bottom:1.2rem; }
+    .idx { color:var(--accent); font-family:var(--mono); font-size:.68rem; letter-spacing:.12em; }
+    .section-note { color:var(--text-2); font-size:.88rem; max-width:52rem; margin:0 0 1.25rem; }
+    .section-note code, .card code, .node code, .callout code, td code { color:var(--accent); }
+
+    .mapscroll, .wide-table { overflow-x:auto; padding-bottom:.6rem; }
+    .map {
+      display:grid; grid-template-columns:repeat(5, minmax(13.5rem, 1fr));
+      gap:0; min-width:70rem; border:1px solid var(--line); background:var(--sunken);
+    }
+    .stage { border-right:1px solid var(--line); padding:1rem .95rem 1.1rem; min-height:21rem; }
+    .stage:last-child { border-right:0; }
+    .stage-head { display:flex; align-items:baseline; gap:.5rem; margin-bottom:.7rem; }
+    .stage-num { color:var(--text-3); font-family:var(--mono); font-size:.68rem; letter-spacing:.1em; }
+    .stage-title { font-size:.95rem; font-weight:700; }
+    .stage-note { color:var(--text-2); font-size:.77rem; line-height:1.45; margin:0 0 .75rem; }
+    .node {
+      display:flex; flex-direction:column; gap:.34rem; background:var(--surface);
+      border:1px solid var(--line); border-left:3px solid var(--accent); padding:.65rem .7rem;
+      margin-top:.55rem; min-height:4.3rem;
+    }
+    .node.service { border-left-color:var(--ok); }
+    .node.storage { border-left-color:var(--warn); }
+    .node-t { font-family:var(--mono); font-size:.76rem; font-weight:650; line-height:1.4; }
+    .node-m { color:var(--text-2); font-size:.74rem; line-height:1.45; }
+    .node-r { display:flex; flex-wrap:wrap; gap:.25rem; }
+    .node-r .chip { font-size:.59rem; padding:.12rem .35rem; }
+    .flow-arrow { color:var(--text-3); font-family:var(--mono); font-size:.76rem; text-align:center; margin:.35rem 0; }
+
+    .callout {
+      border:1px solid var(--line); border-left:3px solid var(--accent); background:var(--surface-2);
+      color:var(--text-2); padding:.85rem 1rem; margin-top:1rem;
+    }
+    .callout strong { color:var(--text); }
+    .callout.warn { border-left-color:var(--warn); }
+    .callout.ok { border-left-color:var(--ok); }
+
+    .ops-flow { display:grid; grid-template-columns:repeat(6, minmax(10rem, 1fr)); gap:.55rem; }
+    .flow-step { position:relative; border:1px solid var(--line); background:var(--surface); padding:.8rem; min-height:8.5rem; }
+    .flow-step:not(:last-child)::after { content:"→"; position:absolute; right:-.58rem; top:2.8rem; color:var(--accent); z-index:1; }
+    .flow-index { color:var(--accent); font-family:var(--mono); font-size:.67rem; letter-spacing:.1em; }
+    .flow-title { display:block; font-size:.82rem; font-weight:700; line-height:1.4; margin-top:.4rem; }
+    .flow-body { color:var(--text-2); font-size:.73rem; line-height:1.45; margin-top:.4rem; }
+
+    .card-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.8rem; }
+    .card {
+      display:flex; flex-direction:column; gap:.55rem; background:var(--surface);
+      border:1px solid var(--line); padding:.85rem .9rem; min-height:10rem;
+    }
+    .card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:.5rem; }
+    .card-t { font-family:var(--mono); font-size:.78rem; font-weight:650; line-height:1.4; overflow-wrap:anywhere; }
+    .card-l { color:var(--text-2); font-size:.79rem; line-height:1.5; }
+    .card-foot { border-top:1px solid var(--line-soft); color:var(--text-3); font-size:.69rem; margin-top:auto; padding-top:.5rem; }
+    .card-foot code { color:var(--text-2); }
+
+    .group-label { color:var(--text-3); font-family:var(--mono); font-size:.68rem; letter-spacing:.12em; margin:1.3rem 0 .55rem; text-transform:uppercase; }
+    .runtime-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.8rem; }
+    .runtime-card { border:1px solid var(--line); background:var(--surface); padding:1rem; }
+    .runtime-list { display:grid; gap:.55rem; margin:0; padding:0; list-style:none; }
+    .runtime-list li { border-top:1px solid var(--line-soft); color:var(--text-2); font-size:.8rem; padding-top:.5rem; }
+    .runtime-list li:first-child { border-top:0; padding-top:0; }
+    .runtime-list b { color:var(--text); }
+
+    table { border-collapse:collapse; min-width:55rem; width:100%; }
+    th, td { border:1px solid var(--line); padding:.7rem .75rem; text-align:left; vertical-align:top; }
+    th { background:var(--surface-2); color:var(--text); font-size:.76rem; font-weight:700; }
+    td { background:var(--surface); color:var(--text-2); font-size:.78rem; }
+    td:first-child { color:var(--accent); font-family:var(--mono); white-space:nowrap; }
+
+    .commands { display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(0, .85fr); gap:.8rem; }
+    pre {
+      background:var(--sunken); border:1px solid var(--line); color:var(--text-2); margin:0;
+      overflow-x:auto; padding:1rem; font: .75rem/1.7 var(--mono); white-space:pre;
+    }
+    .glossary { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.55rem; }
+    details { border:1px solid var(--line); background:var(--surface); padding:.55rem .7rem; }
+    summary { color:var(--text); cursor:pointer; font-family:var(--mono); font-size:.75rem; }
+    details p { color:var(--text-2); font-size:.75rem; margin:.45rem 0 0; }
+
+    footer { border-top:1px solid var(--line); color:var(--text-3); font-size:.72rem; padding-top:1rem; }
+    footer code { color:var(--text-2); }
+
+    @media (max-width:48rem) {
+      .wrap { padding-inline:1rem; }
+      header.top { padding-top:2rem; }
+      .card-grid, .runtime-grid, .commands { grid-template-columns:1fr; }
+      .glossary { grid-template-columns:1fr; }
+      .ops-flow { grid-template-columns:1fr; }
+      .flow-step { min-height:0; }
+      .flow-step:not(:last-child)::after { content:"↓"; right:auto; left:1rem; top:auto; bottom:-1.05rem; }
+      .stage { border-right:0; border-bottom:1px solid var(--line); }
+      .stage:last-child { border-bottom:0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <p class="kicker">AUTORESEARCH / AIRFLOW REPOSITORY MAP</p>
+      <h1>Autoresearch Airflow 레포 맵</h1>
+      <p class="lede">이 레포는 DAG와 Airflow 실행 계약, 런타임 이미지, Helm 배포를 관리합니다. 애플리케이션 배치 계산은 <code>AUTORESEARCH_BATCH_IMAGE</code>가 제공하는 공개 CLI가 담당합니다.</p>
+      <div class="hero-meta" aria-label="레포 핵심 표면">
+        <span class="chip chip-accent">DAG source: dags/</span>
+        <span class="chip">Runtime: docker/airflow/</span>
+        <span class="chip chip-accent">Deploy: deploy/airflow/</span>
+        <span class="chip chip-ok">Sync: git-sync</span>
+        <span class="chip">Execution: KubernetesPodOperator</span>
+      </div>
+      <nav class="entry-nav" aria-label="문서 진입점">
+        <a href="#newcomer">처음 보는 분</a>
+        <a href="#operator">운영하는 분</a>
+        <a href="#repo-map">레포 구조</a>
+        <a href="#ops-commands">운영 명령</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="newcomer">
+        <div id="flow">
+          <div class="section-head"><span class="idx">01</span><h2>먼저 큰 그림 — 데이터가 흐르는 길</h2></div>
+          <p class="section-note">신규 개발자는 아래 순서로 보면 됩니다. DAG는 작업의 순서와 실행 환경을 조정하고, 실제 계산은 application batch image의 공개 CLI가 수행합니다.</p>
+          <div class="mapscroll">
+            <div class="map">
+              <div class="stage">
+                <div class="stage-head"><span class="stage-num">01</span><span class="stage-title">입력·애플리케이션</span></div>
+                <p class="stage-note">Airflow 밖에서 준비되거나 batch image가 읽는 입력입니다.</p>
+                <div class="node service">
+                  <span class="node-t">YouTube Data API</span>
+                  <span class="node-m">KR trending 원천 데이터를 수집합니다.</span>
+                  <span class="node-r"><span class="chip chip-ok">외부 입력</span></span>
+                </div>
+                <div class="node">
+                  <span class="node-t">application CLI</span>
+                  <span class="node-m">계산 로직은 Autoresearch batch job에 있습니다.</span>
+                  <span class="node-r"><span class="chip">Autoresearch</span></span>
+                </div>
+                <div class="node">
+                  <span class="node-t">AUTORESEARCH_BATCH_IMAGE</span>
+                  <span class="node-m">운영에서는 immutable GAR digest를 사용합니다.</span>
+                  <span class="node-r"><span class="chip chip-accent">batch image</span></span>
+                </div>
+              </div>
+
+              <div class="stage">
+                <div class="stage-head"><span class="stage-num">02</span><span class="stage-title">Airflow DAG</span></div>
+                <p class="stage-note">cron, Dataset, manual trigger가 실행할 DAG를 선택합니다.</p>
+                <div class="node dag">
+                  <span class="node-t">youtube_gcs_action_log_pipeline</span>
+                  <span class="node-m">수집·shard·merge·quality를 연결하는 일일 운영 흐름입니다.</span>
+                  <span class="node-r"><span class="chip chip-accent">cron KST 00:00</span></span>
+                </div>
+                <div class="node dag">
+                  <span class="node-t">lake_to_bigquery_incremental</span>
+                  <span class="node-m">GCS partition을 BigQuery raw dataset으로 적재하고 검증합니다.</span>
+                  <span class="node-r"><span class="chip chip-accent">cron</span></span>
+                </div>
+                <div class="node dag">
+                  <span class="node-t">feast_offline_feature_build</span>
+                  <span class="node-m">두 raw Dataset 갱신을 받아 feature build를 시작합니다.</span>
+                  <span class="node-r"><span class="chip chip-ok">Dataset</span></span>
+                </div>
+              </div>
+
+              <div class="stage">
+                <div class="stage-head"><span class="stage-num">03</span><span class="stage-title">실행 오케스트레이션</span></div>
+                <p class="stage-note">Scheduler가 task를 만들고 실행 방식에 맞는 operator가 동작합니다.</p>
+                <div class="node service">
+                  <span class="node-t">Airflow Scheduler</span>
+                  <span class="node-m">DAG import, schedule, dependency와 task state를 관리합니다.</span>
+                </div>
+                <div class="flow-arrow">↓</div>
+                <div class="node">
+                  <span class="node-t">KubernetesPodOperator</span>
+                  <span class="node-m">batch image를 일회성 Kubernetes Pod로 실행합니다.</span>
+                  <span class="node-r"><span class="chip chip-accent">KPO</span><span class="chip">GKE</span></span>
+                </div>
+                <div class="node service">
+                  <span class="node-t">Scheduler-owned operator</span>
+                  <span class="node-m">BigQuery load와 Dataset update처럼 scheduler pod에서 직접 실행되는 작업도 있습니다.</span>
+                </div>
+              </div>
+
+              <div class="stage">
+                <div class="stage-head"><span class="stage-num">04</span><span class="stage-title">데이터 산출</span></div>
+                <p class="stage-note">파티션·shard·checkpoint를 정해진 경로에 기록합니다.</p>
+                <div class="node storage">
+                  <span class="node-t">GCS parquet</span>
+                  <span class="node-m">trending, action-log work, checkpoint와 최종 partition의 기준 저장소입니다.</span>
+                  <span class="node-r"><span class="chip chip-warn">GCS</span></span>
+                </div>
+                <div class="node storage">
+                  <span class="node-t">BigQuery raw</span>
+                  <span class="node-m">GCS dt partition을 raw table로 적재하고 행 수·중복·필수값을 검증합니다.</span>
+                  <span class="node-r"><span class="chip chip-warn">BigQuery</span></span>
+                </div>
+                <div class="node">
+                  <span class="node-t">action-log shard/checkpoint</span>
+                  <span class="node-m">재실행 가능한 immutable checkpoint part와 progress 상태를 분리합니다.</span>
+                </div>
+              </div>
+
+              <div class="stage">
+                <div class="stage-head"><span class="stage-num">05</span><span class="stage-title">후속 처리</span></div>
+                <p class="stage-note">GCS·BigQuery·Feast를 이어 feature와 학습 artifact를 만듭니다.</p>
+                <div class="node service">
+                  <span class="node-t">Feast offline feature build</span>
+                  <span class="node-m">raw 계층에서 feature source table의 하루치를 적재합니다.</span>
+                </div>
+                <div class="node service">
+                  <span class="node-t">feast_online_store_materialize</span>
+                  <span class="node-m">offline feature를 Redis online store로 materialize합니다.</span>
+                </div>
+                <div class="node">
+                  <span class="node-t">CTR training artifact</span>
+                  <span class="node-m">수동 학습 DAG가 모델·피처목록·카테고리 artifact를 저장합니다.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="callout"><strong>책임 경계:</strong> 이 레포의 DAG는 공개 batch CLI를 호출하고 실행 조건을 검증합니다. 추천·수집·feature 계산의 애플리케이션 구현은 <code>Autoresearch</code> 레포와 batch image에 있습니다.</div>
+        </div>
+      </section>
+
+      <section id="operator">
+        <div class="section-head"><span class="idx">02</span><h2>운영하는 분 — 배포에서 확인까지</h2></div>
+        <p class="section-note">코드가 merge된 뒤 DAG가 반영되고 task가 실행되는 경로입니다. 배포 설정과 application image 승격은 서로 다른 변경 표면입니다.</p>
+        <div class="ops-flow">
+          <div class="flow-step"><span class="flow-index">01</span><span class="flow-title">GitHub main merge</span><p class="flow-body">DAG, helper, values 또는 image digest 변경을 main에 반영합니다.</p></div>
+          <div class="flow-step"><span class="flow-index">02</span><span class="flow-title">git-sync 동기화</span><p class="flow-body"><code>dags/</code> subPath와 같은 revision의 DAG/helper를 scheduler에 전달합니다.</p></div>
+          <div class="flow-step"><span class="flow-index">03</span><span class="flow-title">DAG import/parse</span><p class="flow-body">Scheduler가 DAG를 읽고 import error와 task topology를 만듭니다.</p></div>
+          <div class="flow-step"><span class="flow-index">04</span><span class="flow-title">task 실행</span><p class="flow-body">KPO 또는 scheduler-owned operator가 정해진 실행 위치에서 동작합니다.</p></div>
+          <div class="flow-step"><span class="flow-index">05</span><span class="flow-title">결과·로그 생성</span><p class="flow-body">GCS·BigQuery·Feast 결과와 Airflow task log를 확인합니다.</p></div>
+          <div class="flow-step"><span class="flow-index">06</span><span class="flow-title">운영 검증</span><p class="flow-body">DAG import error, task state, pool, image digest를 대조합니다.</p></div>
+        </div>
+        <div class="callout ok"><strong>변경 종류를 먼저 구분합니다.</strong> DAG/helper 변경은 git-sync 반영 대상이므로 Airflow image 재빌드가 기본 조건이 아닙니다. batch 애플리케이션 변경은 <code>Autoresearch</code> image release와 immutable digest 승격을 거치고, Helm values 변경은 <code>deploy/airflow</code> chart 배포로 반영합니다.</div>
+        <div class="callout warn"><strong>인프라 경계:</strong> <code>Autoresearch-infra</code>는 GKE, IAM, 데이터셋·네트워크를 소유합니다. Airflow DAG에서 증상을 확인하더라도 node pool·Workload Identity·private network 변경은 infra 레포의 책임입니다.</div>
+      </section>
+
+      <section id="dag-catalog">
+        <div class="section-head"><span class="idx">03</span><h2>DAG 카탈로그 — 어떤 작업을 어디서 찾나</h2></div>
+        <p class="section-note">정적 맵은 live task state를 표시하지 않습니다. 각 카드는 DAG의 역할과 운영자가 먼저 확인할 계약을 요약합니다.</p>
+        <div class="card-grid">
+          <article class="card">
+            <div class="card-head"><span class="card-t">youtube_gcs_action_log_pipeline</span><span class="chip chip-accent">cron</span></div>
+            <div class="card-l">YouTube 수집 후 5개 shard를 병렬 처리하고 merge와 품질 검사를 수행하는 일일 운영 pipeline입니다.</div>
+            <div class="card-foot">확인: <code>8-task topology</code>, <code>action_log_openrouter</code> pool, shard retry</div>
+            <div class="card-foot"><code>dags/youtube_gcs_action_log/dag_prod.py</code></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><span class="card-t">youtube_backfill_kr</span><span class="chip">수동</span></div>
+            <div class="card-l">과거 YouTube partition을 다시 만드는 단일 KPO DAG입니다. 기본 운영 경로와 분리된 QA/source 경로를 사용합니다.</div>
+            <div class="card-foot">확인: <code>source_path</code>, <code>youtube_base_path</code>, 격리 prefix</div>
+            <div class="card-foot"><code>dags/youtube_backfill/dag_kr.py</code></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><span class="card-t">lake_to_bigquery_incremental</span><span class="chip chip-accent">cron</span></div>
+            <div class="card-l">GCS dt partition을 BigQuery raw dataset에 파티션 단위로 적재하고 행 수·중복·필수 컬럼을 검증합니다.</div>
+            <div class="card-foot">확인: <code>data_lake_raw</code>, sensor timeout, partition date</div>
+            <div class="card-foot"><code>dags/lake_to_bigquery/dag.py</code></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><span class="card-t">feast_offline_feature_build</span><span class="chip chip-ok">Dataset</span></div>
+            <div class="card-l">raw table Dataset 갱신을 모두 받은 뒤 공개 feature build CLI로 Feast offline source table을 만듭니다.</div>
+            <div class="card-foot">확인: 두 raw Dataset의 AND 조건, <code>--partition-date</code></div>
+            <div class="card-foot"><code>dags/feature_store_build/dag.py</code></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><span class="card-t">feast_online_store_materialize</span><span class="chip chip-accent">cron</span></div>
+            <div class="card-l">offline feature를 Redis online store로 materialize합니다. offline build와 독립적인 매일 KST 00:00 cron입니다.</div>
+            <div class="card-foot">확인: Feast registry watermark와 Redis materialize 결과</div>
+            <div class="card-foot"><code>Autoresearch</code> 공개 Feast CLI</div>
+          </article>
+          <article class="card">
+            <div class="card-head"><span class="card-t">ctr_model_training</span><span class="chip">수동</span></div>
+            <div class="card-l">CTR 모델을 학습하고 모델·피처목록·카테고리 artifact를 저장합니다. 최신 batch image 인자를 사용합니다.</div>
+            <div class="card-foot">확인: <code>--personas-path</code>, <code>--topic-similarity-source</code>, artifact</div>
+            <div class="card-foot"><code>dags/ctr_training/dag.py</code></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="runtime">
+        <div class="section-head"><span class="idx">04</span><h2>실행 환경과 배포 구성</h2></div>
+        <p class="section-note">Airflow가 task를 관리하는 표면과, GKE·Helm이 그 실행 환경을 제공하는 표면을 나누어 봅니다.</p>
+        <div class="runtime-grid">
+          <article class="runtime-card">
+            <div class="group-label">airflow runtime</div>
+            <ul class="runtime-list">
+              <li><b>Scheduler</b> — DAG parsing, schedule, dependency와 scheduler-owned operator를 관리합니다.</li>
+              <li><b>Webserver</b> — Airflow UI와 manual trigger의 진입점입니다.</li>
+              <li><b><code>git-sync</code></b> — <code>main</code>의 <code>dags/</code> subPath를 scheduler에 동기화합니다.</li>
+              <li><b>KPO</b> — batch image를 일회성 Kubernetes Pod로 실행합니다.</li>
+              <li><b>metadata DB</b> — DAG run, task state, pool과 Airflow 메타데이터를 저장합니다.</li>
+            </ul>
+          </article>
+          <article class="runtime-card">
+            <div class="group-label">gke / helm deployment</div>
+            <ul class="runtime-list">
+              <li><b><code>deploy/airflow/Chart.yaml</code></b> — Apache Airflow 공식 chart를 감싸는 umbrella chart입니다.</li>
+              <li><b><code>deploy/airflow/values.yaml</code></b> — 현재 dev 운영 기준입니다.</li>
+              <li><b><code>deploy/airflow/values.example.yaml</code></b> — 신규 환경 구성용 예제입니다.</li>
+              <li><b><code>docker/airflow/Dockerfile</code></b> — Airflow 런타임 이미지 build context입니다.</li>
+              <li><b>Workload Identity</b> — Scheduler와 KPO가 Google 리소스에 접근하는 인증 경계입니다.</li>
+              <li><b>immutable GAR digest</b> — <code>AUTORESEARCH_BATCH_IMAGE</code>가 가리키는 실행 artifact입니다.</li>
+            </ul>
+          </article>
+        </div>
+        <div class="callout">Airflow image, DAG git-sync, Helm chart, application batch image는 모두 다른 변경 표면입니다. 변경 내용을 먼저 분류하면 불필요한 image rebuild와 잘못된 rollback 범위를 줄일 수 있습니다.</div>
+      </section>
+
+      <section id="repo-map">
+        <div class="section-head"><span class="idx">05</span><h2>레포 구조와 소유 경계</h2></div>
+        <p class="section-note">문제의 종류에 따라 먼저 열어야 할 디렉터리가 달라집니다. 애플리케이션 계산과 인프라 리소스는 이 레포의 직접 구현 범위가 아닙니다.</p>
+        <div class="wide-table">
+          <table>
+            <thead><tr><th>경로 / 저장소</th><th>소유 책임</th><th>이곳에서 찾는 것</th></tr></thead>
+            <tbody>
+              <tr><td>dags/</td><td>운영·QA·backfill DAG와 helper</td><td>topology, trigger, retry, timeout, KPO field, 공개 CLI 인자</td></tr>
+              <tr><td>docker/airflow/</td><td>Airflow 런타임 이미지 빌드</td><td>Airflow container dependency와 build context</td></tr>
+              <tr><td>deploy/airflow/</td><td>Helm chart와 dev 배포 values</td><td>git-sync, service account, executor, image, GKE 배포 설정</td></tr>
+              <tr><td>tests/</td><td>DAG import·인자·경로 격리·계약 테스트</td><td>파싱·runtime field·repository contract 검증</td></tr>
+              <tr><td>docs/</td><td>배포·운영·QA·backfill 문서</td><td>실행 절차, rollback, 운영 확인 명령</td></tr>
+              <tr><td>scripts/</td><td>digest 승격과 GKE 진단</td><td>promotion, diagnostics, Webserver service 보조</td></tr>
+              <tr><td>Autoresearch</td><td>공개 batch CLI와 애플리케이션 배치 구현</td><td>수집·action-log·feature·training 계산 로직</td></tr>
+              <tr><td>Autoresearch-infra</td><td>GKE·IAM·네트워크·데이터 플랫폼 인프라</td><td>node pool, Workload Identity, private network, dataset</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-grid" style="margin-top:.8rem">
+          <article class="card"><span class="card-t">DAG topology / trigger / retry</span><div class="card-l">먼저 <code>dags/</code>와 해당 DAG의 테스트를 확인합니다.</div></article>
+          <article class="card"><span class="card-t">Helm / git-sync / service account</span><div class="card-l"><code>deploy/airflow/values.yaml</code>와 운영 문서를 확인합니다.</div></article>
+          <article class="card"><span class="card-t">계산 결과 / model behavior</span><div class="card-l"><code>Autoresearch</code>의 공개 CLI와 batch image release를 확인합니다.</div></article>
+        </div>
+      </section>
+
+      <section id="ops-commands">
+        <div class="section-head"><span class="idx">06</span><h2>운영 명령과 용어</h2></div>
+        <p class="section-note">아래 명령은 credential payload를 출력하지 않는 기본 확인용입니다. 상세 runbook은 <code>docs/gke-helm-gitsync.md</code>와 운영 문서를 기준으로 합니다.</p>
+        <div class="commands">
+          <pre aria-label="Airflow 운영 확인 명령">kubectl get pods -n airflow
+kubectl logs -n airflow airflow-scheduler-0 -c git-sync
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-import-errors
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow pools get action_log_openrouter
+helm lint deploy/airflow</pre>
+          <div class="glossary">
+            <details open><summary>DAG</summary><p>실행할 task와 의존성, trigger, retry 정책을 선언한 Airflow workflow입니다.</p></details>
+            <details><summary>Dataset</summary><p>업스트림 데이터 갱신을 downstream DAG의 실행 조건으로 전달하는 Airflow 객체입니다.</p></details>
+            <details><summary>KPO</summary><p>KubernetesPodOperator. task마다 batch image Pod를 만들고 로그를 task log로 전달합니다.</p></details>
+            <details><summary>git-sync</summary><p>Airflow image와 분리된 DAG source를 scheduler pod에 동기화하는 sidecar입니다.</p></details>
+            <details><summary>Pool</summary><p>외부 API 같은 제한된 자원의 동시 실행 수를 Airflow task에 배분하는 슬롯입니다.</p></details>
+            <details><summary>KSA / GSA</summary><p>Kubernetes Service Account와 Google Service Account를 Workload Identity로 연결합니다.</p></details>
+            <details><summary>immutable digest</summary><p>태그가 움직여도 실행 artifact가 바뀌지 않도록 image를 sha256 digest로 고정한 값입니다.</p></details>
+            <details><summary>reschedule sensor</summary><p>대기 중 worker를 점유하지 않고 다음 poke 시점에 다시 예약되는 sensor 모드입니다.</p></details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      이 페이지는 <code>Autoresearch-airflow</code>의 README·docs·DAG·Helm values를 기준으로 만든 정적 맵입니다. 현재 live cluster 상태, 실행 중인 task, Secret payload를 표시하지 않습니다.
+    </footer>
+  </div>
+</body>
+</html>
