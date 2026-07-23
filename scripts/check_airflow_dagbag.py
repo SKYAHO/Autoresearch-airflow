@@ -28,7 +28,7 @@ _EXPECTED_TASK_COUNTS = {
     "lake_to_bigquery_incremental": 6,
     "ctr_model_training": 1,
     "feast_offline_feature_build": 1,
-    "feast_online_store_materialize": 1,
+    "feast_online_store_materialize": 2,
 }
 
 
