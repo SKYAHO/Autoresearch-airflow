@@ -90,6 +90,7 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
         plain_env: Mapping[str, str] | None = None,
         labels: Mapping[str, str] | None = None,
         node_selector: Mapping[str, str] | None = None,
+        tolerations: Sequence[Mapping[str, str]] | None = None,
         retries: int = 1,
         retry_delay: timedelta = timedelta(minutes=10),
         trigger_rule: str = "all_success",
@@ -141,7 +142,17 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
                 if node_selector is None
                 else dict(node_selector)
             ),
-            tolerations=[dict(toleration) for toleration in _BATCH_SPOT_TOLERATIONS],
+            # node_selector와 동일한 규칙: 미지정(None)이면 기존 batch-spot
+            # 기본값을 유지하고, 값을 넘기면 그대로 override한다. 격리 노드에
+            # taint(예: dedicated=ctr-model-retrain:NoSchedule)를 건 뒤 학습
+            # Pod가 그 노드로 스케줄되도록 DAG에서 toleration을 지정하기 위함
+            # (Autoresearch#269 재학습 격리, 실제 override는 별도 PR).
+            tolerations=[
+                dict(toleration)
+                for toleration in (
+                    _BATCH_SPOT_TOLERATIONS if tolerations is None else tolerations
+                )
+            ],
             container_resources=k8s.V1ResourceRequirements(
                 requests={"cpu": cpu_request, "memory": memory_request},
                 limits={"cpu": cpu_limit, "memory": memory_limit},
