@@ -59,6 +59,12 @@ with DAG(
             "bigquery",
             "--events-source",
             "bigquery",
+            # topic_similarity를 매 실행마다 Vertex AI로 즉석 계산하지 않고 이미
+            # 적재된 feast_offline_store.user_category_similarity에서 조회한다
+            # (Autoresearch#214). 기본값 inmemory로 두면 Vertex AI 쿼터 초과
+            # (Autoresearch#244)에 다시 막히므로 실 데이터 학습에서는 필수다.
+            "--topic-similarity-source",
+            "bigquery",
             "--events-start-date",
             EVENTS_START_DATE_TEMPLATE,
             "--events-end-date",
