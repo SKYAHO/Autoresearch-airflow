@@ -71,7 +71,9 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     # memory_limit을 상향한다.
     resources = task.kwargs["container_resources"]
     assert resources.limits["memory"] == "24Gi"
-    assert resources.requests["memory"] == "8Gi"
+    # request는 네임스페이스 ResourceQuota(requests.memory 8Gi) 안에 들어가도록
+    # 낮게 유지한다 — 전용 노드라 request가 낮아도 limit까지 실제로 쓴다.
+    assert resources.requests["memory"] == "2Gi"
 
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert env_by_name == {
