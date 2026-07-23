@@ -34,8 +34,6 @@ from ctr_training.config import (
     EVENTS_START_DATE_TEMPLATE,
     MLFLOW_TRACKING_URI,
     PERSONAS_PATH,
-    RETRAIN_NODE_SELECTOR,
-    RETRAIN_TOLERATIONS,
     TRAINING_IMAGE_TEMPLATE,
 )
 
@@ -83,28 +81,16 @@ with DAG(
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
             "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
         },
-        # 학습 Pod를 batch-spot 대신 전용 격리 노드풀(ctr-model-retrain,
-        # e2-standard-8)로 보낸다. batch-spot(5.88Gi)에서는 online_features
-        # 계산이 OOM되므로(Autoresearch#271), taint를 견디는 toleration과
-        # nodeSelector를 함께 지정한다. AutoresearchBatchPodOperator는 둘 다
-        # override 가능하다(node_selector #93, tolerations #115).
-        node_selector=RETRAIN_NODE_SELECTOR,
-        tolerations=RETRAIN_TOLERATIONS,
+        # 학습 Pod는 operator 기본값인 batch-spot 노드풀(e2-standard-2)에서
+        # 실행한다. 예전엔 build-features의 online_features 계산이 batch-spot
+        # (5.88Gi)에서 OOM되어(Autoresearch#271) 전용 큰 노드풀로 우회했으나,
+        # Autoresearch#284/#285가 이 계산을 (user, day) 그레인 daily 집계로
+        # 리팩터해 메모리 피크를 ~수백MB 수준으로 낮췄다(합성 168만 이벤트
+        # 4.4s / py-peak ~580MB). 따라서 batch-spot로 복귀하고 리소스도 원복한다.
         retries=1,
         execution_timeout=timedelta(hours=2),
-        # e2-standard-8(allocatable ~26Gi) 기준. memory_limit이 파드 상한이므로,
-        # 노드가 커도 이 값이 낮으면 online_features 피크에서 파드 레벨 OOM이
-        # 난다 — 실측된 피크(미상, batch-spot 5.88Gi 초과)를 넉넉히 덮도록 24Gi로
-        # 올린다. limits.memory는 네임스페이스 쿼터 대상이 아니라 크게 잡아도 된다.
-        #
-        # 반면 request는 낮게 유지한다: airflow 네임스페이스 ResourceQuota
-        # (airflow-quota)가 requests.memory를 8Gi로 제한하는데, 다른 pod가 이미
-        # ~1.8Gi를 쓰고 있어 큰 request는 쿼터 초과로 pod 생성이 403 거부된다.
-        # 학습 pod는 전용 격리 노드(다른 워크로드 없음)에 뜨므로, request가 낮아도
-        # 실제로는 limit(24Gi)까지 메모리를 쓸 수 있다 — request는 스케줄링/쿼터
-        # 회계용일 뿐 실사용 상한이 아니다.
         cpu_request="1",
         memory_request="2Gi",
-        cpu_limit="7",
-        memory_limit="24Gi",
+        cpu_limit="4",
+        memory_limit="8Gi",
     )

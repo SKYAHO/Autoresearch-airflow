@@ -50,28 +50,6 @@ PERSONAS_PATH = _airflow_env(
     "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet",
 )
 
-# 실 데이터 학습(events 170만+ 행)의 build-features 단계는 online_features
-# (compute_point_in_time_user_features) 계산에서 메모리 피크가 발생해, batch-spot
-# (e2-standard-2, allocatable ~5.88Gi)에서 재현성 있게 OOM된다(Autoresearch#271,
-# 2026-07-23 실측). 그래서 학습 Pod는 batch-spot이 아니라 전용 격리 노드풀
-# (ctr-model-retrain, e2-standard-8)로 보낸다. 이 풀은 scale-from-zero(평시 0대,
-# 비용 0)이고 taint(dedicated=ctr-model-retrain:NoSchedule)로 다른 워크로드와
-# 분리된다. 인프라 정의는 Autoresearch-infra의 gke.tf.
-RETRAIN_NODE_POOL = _airflow_env(
-    "AUTORESEARCH_TRAINING_NODE_POOL", "ctr-model-retrain"
-)
-RETRAIN_NODE_SELECTOR = {"cloud.google.com/gke-nodepool": RETRAIN_NODE_POOL}
-# Terraform taint는 effect=NO_SCHEDULE, k8s toleration은 effect=NoSchedule로
-# 표기가 다르다(양쪽이 맞아야 스케줄된다).
-RETRAIN_TOLERATIONS = [
-    {
-        "key": "dedicated",
-        "operator": "Equal",
-        "value": RETRAIN_NODE_POOL,
-        "effect": "NoSchedule",
-    }
-]
-
 # 이 DAG는 schedule=None(수동 트리거 전용)이라 스케줄 간격에서 자연스럽게
 # 기간을 얻을 수 없다. lake_to_bigquery_incremental DAG의 dag_run.conf
 # 오버라이드 + 계산된 기본값 컨벤션을 그대로 따른다. 기본 lookback을 7일로

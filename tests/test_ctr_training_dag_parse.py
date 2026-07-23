@@ -53,26 +53,24 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert task.kwargs["get_logs"] is True
     assert task.kwargs["do_xcom_push"] is False
 
-    # 학습 Pod는 batch-spot이 아니라 전용 격리 노드풀로 스케줄되어야 한다
-    # (Autoresearch#271 OOM 회피). node_selector + toleration이 짝을 이뤄야
-    # taint 걸린 노드에 들어간다.
+    # 학습 Pod는 operator 기본값인 batch-spot 노드풀에서 실행한다. online_features
+    # 계산이 Autoresearch#284/#285로 (user,day) daily 집계로 리팩터되어 메모리
+    # 피크가 낮아져, 전용 큰 노드풀 override 없이도 batch-spot(5.88Gi)에 들어간다.
+    # DAG가 node_selector/tolerations를 지정하지 않으면 operator가 batch-spot
+    # 기본값을 채운다.
     assert task.kwargs["node_selector"] == {
-        "cloud.google.com/gke-nodepool": "ctr-model-retrain"
+        "cloud.google.com/gke-nodepool": "batch-spot"
     }
     assert task.kwargs["tolerations"] == [
         {
-            "key": "dedicated",
+            "key": "workload",
             "operator": "Equal",
-            "value": "ctr-model-retrain",
+            "value": "batch-spot",
             "effect": "NoSchedule",
         }
     ]
-    # online_features 피크가 파드 상한에 막혀 큰 노드에서도 OOM나지 않도록
-    # memory_limit을 상향한다.
     resources = task.kwargs["container_resources"]
-    assert resources.limits["memory"] == "24Gi"
-    # request는 네임스페이스 ResourceQuota(requests.memory 8Gi) 안에 들어가도록
-    # 낮게 유지한다 — 전용 노드라 request가 낮아도 limit까지 실제로 쓴다.
+    assert resources.limits["memory"] == "8Gi"
     assert resources.requests["memory"] == "2Gi"
 
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
