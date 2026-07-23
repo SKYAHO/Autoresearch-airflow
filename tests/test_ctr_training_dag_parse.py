@@ -53,6 +53,26 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert task.kwargs["get_logs"] is True
     assert task.kwargs["do_xcom_push"] is False
 
+    # 학습 Pod는 batch-spot이 아니라 전용 격리 노드풀로 스케줄되어야 한다
+    # (Autoresearch#271 OOM 회피). node_selector + toleration이 짝을 이뤄야
+    # taint 걸린 노드에 들어간다.
+    assert task.kwargs["node_selector"] == {
+        "cloud.google.com/gke-nodepool": "ctr-model-retrain"
+    }
+    assert task.kwargs["tolerations"] == [
+        {
+            "key": "dedicated",
+            "operator": "Equal",
+            "value": "ctr-model-retrain",
+            "effect": "NoSchedule",
+        }
+    ]
+    # online_features 피크가 파드 상한에 막혀 큰 노드에서도 OOM나지 않도록
+    # memory_limit을 상향한다.
+    resources = task.kwargs["container_resources"]
+    assert resources.limits["memory"] == "24Gi"
+    assert resources.requests["memory"] == "8Gi"
+
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert env_by_name == {
         "MLFLOW_TRACKING_URI": "http://mlflow.mlflow:5000",
