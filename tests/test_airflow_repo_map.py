@@ -24,6 +24,11 @@ REQUIRED_TEXT = (
     "AUTORESEARCH_BATCH_IMAGE",
     "Autoresearch-infra",
     "airflow dags list-import-errors",
+    "유튜브 추천 공장",
+    "서비스의 문 앞",
+    "서비스 비유",
+    "kubectl config current-context",
+    "kubectl port-forward -n airflow svc/airflow-webserver 8080:8080",
 )
 
 

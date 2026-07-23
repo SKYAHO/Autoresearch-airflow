@@ -128,6 +128,26 @@
     td:first-child { color:var(--accent); font-family:var(--mono); white-space:nowrap; }
 
     .commands { display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(0, .85fr); gap:.8rem; }
+    .service-metaphor { border:1px solid var(--accent-2); background:var(--accent-soft); padding:1rem; }
+    .metaphor-kicker { color:var(--accent); font-family:var(--mono); font-size:.67rem; letter-spacing:.12em; }
+    .service-metaphor > p { color:var(--text-2); font-size:.84rem; margin:.45rem 0 0; max-width:60rem; }
+    .metaphor-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.55rem; margin-top:.9rem; }
+    .metaphor-item { border-top:1px solid var(--line); padding-top:.55rem; }
+    .metaphor-label { color:var(--text); font-size:.76rem; font-weight:700; }
+    .metaphor-item p { color:var(--text-2); font-size:.73rem; line-height:1.45; margin:.25rem 0 0; }
+    .command-groups { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.8rem; }
+    .command-card { border:1px solid var(--line); background:var(--surface); padding:.9rem; }
+    .command-card h3 { display:flex; gap:.55rem; align-items:baseline; }
+    .command-index { color:var(--accent); font-family:var(--mono); font-size:.68rem; letter-spacing:.1em; }
+    .command-card > p { color:var(--text-2); font-size:.76rem; line-height:1.5; }
+    .command-card pre { margin:.75rem 0; }
+    .command-expect, .command-next { border-top:1px solid var(--line-soft); color:var(--text-2); font-size:.72rem; padding-top:.55rem; }
+    .command-expect strong, .command-next strong { color:var(--text); }
+    .triage-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.6rem; }
+    .triage-card { border:1px solid var(--line); background:var(--surface-2); padding:.75rem; }
+    .triage-card h3 { color:var(--warn); font-family:var(--mono); font-size:.73rem; }
+    .triage-card p { color:var(--text-2); font-size:.72rem; line-height:1.45; }
+    .glossary-wide { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.55rem; }
     pre {
       background:var(--sunken); border:1px solid var(--line); color:var(--text-2); margin:0;
       overflow-x:auto; padding:1rem; font: .75rem/1.7 var(--mono); white-space:pre;
@@ -143,8 +163,8 @@
     @media (max-width:48rem) {
       .wrap { padding-inline:1rem; }
       header.top { padding-top:2rem; }
-      .card-grid, .runtime-grid, .commands { grid-template-columns:1fr; }
-      .glossary { grid-template-columns:1fr; }
+      .card-grid, .runtime-grid, .commands, .command-groups { grid-template-columns:1fr; }
+      .metaphor-grid, .triage-grid, .glossary, .glossary-wide { grid-template-columns:1fr; }
       .ops-flow { grid-template-columns:1fr; }
       .flow-step { min-height:0; }
       .flow-step:not(:last-child)::after { content:"↓"; right:auto; left:1rem; top:auto; bottom:-1.05rem; }
@@ -395,25 +415,84 @@
 
       <section id="ops-commands">
         <div class="section-head"><span class="idx">06</span><h2>운영 명령과 용어</h2></div>
-        <p class="section-note">아래 명령은 credential payload를 출력하지 않는 기본 확인용입니다. 상세 runbook은 <code>docs/gke-helm-gitsync.md</code>와 운영 문서를 기준으로 합니다.</p>
-        <div class="commands">
-          <pre aria-label="Airflow 운영 확인 명령">kubectl get pods -n airflow
-kubectl logs -n airflow airflow-scheduler-0 -c git-sync
-kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list
-kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-import-errors
-kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow pools get action_log_openrouter
-helm lint deploy/airflow</pre>
-          <div class="glossary">
-            <details open><summary>DAG</summary><p>실행할 task와 의존성, trigger, retry 정책을 선언한 Airflow workflow입니다.</p></details>
-            <details><summary>Dataset</summary><p>업스트림 데이터 갱신을 downstream DAG의 실행 조건으로 전달하는 Airflow 객체입니다.</p></details>
-            <details><summary>KPO</summary><p>KubernetesPodOperator. task마다 batch image Pod를 만들고 로그를 task log로 전달합니다.</p></details>
-            <details><summary>git-sync</summary><p>Airflow image와 분리된 DAG source를 scheduler pod에 동기화하는 sidecar입니다.</p></details>
-            <details><summary>Pool</summary><p>외부 API 같은 제한된 자원의 동시 실행 수를 Airflow task에 배분하는 슬롯입니다.</p></details>
-            <details><summary>KSA / GSA</summary><p>Kubernetes Service Account와 Google Service Account를 Workload Identity로 연결합니다.</p></details>
-            <details><summary>immutable digest</summary><p>태그가 움직여도 실행 artifact가 바뀌지 않도록 image를 sha256 digest로 고정한 값입니다.</p></details>
-            <details><summary>reschedule sensor</summary><p>대기 중 worker를 점유하지 않고 다음 poke 시점에 다시 예약되는 sensor 모드입니다.</p></details>
+        <p class="section-note">명령을 외우기보다 현재 서비스를 뒤에서 움직이는 공장의 어느 부분을 보는지부터 생각합니다. 아래 순서는 서비스의 문 앞 → 설계도 전달 → 처리량 게이트 → 운영자 입구를 확인하는 흐름입니다.</p>
+        <div class="service-metaphor">
+          <span class="metaphor-kicker">서비스와 연결해서 보면</span>
+          <p><strong>Autoresearch를 유튜브 추천 공장이라고 생각하면</strong>, Airflow는 고객 요청을 직접 처리하는 추천 API가 아니라 매일 추천에 필요한 재료를 수집·가공·검수·진열하는 뒤편 관제실입니다. <code>GCS·BigQuery·Feast</code>는 재료 창고와 장부이고, KPO는 작업마다 호출되는 임시 작업 차량입니다.</p>
+          <div class="metaphor-grid">
+            <div class="metaphor-item"><span class="metaphor-label">YouTube·action-log</span><p>공장에 들어오는 원재료와 고객 행동 기록입니다.</p></div>
+            <div class="metaphor-item"><span class="metaphor-label">DAG·Scheduler</span><p>오늘 어떤 재료를 어떤 순서로 처리할지 정하는 생산계획과 관제실입니다.</p></div>
+            <div class="metaphor-item"><span class="metaphor-label">GCS·BigQuery</span><p>파일을 보관하는 창고와 검수·조회용 장부입니다.</p></div>
+            <div class="metaphor-item"><span class="metaphor-label">Feast·Redis</span><p>검수된 feature를 빠르게 꺼내 쓰도록 진열하는 online 선반입니다.</p></div>
           </div>
         </div>
+        <div class="group-label">운영 명령 — 어디가 막혔는지 찾는 순서</div>
+        <div class="command-groups">
+          <article class="command-card">
+            <h3><span class="command-index">01</span>서비스의 문 앞 — 클러스터와 입구가 살아 있는가</h3>
+            <p>먼저 내가 어느 GKE 건물을 보고 있는지와 <code>airflow</code> namespace에 들어갈 권한이 있는지 확인합니다. Pod는 공장 안의 작업실이고 Service는 외부에서 찾는 접수 창구입니다.</p>
+            <pre aria-label="클러스터와 Airflow 서비스 확인 명령">kubectl config current-context
+kubectl auth can-i get pods -n airflow
+kubectl get pods -n airflow
+kubectl get svc airflow-webserver -n airflow</pre>
+            <p class="command-expect"><strong>정상 기대:</strong> 예상 context, 권한 허용, scheduler/webserver/git-sync가 Ready인 Pod, webserver Service가 보입니다.</p>
+            <p class="command-next"><strong>다음 확인:</strong> Pod가 없으면 배포·node 상태를, Service가 없으면 Helm release와 namespace를 먼저 봅니다.</p>
+          </article>
+
+          <article class="command-card">
+            <h3><span class="command-index">02</span>설계도 전달 — DAG가 최신 코드로 들어왔는가</h3>
+            <p><code>git-sync</code>는 공장 작업자에게 최신 설계도를 전달하는 배달원입니다. Scheduler가 DAG를 못 찾거나 import error를 내면 task 실행보다 먼저 전달·파싱을 확인합니다.</p>
+            <pre aria-label="DAG 전달과 파싱 확인 명령">kubectl logs -n airflow airflow-scheduler-0 -c git-sync --tail=80
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list
+kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-import-errors</pre>
+            <p class="command-expect"><strong>정상 기대:</strong> git-sync log에 대상 revision이 보이고, DAG 목록에 이름이 있으며, import error가 0건입니다.</p>
+            <p class="command-next"><strong>다음 확인:</strong> revision이 오래됐으면 repo·branch·subPath를, import error가 있으면 해당 파일과 provider dependency를 봅니다.</p>
+          </article>
+
+          <article class="command-card">
+            <h3><span class="command-index">03</span>처리량 게이트 — 외부 API 작업이 줄을 서는가</h3>
+            <p>action-log shard는 여러 작업 차량이 OpenRouter라는 하나의 톨게이트를 통과하는 구조입니다. Airflow Pool은 입구의 통과 슬롯이고, Pod 내부 concurrency는 차량 한 대가 동시에 처리하는 차선 수입니다.</p>
+            <pre aria-label="Airflow Pool 확인 명령">kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow pools get action_log_openrouter
+kubectl get pods -n airflow</pre>
+            <p class="command-expect"><strong>정상 기대:</strong> <code>action_log_openrouter</code>가 2 slots이고, shard task가 pool 때문에 무한 대기하지 않습니다.</p>
+            <p class="command-next"><strong>다음 확인:</strong> slot이 모두 사용 중이면 task를 무작정 늘리지 말고 shard 수·Pod concurrency·retry를 함께 확인합니다. 현재 최대 OpenRouter 요청 동시성은 <code>2 × 3 = 6</code>입니다.</p>
+          </article>
+
+          <article class="command-card">
+            <h3><span class="command-index">04</span>운영자 입구 — Webserver와 배포 결과를 확인하는가</h3>
+            <p>Webserver는 추천 서비스 자체가 아니라 Airflow 관제실의 프런트 데스크입니다. UI 접근이 필요할 때만 localhost로 문을 연결하고, 배포 변경은 chart가 렌더링 가능한지 먼저 검사합니다.</p>
+            <pre aria-label="Webserver 접근과 Helm 검증 명령">kubectl get deploy airflow-webserver -n airflow
+kubectl logs -n airflow deploy/airflow-webserver -c webserver --tail=80
+kubectl port-forward -n airflow svc/airflow-webserver 8080:8080
+helm lint deploy/airflow</pre>
+            <p class="command-expect"><strong>정상 기대:</strong> Webserver Deployment가 Ready이고 log에 반복 crash가 없으며, port-forward 후 <code>http://localhost:8080/login/</code>에 접근할 수 있습니다.</p>
+            <p class="command-next"><strong>다음 확인:</strong> port-forward는 현재 터미널을 점유하므로 확인 후 Ctrl-C로 종료합니다. Helm 오류는 cluster에 적용하기 전에 chart·values에서 수정합니다.</p>
+          </article>
+        </div>
+
+        <div class="group-label">장애 위치를 서비스 흐름으로 좁히기</div>
+        <div class="triage-grid">
+          <article class="triage-card"><h3>Pod가 없다</h3><p>공장 건물 자체가 열리지 않은 상태입니다. namespace, Helm release, node pool과 deployment를 먼저 확인합니다.</p></article>
+          <article class="triage-card"><h3>DAG가 목록에 없다</h3><p>설계도가 작업실까지 오지 않은 상태입니다. git-sync revision·branch·subPath와 Scheduler parse를 확인합니다.</p></article>
+          <article class="triage-card"><h3>DAG는 있는데 멈췄다</h3><p>생산계획은 있지만 순서표가 다음 작업을 호출하지 못한 상태입니다. schedule, Dataset, dependency, Pool을 확인합니다.</p></article>
+          <article class="triage-card"><h3>task가 실패했다</h3><p>작업 차량이 현장에서 멈춘 상태입니다. Airflow task log에서 batch stdout과 Pod 원인을 확인하고 image digest·Secret·Workload Identity를 구분합니다.</p></article>
+        </div>
+
+        <div class="group-label">용어 — 정의보다 서비스에서의 역할로 이해하기</div>
+        <div class="glossary-wide">
+          <details open><summary>DAG</summary><p><strong>정의:</strong> task, 의존성, trigger, retry 정책을 선언한 workflow입니다. <strong>서비스 비유:</strong> 오늘의 유튜브 재료를 수집하고 action-log를 만들고 검수하는 생산라인 도면입니다. <strong>운영 의미:</strong> 계산 코드를 고치는지, 순서·실행 조건을 고치는지 구분하는 첫 경계입니다.</p></details>
+          <details><summary>Dataset</summary><p><strong>정의:</strong> upstream 데이터 갱신을 downstream DAG의 실행 조건으로 전달합니다. <strong>서비스 비유:</strong> 창고에 재료가 입고됐다는 호출벨입니다. <strong>운영 의미:</strong> <code>feast_offline_feature_build</code>는 raw Dataset 두 개가 모두 갱신돼야 시작합니다.</p></details>
+          <details><summary>KPO</summary><p><strong>정의:</strong> KubernetesPodOperator로 task마다 batch image Pod를 만듭니다. <strong>서비스 비유:</strong> 주문 한 건마다 필요한 도구를 실은 임시 작업 차량입니다. <strong>운영 의미:</strong> Pod가 실패하면 DAG 코드뿐 아니라 image digest, Pod ServiceAccount, Secret, node scheduling도 함께 봐야 합니다.</p></details>
+          <details><summary>git-sync</summary><p><strong>정의:</strong> Airflow image와 분리된 DAG source를 scheduler Pod에 동기화하는 sidecar입니다. <strong>서비스 비유:</strong> 중앙 설계도 보관소에서 작업실로 최신 도면을 배달하는 사람입니다. <strong>운영 의미:</strong> DAG 변경인데 image를 다시 빌드하기 전에 revision과 <code>dags/</code> subPath를 확인합니다.</p></details>
+          <details><summary>Pool</summary><p><strong>정의:</strong> 제한된 자원의 동시 실행 수를 슬롯으로 제어합니다. <strong>서비스 비유:</strong> OpenRouter 톨게이트의 통과 차단기입니다. <strong>운영 의미:</strong> 현재 <code>action_log_openrouter</code>는 2 slots이고 shard 내부 concurrency 3과 곱해 최대 6개 요청을 만듭니다.</p></details>
+          <details><summary>KSA / GSA</summary><p><strong>정의:</strong> Kubernetes Service Account와 Google Service Account를 Workload Identity로 연결합니다. <strong>서비스 비유:</strong> Pod의 사원증과 GCP 시설 출입 여권입니다. <strong>운영 의미:</strong> 키 파일을 넣지 않고도 GCS·BigQuery·Redis·Secret Manager 접근이 되는지 확인하는 인증 경계입니다.</p></details>
+          <details><summary>immutable digest</summary><p><strong>정의:</strong> image를 sha256 digest로 고정한 실행 artifact입니다. <strong>서비스 비유:</strong> 내용물을 봉인하고 봉인번호를 기록한 배송 상자입니다. <strong>운영 의미:</strong> application image rollback과 DAG revision rollback을 서로 독립된 자산으로 선택할 수 있습니다.</p></details>
+          <details><summary>reschedule sensor</summary><p><strong>정의:</strong> 기다리는 동안 worker를 점유하지 않고 다음 poke 시점에 다시 예약하는 sensor 모드입니다. <strong>서비스 비유:</strong> 직원이 문 앞에서 계속 서 있지 않고 대기표를 받아 돌아오는 방식입니다. <strong>운영 의미:</strong> GCS partition 도착을 기다리면서 worker를 붙잡지 않지만 timeout과 재처리 날짜는 확인해야 합니다.</p></details>
+          <details><summary>metadata DB / Cloud SQL</summary><p><strong>정의:</strong> Airflow의 DAG run, task state, pool과 운영 메타데이터를 저장합니다. <strong>서비스 비유:</strong> 관제실이 남기는 생산일지와 작업 이력 장부입니다. <strong>운영 의미:</strong> GCS·BigQuery 데이터와 다른 저장소이며, 현재 배포는 내장 PostgreSQL 대신 private IP Cloud SQL을 사용합니다.</p></details>
+          <details><summary>Webserver Service</summary><p><strong>정의:</strong> Airflow UI를 노출하는 Kubernetes Service입니다. <strong>서비스 비유:</strong> 공장 내부 관제실로 들어가는 방문자 접수 창구입니다. <strong>운영 의미:</strong> UI 입구가 안 보이는 문제와 실제 batch task가 실패한 문제를 분리해서 확인해야 합니다.</p></details>
+        </div>
+
+        <div class="callout"><strong>보안 메모:</strong> 위 명령은 상태·로그·권한만 확인하며 Secret payload, API key, kubeconfig, service account key를 출력하지 않습니다. 실제 배포·rollback 세부 절차는 <code>docs/gke-helm-gitsync.md</code>와 관련 운영 문서를 기준으로 합니다.</div>
       </section>
     </main>
 
