@@ -34,6 +34,8 @@ from ctr_training.config import (
     EVENTS_START_DATE_TEMPLATE,
     MLFLOW_TRACKING_URI,
     PERSONAS_PATH,
+    RETRAIN_NODE_SELECTOR,
+    RETRAIN_TOLERATIONS,
     TRAINING_IMAGE_TEMPLATE,
 )
 
@@ -81,10 +83,21 @@ with DAG(
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
             "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
         },
+        # 학습 Pod를 batch-spot 대신 전용 격리 노드풀(ctr-model-retrain,
+        # e2-standard-8)로 보낸다. batch-spot(5.88Gi)에서는 online_features
+        # 계산이 OOM되므로(Autoresearch#271), taint를 견디는 toleration과
+        # nodeSelector를 함께 지정한다. AutoresearchBatchPodOperator는 둘 다
+        # override 가능하다(node_selector #93, tolerations #115).
+        node_selector=RETRAIN_NODE_SELECTOR,
+        tolerations=RETRAIN_TOLERATIONS,
         retries=1,
         execution_timeout=timedelta(hours=2),
-        cpu_request="1",
-        memory_request="2Gi",
-        cpu_limit="4",
-        memory_limit="8Gi",
+        # e2-standard-8(allocatable ~26Gi) 기준. memory_limit이 파드 상한이므로,
+        # 노드가 커도 이 값이 낮으면 online_features 피크에서 파드 레벨 OOM이
+        # 난다 — 실측된 피크(미상, batch-spot 5.88Gi 초과)를 넉넉히 덮도록 24Gi로
+        # 올리고, 시스템/DaemonSet 몫으로 노드에 여유를 남긴다.
+        cpu_request="2",
+        memory_request="8Gi",
+        cpu_limit="7",
+        memory_limit="24Gi",
     )
