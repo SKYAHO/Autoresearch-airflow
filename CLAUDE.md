@@ -26,6 +26,12 @@ PR 제목/본문, issue 제목/본문도 한국어 격식체로 작성합니다.
 - umbrella chart의 `values.yaml`이 dev 운영 설정의 기준이며, 신규 환경 구성은
   `values.example.yaml`을 복사해서 사용합니다.
 
+## Documentation Navigation
+
+| 요청 유형 | 먼저 볼 문서 | 다음 문서 |
+| --- | --- | --- |
+| 모델 선택·에이전트 위임 | `.claude/docs/agent-model-selection.md` | `CLAUDE.md`의 Verification·Review Guidance |
+
 ## Core Rules
 
 - Kubernetes Secret 값, API key, GCP service account key JSON, kubeconfig를 커밋하지 않습니다.
