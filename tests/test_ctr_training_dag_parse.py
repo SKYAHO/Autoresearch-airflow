@@ -2,7 +2,11 @@ import importlib.util
 from datetime import timedelta
 from pathlib import Path
 
-from airflow_stubs import forget_pipeline_packages, install_airflow_stubs
+from airflow_stubs import (
+    FakeDataset,
+    forget_pipeline_packages,
+    install_airflow_stubs,
+)
 
 
 DAGS_ROOT = Path(__file__).resolve().parents[1] / "dags"
@@ -21,7 +25,15 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     spec.loader.exec_module(module)
 
     dag = module.dag
-    assert dag.kwargs["schedule"] is None
+    assert dag.kwargs["schedule"] == [
+        FakeDataset(
+            "bigquery://ar-infra-501607/data_lake_raw/"
+            "data_lake_youtube_trending_kr"
+        ),
+        FakeDataset(
+            "bigquery://ar-infra-501607/data_lake_raw/data_lake_action_log"
+        ),
+    ]
     assert dag.kwargs["max_active_runs"] == 1
     assert list(dag.task_dict) == ["train_ctr_model"]
 
@@ -43,7 +55,7 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
         "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet",
         "--events-start-date",
         "{{ dag_run.conf.get('events_start_date') "
-        "or data_interval_end.subtract(days=7).in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",
+        "or data_interval_end.subtract(days=6).in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",
         "--events-end-date",
         "{{ dag_run.conf.get('events_end_date') "
         "or data_interval_end.in_timezone('Asia/Seoul').strftime('%Y-%m-%d') }}",
