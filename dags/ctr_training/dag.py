@@ -81,32 +81,22 @@ with DAG(
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
             "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
         },
-        # Autoresearch#284/#285가 online_features를 daily 집계로 리팩터해 메모리
-        # 피크가 ~수백MB로 낮아져(합성 168만 이벤트 4.4s/py-peak ~580MB) 작은
-        # 노드로 충분하다. 다만 operator 기본값 batch-spot(E2)은 리전 E2_CPUS
-        # 쿼터(한도 8, 기존 E2 노드가 소진)로 scale-up이 실패하므로, N2 쿼터에
-        # 여유가 있는 ctr-model-retrain(n2-highmem-4) 노드풀로 보낸다.
-        node_selector={"cloud.google.com/gke-nodepool": "ctr-model-retrain"},
-        tolerations=[
-            {
-                "key": "dedicated",
-                "operator": "Equal",
-                "value": "ctr-model-retrain",
-                "effect": "NoSchedule",
-            }
-        ],
+        # 학습 Pod는 operator 기본값 batch-spot 노드풀에서 실행한다
+        # (node_selector/tolerations 미지정 → operator가 batch-spot 기본값을 채움).
+        # #271 OOM 회피용으로 전용 ctr-model-retrain(n2) 노드풀 + memory_limit
+        # 20Gi로 override했던 것을 원복한다(#128) — Autoresearch 쪽에서 #271이
+        # 코드로 해결됐고(#285 daily 집계 / #290 COPY 스트리밍 / #292 DuckDB
+        # memory_limit / #294 정렬 제거 / #298 트렌딩 스냅샷 중복 제거), 정식 DAG
+        # 재실측(run remeasure_298_v13, 2026-07-24) success 완주 + 피크 메모리
+        # 1.6GB로 확인돼 batch-spot(e2-standard-2=5.88Gi)에 충분히 들어간다.
+        # 전용 노드풀 자체 teardown은 Autoresearch-infra(Terraform).
         retries=1,
         execution_timeout=timedelta(hours=2),
         cpu_request="1",
         memory_request="2Gi",
         cpu_limit="4",
-        # Autoresearch#285가 online_features OOM(#271)은 고쳤으나(~600MB로 통과),
-        # 그 다음 build-features의 training_dataset 조립(joined) 단계가 177만행
-        # × 21컬럼(문자열 다수)을 pandas로 materialize하며 ~8GB로 튀어 8Gi에서
-        # OOMKilled됐다(2026-07-23 실측). 이는 pathological 폭발이 아니라 학습셋
-        # 자체 크기라, 파드 상한을 올려 재학습을 완주시킨다(n2-highmem-4=32GB).
-        # request는 네임스페이스 쿼터(requests.memory 8Gi) 안에 두고 limit만 올린다
-        # (쿼터는 limits.memory를 제한하지 않는다). joined 단계 자체의 메모리
-        # 최적화(청크/스트리밍)는 Autoresearch#271 후속.
-        memory_limit="20Gi",
+        # memory_limit은 #126/#127 override 이전 batch-spot 값(8Gi)으로 원복한다.
+        # 재실측 피크 1.6GB라 여유가 크다. request는 네임스페이스 쿼터
+        # (requests.memory) 안에 두고 limit만 노드 용량 범위에서 잡는다.
+        memory_limit="8Gi",
     )
