@@ -53,24 +53,24 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert task.kwargs["get_logs"] is True
     assert task.kwargs["do_xcom_push"] is False
 
-    # 학습 Pod는 operator 기본값인 batch-spot 노드풀에서 실행한다. online_features
-    # 계산이 Autoresearch#284/#285로 (user,day) daily 집계로 리팩터되어 메모리
-    # 피크가 낮아져, 전용 큰 노드풀 override 없이도 batch-spot(5.88Gi)에 들어간다.
-    # DAG가 node_selector/tolerations를 지정하지 않으면 operator가 batch-spot
-    # 기본값을 채운다.
+    # 학습 Pod는 operator 기본값인 batch-spot 노드풀에서 실행한다. #271 OOM 회피용
+    # ctr-model-retrain(n2) + 20Gi override를 원복했다(#128) — Autoresearch에서 #271이
+    # 코드로 해결되고 재실측(remeasure_298_v13) 피크 1.6GB로 확인돼 batch-spot
+    # (5.88Gi)에 들어간다. DAG가 node_selector/tolerations를 지정하지 않으면
+    # operator가 batch-spot 기본값을 채운다.
     assert task.kwargs["node_selector"] == {
-        "cloud.google.com/gke-nodepool": "ctr-model-retrain"
+        "cloud.google.com/gke-nodepool": "batch-spot"
     }
     assert task.kwargs["tolerations"] == [
         {
-            "key": "dedicated",
+            "key": "workload",
             "operator": "Equal",
-            "value": "ctr-model-retrain",
+            "value": "batch-spot",
             "effect": "NoSchedule",
         }
     ]
     resources = task.kwargs["container_resources"]
-    assert resources.limits["memory"] == "20Gi"
+    assert resources.limits["memory"] == "8Gi"
     assert resources.requests["memory"] == "2Gi"
 
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
