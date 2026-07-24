@@ -39,62 +39,8 @@ def test_feast_materialize_runs_once_daily_on_cron(monkeypatch) -> None:
     # 하루 1회 KST 00:00 cron. upstream Dataset을 기다리지 않는다.
     assert dag.kwargs["schedule"] == "0 0 * * *"
     assert list(dag.task_dict) == [
-        "apply_feature_registry",
         "materialize_online_store",
     ]
-
-
-def test_feast_materialize_applies_registry_before_materialize(monkeypatch) -> None:
-    module = _load_dag_module(monkeypatch)
-    apply_task = module.dag.task_dict["apply_feature_registry"]
-    materialize_task = module.dag.task_dict["materialize_online_store"]
-
-    # registry 갱신이 먼저 성공해야 materialize가 실행된다.
-    assert apply_task.downstream_task_ids == {"materialize_online_store"}
-    assert materialize_task.downstream_task_ids == set()
-
-
-def test_feast_apply_uses_public_batch_contract(monkeypatch) -> None:
-    module = _load_dag_module(monkeypatch)
-    task = module.dag.task_dict["apply_feature_registry"]
-
-    assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
-    assert "cmds" not in task.kwargs
-    assert task.kwargs["arguments"] == [
-        "python",
-        "-m",
-        "autoresearch.jobs.feast_apply",
-    ]
-    assert task.kwargs["execution_timeout"] == timedelta(minutes=30)
-    assert task.kwargs["retries"] == 1
-    assert task.kwargs["get_logs"] is True
-    assert task.kwargs["do_xcom_push"] is False
-    assert task.kwargs["node_selector"] == {}
-    assert task.kwargs["tolerations"] == [
-        {
-            "key": "workload",
-            "operator": "Equal",
-            "value": "batch-spot",
-            "effect": "NoSchedule",
-        }
-    ]
-    # registry 적용은 metadata 연산이라 materialize보다 작은 자원을 요청한다.
-    resources = task.kwargs["container_resources"]
-    assert resources.requests == {"cpu": "1", "memory": "2Gi"}
-    assert resources.limits == {"cpu": "2", "memory": "4Gi"}
-
-
-def test_feast_apply_shares_materialize_environment(monkeypatch) -> None:
-    module = _load_dag_module(monkeypatch)
-    apply_task = module.dag.task_dict["apply_feature_registry"]
-    materialize_task = module.dag.task_dict["materialize_online_store"]
-
-    def _environment(task) -> dict[str, str]:
-        return {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
-
-    # apply는 feature_definitions의 BigQuery 설정과 feature_store.yaml의
-    # registry/staging/Redis 설정을 모두 쓰므로 materialize와 같은 집합이 필요하다.
-    assert _environment(apply_task) == _environment(materialize_task)
 
 
 def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -> None:
