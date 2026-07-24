@@ -34,3 +34,6 @@ airflow-diagnostics*.log
 
 # Playwright MCP browser snapshots
 .playwright-mcp/
+
+# Personal working notes (brainstorming/plans), not for shared repo
+docs/superpowers/
