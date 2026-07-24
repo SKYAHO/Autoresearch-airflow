@@ -73,9 +73,7 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "AUTORESEARCH_BATCH_IMAGE" in source
     assert "youtube_gcs_action_log_pipeline" in production_source
     assert "collect_youtube_trending_partition" in source
-    assert "ensure_action_log_shards" in source
-    assert "ensure_action_log_shard_" in source
-    assert "merge_action_log_partition" in source
+    assert "ensure_action_log_partition" in source
     assert "validate_action_log_partition" in source
     assert "schedule=\"0 0 * * *\"" in production_source
     assert "datetime(2026, 7, 12" in production_source
@@ -89,7 +87,7 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "do_xcom_push=False" in source
     assert "trigger_rule='all_success'" in source
     assert (
-        "collect_youtube_trending_partition >> ensure_action_log_shards >> merge_action_log_partition"
+        "collect_youtube_trending_partition >> ensure_action_log_partition >> validate_action_log_partition"
         in source
     )
     assert "--api-key" not in source
@@ -533,8 +531,8 @@ def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
     assert runtime_check.is_file()
     check_source = runtime_check.read_text(encoding="utf-8")
     assert "DagBag" in check_source
-    assert '"youtube_gcs_action_log_pipeline": 8' in check_source
-    assert '"youtube_gcs_action_log_pipeline_qa": 8' in check_source
+    assert '"youtube_gcs_action_log_pipeline": 3' in check_source
+    assert '"youtube_gcs_action_log_pipeline_qa": 3' in check_source
     assert '"youtube_backfill_kr": 1' in check_source
     assert '"ctr_model_training": 1' in check_source
     assert "dag.on_success_callback is not notify_dag_success" in check_source
@@ -622,7 +620,7 @@ def test_gke_deploy_workflow_preserves_the_dag_state_and_verifies_runtime() -> N
     assert 'airflow_cli "DAG import error 조회" dags list-import-errors --output json' in workflow
     assert "Airflow CLI가 아직 준비되지 않았습니다" in workflow
     assert "for attempt in $(seq 1 12)" in workflow
-    assert "production DAG task 수가 기대값(8)과 다릅니다" in workflow
+    assert "production DAG task 수가 기대값(3)과 다릅니다" in workflow
     assert "feast_online_store_materialize" in workflow
     assert "Feast materialize DAG task 수가 기대값(1)과 다릅니다" in workflow
     assert "feast_offline_feature_build" in workflow

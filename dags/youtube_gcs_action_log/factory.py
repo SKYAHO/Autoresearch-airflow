@@ -20,9 +20,8 @@ from common.email_notifications import notify_dag_failure, notify_dag_success
 from youtube_gcs_action_log.config import (
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
-    build_public_action_log_merge_kpo_arguments,
     build_public_action_log_quality_kpo_arguments,
-    build_public_action_log_shard_kpo_arguments,
+    build_public_action_log_single_kpo_arguments,
     build_public_youtube_trending_kpo_arguments,
 )
 from youtube_gcs_action_log.dag_run_macros import (
@@ -65,22 +64,6 @@ _OPENROUTER_ENV_DEFAULTS = {
 }
 
 
-def _positive_int_variable(name: str, default: int) -> int:
-    """Read a positive integer Airflow Variable at DAG parse time."""
-
-    raw_value = _airflow_env(name, str(default))
-    try:
-        value = int(raw_value)
-    except ValueError as exc:
-        raise DagConfigurationError(
-            f"{name} must be a positive integer: {raw_value}"
-        ) from exc
-    if value < 1:
-        raise DagConfigurationError(f"{name} must be a positive integer: {raw_value}")
-    return value
-
-
-_ACTION_LOG_SHARD_COUNT = _positive_int_variable("ACTION_LOG_SHARD_COUNT", 5)
 _PRODUCTION_BATCH_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
 _QA_BATCH_IMAGE_TEMPLATE = (
     "{{ var.value.get('AUTORESEARCH_BATCH_IMAGE_OVERRIDE', "
@@ -89,7 +72,7 @@ _QA_BATCH_IMAGE_TEMPLATE = (
 
 
 def _openrouter_runtime_env() -> dict[str, str]:
-    """Collect non-secret OpenRouter resilience settings for shard pods."""
+    """Collect non-secret OpenRouter resilience settings for the action-log pod."""
 
     env = {
         name: _airflow_env(name, default)
@@ -129,17 +112,8 @@ class ActionLogTasks:
             memory_limit="4Gi",
         )
 
-    def action_log_shards(self) -> list[AutoresearchBatchPodOperator]:
-        return [
-            self._action_log_shard(shard_index)
-            for shard_index in range(_ACTION_LOG_SHARD_COUNT)
-        ]
-
-    def _action_log_shard(self, shard_index: int) -> AutoresearchBatchPodOperator:
-        arguments = build_public_action_log_shard_kpo_arguments(
-            _ACTION_LOG_SETTINGS,
-            shard_index=shard_index,
-        )
+    def action_log(self) -> AutoresearchBatchPodOperator:
+        arguments = build_public_action_log_single_kpo_arguments(_ACTION_LOG_SETTINGS)
         if self._max_users is not None:
             candidates_position = arguments.index("--candidates-per-user")
             arguments[candidates_position:candidates_position] = [
@@ -147,7 +121,7 @@ class ActionLogTasks:
                 str(self._max_users),
             ]
         return AutoresearchBatchPodOperator(
-            task_id=f"ensure_action_log_shard_{shard_index:03d}",
+            task_id="ensure_action_log_partition",
             image=self._image,
             module="autoresearch.jobs.action_log",
             arguments=arguments,
@@ -160,25 +134,8 @@ class ActionLogTasks:
             retries=1,
             retry_delay=timedelta(minutes=10),
             execution_timeout=timedelta(hours=6, minutes=30),
-            labels={"shard": f"{shard_index:03d}"},
             cpu_request="250m",
             memory_request="512Mi",
-            cpu_limit="2",
-            memory_limit="4Gi",
-        )
-
-    def merge_action_log(self) -> AutoresearchBatchPodOperator:
-        return AutoresearchBatchPodOperator(
-            task_id="merge_action_log_partition",
-            image=self._image,
-            module="autoresearch.jobs.action_log",
-            arguments=build_public_action_log_merge_kpo_arguments(_ACTION_LOG_SETTINGS),
-            pipeline="youtube-action-log",
-            retries=1,
-            trigger_rule="all_success",
-            execution_timeout=timedelta(minutes=30),
-            cpu_request="500m",
-            memory_request="1Gi",
             cpu_limit="2",
             memory_limit="4Gi",
         )
@@ -242,14 +199,12 @@ def build_youtube_gcs_action_log_pipeline(
             collect_youtube_trending_partition = tasks.collect_youtube_trending()
 
         with TaskGroup(group_id="action_log_partition", prefix_group_id=False):
-            ensure_action_log_shards = tasks.action_log_shards()
-            merge_action_log_partition = tasks.merge_action_log()
+            ensure_action_log_partition = tasks.action_log()
             validate_action_log_partition = tasks.validate_action_log()
 
         (
             collect_youtube_trending_partition
-            >> ensure_action_log_shards
-            >> merge_action_log_partition
+            >> ensure_action_log_partition
             >> validate_action_log_partition
         )
 
