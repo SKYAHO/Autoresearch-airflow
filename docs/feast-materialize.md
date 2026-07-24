@@ -11,23 +11,44 @@ upstream 완료 직후 동기화가 필요해지면 `common.datasets`의
 병행할 수 있다. feature build 상세는
 [`docs/feature-store-build.md`](feature-store-build.md)를 참고한다.
 
-materialize task는 Feast 전용 이미지에서 다음 공개 명령을 실행한다.
+## 실행 순서
+
+DAG는 `materialize_online_store` 단일 task만 실행한다. Feast 전용 이미지에서
+공개 batch 명령을 인자 없이 실행한다.
 
 ```text
-python -m autoresearch.jobs.feast_materialize
+materialize_online_store   (python -m autoresearch.jobs.feast_materialize)
 ```
 
-명령에 날짜 인자를 전달하지 않으므로 `FeatureStore.materialize_incremental()`이
-registry에 기록된 watermark부터 현재 시각까지의 구간을 처리한다. Airflow task의
-재시도와 동일 logical date의 DAG 재실행은 별도의 날짜 범위 중복을 만들지 않는다.
+FeatureView 정의(registry) 반영은 이 DAG의 소관이 아니다. `SKYAHO/Autoresearch`
+저장소의 feast-apply GitHub Actions 워크플로우가 피처 정의 파일이 main에
+merge될 때 자동으로 registry apply를 수행하며, 동작은 검증 완료됐다.
+`materialize_online_store`는 실행 시점에 GCS registry에 반영돼 있는 FeatureView
+정의를 그대로 읽는다.
+
+`materialize_online_store`는 날짜 인자를 전달받지 않으므로
+`FeatureStore.materialize_incremental()`이 registry에 기록된 watermark부터 현재
+시각까지의 구간을 처리한다. Airflow task의 재시도와 동일 logical date의 DAG
+재실행은 별도의 날짜 범위 중복을 만들지 않는다.
+
+운영상 반드시 알아야 할 점은 다음과 같다.
+
+- **registry 최신 여부는 GitHub Actions merge 이력에 달려 있다.** 이 DAG는
+  registry를 갱신하지 않고 읽기만 하므로, FeatureView 정의 변경이 main에
+  merge되지 않았다면 이 DAG는 낡은 registry로 materialize를 수행한다.
+- **materialize는 registry의 삭제도 반영한다.** feast-apply 워크플로우가
+  코드에서 사라진 FeatureView를 registry에서 제거하면, 이후 이 DAG의 run은
+  해당 view의 Redis online 데이터를 더 이상 갱신하지 않는다.
 
 ## GKE 배치
 
 `materialize_online_store`는 `batch-spot` node pool만 사용하도록 강제하지 않는다.
 Spot node의 taint toleration은 유지하므로 해당 node가 수용 가능하면 배치될 수 있다.
 그러나 Spot 용량이 없거나 CPU·메모리가 부족하면, selector 불일치로 대기하지 않고
-기존 일반 node pool에도 배치될 수 있다. 이 정책은 Feast materialize task에만
-적용하며, 다른 batch task의 `batch-spot` 기본 selector는 변경하지 않는다.
+기존 일반 node pool에도 배치될 수 있다. 이 정책은 이 DAG의 task에만 적용하며,
+다른 batch task의 `batch-spot` 기본 selector는 변경하지 않는다.
+
+자원 요청은 `2`/`4Gi` request와 2시간 timeout을 쓴다.
 
 ## 배포 변수
 
@@ -75,8 +96,9 @@ BigQuery job/read session, Feast registry/staging bucket 권한은 batch GSA에 
 
 ## 첫 실행 전 점검
 
-1. FeatureView 변경이 있었다면 애플리케이션 배포 절차에서 `feast apply`를 먼저
-   실행한다. materialize DAG는 registry를 변경하지 않는다.
+1. FeatureView 변경이 있었다면 `SKYAHO/Autoresearch`의 feast-apply GitHub
+   Actions 워크플로우가 main merge 시점에 registry에 반영했는지 확인한다. 이
+   DAG는 registry를 갱신하지 않는다.
 2. 위 인프라 선행 조건을 Terraform apply로 반영한다.
 3. Airflow 배포가 새 Feast image digest와 DAG를 반영했는지 확인한다.
 4. `feast_online_store_materialize`를 unpause한다. 이후 매일 KST 00:00에
@@ -89,6 +111,9 @@ BigQuery job/read session, Feast registry/staging bucket 권한은 batch GSA에 
 - upstream(feature build)이 실패해도 이 DAG는 cron대로 실행된다. 그 경우 갱신되지
   않은 offline store를 그대로 동기화하므로 online store가 낡은 상태로 남는다.
   feature build를 고쳐 재실행한 뒤 필요하면 이 DAG를 수동 트리거한다.
+- registry가 낡은 상태라면(feast-apply 워크플로우 실패 또는 merge 누락) 원인은
+  `SKYAHO/Autoresearch` 저장소의 feast-apply 워크플로우에서 확인한다. 이 DAG를
+  재실행해도 registry 자체는 갱신되지 않는다.
 - Redis 연결 실패는 batch GSA의 IAM, CA Secret accessor, PSC 6379 egress를 순서대로
   확인한다.
 - image 또는 code archive 호환성 문제는 마지막 정상

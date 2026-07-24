@@ -81,10 +81,22 @@ with DAG(
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
             "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
         },
+        # 학습 Pod는 operator 기본값 batch-spot 노드풀에서 실행한다
+        # (node_selector/tolerations 미지정 → operator가 batch-spot 기본값을 채움).
+        # #271 OOM 회피용으로 전용 ctr-model-retrain(n2) 노드풀 + memory_limit
+        # 20Gi로 override했던 것을 원복한다(#128) — Autoresearch 쪽에서 #271이
+        # 코드로 해결됐고(#285 daily 집계 / #290 COPY 스트리밍 / #292 DuckDB
+        # memory_limit / #294 정렬 제거 / #298 트렌딩 스냅샷 중복 제거), 정식 DAG
+        # 재실측(run remeasure_298_v13, 2026-07-24) success 완주 + 피크 메모리
+        # 1.6GB로 확인돼 batch-spot(e2-standard-2=5.88Gi)에 충분히 들어간다.
+        # 전용 노드풀 자체 teardown은 Autoresearch-infra(Terraform).
         retries=1,
         execution_timeout=timedelta(hours=2),
         cpu_request="1",
         memory_request="2Gi",
         cpu_limit="4",
+        # memory_limit은 #126/#127 override 이전 batch-spot 값(8Gi)으로 원복한다.
+        # 재실측 피크 1.6GB라 여유가 크다. request는 네임스페이스 쿼터
+        # (requests.memory) 안에 두고 limit만 노드 용량 범위에서 잡는다.
         memory_limit="8Gi",
     )

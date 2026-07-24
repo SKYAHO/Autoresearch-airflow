@@ -38,7 +38,9 @@ def test_feast_materialize_runs_once_daily_on_cron(monkeypatch) -> None:
     }
     # 하루 1회 KST 00:00 cron. upstream Dataset을 기다리지 않는다.
     assert dag.kwargs["schedule"] == "0 0 * * *"
-    assert list(dag.task_dict) == ["materialize_online_store"]
+    assert list(dag.task_dict) == [
+        "materialize_online_store",
+    ]
 
 
 def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -> None:

@@ -12,8 +12,10 @@ upstream 완료 직후 동기화가 필요해지면 Dataset 트리거(``common.d
 ``FEAST_OFFLINE_FEATURES``)로 되돌리거나 ``DatasetOrTimeSchedule``로 cron과
 병행할 수 있다.
 
-FeatureView 정의 변경은 이 DAG와 분리해 ``feast apply``로 먼저 registry에 반영해야
-한다.
+FeatureView 정의(registry) 반영은 이 DAG의 소관이 아니다. ``SKYAHO/Autoresearch``
+저장소의 feast-apply GitHub Actions 워크플로우가 피처 정의 파일이 main에 merge될
+때 자동으로 registry apply를 수행한다. 이 DAG는 실행 시점에 GCS registry에 반영돼
+있는 FeatureView 정의를 그대로 읽어 materialize만 수행한다.
 """
 
 from __future__ import annotations
@@ -41,6 +43,20 @@ from feast_materialize.config import (
 
 _KST = ZoneInfo("Asia/Seoul")
 
+# materialize는 ``feature_store.yaml``의 ``${VAR}`` 치환에 이 값들을 사용한다.
+# registry/staging/Redis 접속 정보가 모두 필요하다.
+_FEAST_PLAIN_ENV = {
+    "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
+    "GCP_PROJECT_ID": GCP_PROJECT_ID,
+    "BQ_DATASET": BQ_DATASET,
+    "BQ_LOCATION": BQ_LOCATION,
+    "GCS_REGISTRY_PATH": GCS_REGISTRY_PATH,
+    "GCS_STAGING_LOCATION": GCS_STAGING_LOCATION,
+    "REDIS_HOST": REDIS_HOST,
+    "REDIS_PORT": REDIS_PORT,
+    "REDIS_CA_SECRET_ID": REDIS_CA_SECRET_ID,
+}
+
 
 with DAG(
     dag_id="feast_online_store_materialize",
@@ -61,17 +77,7 @@ with DAG(
         # 인자를 비워 Feast registry watermark 기반 incremental mode를 사용한다.
         arguments=[],
         pipeline="feast-materialize",
-        plain_env={
-            "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
-            "GCP_PROJECT_ID": GCP_PROJECT_ID,
-            "BQ_DATASET": BQ_DATASET,
-            "BQ_LOCATION": BQ_LOCATION,
-            "GCS_REGISTRY_PATH": GCS_REGISTRY_PATH,
-            "GCS_STAGING_LOCATION": GCS_STAGING_LOCATION,
-            "REDIS_HOST": REDIS_HOST,
-            "REDIS_PORT": REDIS_PORT,
-            "REDIS_CA_SECRET_ID": REDIS_CA_SECRET_ID,
-        },
+        plain_env=_FEAST_PLAIN_ENV,
         # Spot 배치가 불가능해도 일반 node pool로 실행을 계속할 수 있게 한다.
         # 빈 selector는 공통 operator의 batch-spot 기본 강제를 명시적으로 해제한다.
         node_selector={},
