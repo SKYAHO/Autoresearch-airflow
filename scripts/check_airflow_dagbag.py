@@ -11,7 +11,6 @@ _PARSE_TIME_VARIABLE_DEFAULTS = {
     "AUTORESEARCH_BATCH_IMAGE_PULL_POLICY": "IfNotPresent",
     "AUTORESEARCH_API_SECRET_NAME": "autoresearch-airflow-env",
     "ACTION_LOG_OPENROUTER_POOL": "action_log_openrouter",
-    "ACTION_LOG_SHARD_COUNT": "5",
     "OPENROUTER_TIMEOUT_SEC": "60",
     "OPENROUTER_MAX_RETRIES": "2",
     "OPENROUTER_TIMEOUT_MAX_RETRIES": "1",
@@ -22,8 +21,8 @@ _PARSE_TIME_VARIABLE_DEFAULTS = {
     "OPENROUTER_REQUIRE_PARAMETERS": "true",
 }
 _EXPECTED_TASK_COUNTS = {
-    "youtube_gcs_action_log_pipeline": 8,
-    "youtube_gcs_action_log_pipeline_qa": 8,
+    "youtube_gcs_action_log_pipeline": 3,
+    "youtube_gcs_action_log_pipeline_qa": 3,
     "youtube_backfill_kr": 1,
     "lake_to_bigquery_incremental": 6,
     "ctr_model_training": 1,

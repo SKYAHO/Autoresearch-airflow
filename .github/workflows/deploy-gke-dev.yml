@@ -330,11 +330,11 @@ jobs:
           )"
           task_count="$(
             grep -Ec \
-              '^(collect_youtube_trending_partition|ensure_action_log_shard_[0-9]{3}|merge_action_log_partition|validate_action_log_partition)$' \
+              '^(collect_youtube_trending_partition|ensure_action_log_partition|validate_action_log_partition)$' \
               <<<"$task_output" || true
           )"
-          if [[ "$task_count" -ne 8 ]]; then
-            echo "::error::production DAG task 수가 기대값(8)과 다릅니다: ${task_count}" >&2
+          if [[ "$task_count" -ne 3 ]]; then
+            echo "::error::production DAG task 수가 기대값(3)과 다릅니다: ${task_count}" >&2
             printf '%s\n' "$task_output" >&2
             exit 1
           fi

@@ -5,9 +5,8 @@ from youtube_gcs_action_log.config import (
     QA_PATH_CONF_KEYS,
     ActionLogDagSettings,
     YouTubeTrendingDagSettings,
-    build_public_action_log_merge_kpo_arguments,
     build_public_action_log_quality_kpo_arguments,
-    build_public_action_log_shard_kpo_arguments,
+    build_public_action_log_single_kpo_arguments,
     build_public_youtube_trending_kpo_arguments,
     resolve_candidates_per_user,
     resolve_dag_run_path,
@@ -39,10 +38,6 @@ def _qa_conf() -> dict[str, object]:
         "virtual_users_path": f"{prefix}/input/virtual-users-100.parquet",
         "action_log_output_base_path": f"{prefix}/final",
         "action_log_quarantine_base_path": f"{prefix}/final-quarantine",
-        "action_log_shard_output_base_path": f"{prefix}/shard-work",
-        "action_log_shard_quarantine_base_path": f"{prefix}/shard-quarantine",
-        "action_log_progress_base_path": f"{prefix}/progress",
-        "action_log_checkpoint_base_path": f"{prefix}/checkpoints",
     }
 
 
@@ -168,11 +163,8 @@ def test_qa_path_templates_have_balanced_jinja_delimiters() -> None:
         action_log_settings.virtual_users_path_template,
         action_log_settings.output_base_path_template,
         action_log_settings.quarantine_base_path_template,
-        action_log_settings.shard_output_base_path_template,
-        action_log_settings.shard_quarantine_base_path_template,
-        action_log_settings.progress_base_path_template,
-        action_log_settings.checkpoint_base_path_template,
         action_log_settings.candidates_per_user_template,
+        action_log_settings.click_threshold_template,
     ]
 
     for template in templates:
@@ -191,54 +183,74 @@ def test_public_youtube_arguments_use_canonical_full_path_contract() -> None:
     assert args[-1] == "--overwrite={{ dag_run.conf.get('overwrite', false) }}"
 
 
-def test_public_action_log_shard_arguments_exclude_legacy_final_paths() -> None:
-    args = build_public_action_log_shard_kpo_arguments(
-        ActionLogDagSettings(),
-        shard_index=3,
-    )
+def test_public_action_log_single_arguments_match_canonical_contract() -> None:
+    args = build_public_action_log_single_kpo_arguments(ActionLogDagSettings())
 
-    assert args[:3] == ["--mode", "shard", "--partition-date"]
-    assert args[args.index("--shard-index") + 1] == "3"
+    assert args == [
+        "--mode",
+        "single",
+        "--partition-date",
+        PARTITION_DATE_TEMPLATE,
+        "--youtube-base-path",
+        _path_template("youtube_base_path", "ACTION_LOG_YOUTUBE_BASE_PATH"),
+        "--virtual-users-path",
+        _path_template("virtual_users_path", "ACTION_LOG_VIRTUAL_USERS_PATH"),
+        "--output-base-path",
+        _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"),
+        "--quarantine-base-path",
+        _path_template(
+            "action_log_quarantine_base_path", "ACTION_LOG_QUARANTINE_DIR"
+        ),
+        "--overwrite={{ dag_run.conf.get('overwrite', false) }}",
+        "--generator-name",
+        "{{ var.value.get('ACTION_LOG_GENERATOR', 'openrouter') }}",
+        "--model-name",
+        "{{ var.value.get('ACTION_LOG_MODEL_NAME', 'mistralai/mistral-nemo') }}",
+        "--candidates-per-user",
+        "{{ resolve_candidates_per_user(dag_run.conf, "
+        "var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24')) }}",
+        "--click-threshold",
+        "{{ var.value.ACTION_LOG_CLICK_THRESHOLD }}",
+        "--personalized-ratio",
+        "{{ var.value.get('ACTION_LOG_PERSONALIZED_RATIO', '0.7') }}",
+        "--popular-ratio",
+        "{{ var.value.get('ACTION_LOG_POPULAR_RATIO', '0.2') }}",
+        "--exploration-ratio",
+        "{{ var.value.get('ACTION_LOG_EXPLORATION_RATIO', '0.1') }}",
+        "--seed",
+        "{{ var.value.get('ACTION_LOG_SEED', '42') }}",
+        "--max-concurrency",
+        "{{ var.value.get('ACTION_LOG_MAX_CONCURRENCY', '3') }}",
+        "--chunk-size",
+        "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}",
+        "--max-quarantine-ratio",
+        "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}",
+        "--exposure-source",
+        "rerank-api",
+        "--rerank-url",
+        "{{ var.value.get('ACTION_LOG_RERANK_URL', "
+        "'http://autoresearch-serving.autoresearch:8000') }}",
+    ]
     for forbidden_argument in (
         "--bucket",
+        "--target-ctr",
+        "--shard-index",
+        "--shard-count",
+        "--progress-base-path",
+        "--checkpoint-base-path",
         "--final-output-base-path",
         "--final-quarantine-base-path",
     ):
         assert forbidden_argument not in args
-    for required_argument in (
-        "--youtube-base-path",
-        "--virtual-users-path",
-        "--output-base-path",
-        "--quarantine-base-path",
-        "--progress-base-path",
-        "--checkpoint-base-path",
-    ):
-        assert required_argument in args
-    assert "--overwrite" not in args
-    assert "--overwrite={{ dag_run.conf.get('overwrite', false) }}" in args
 
 
-def test_public_action_log_merge_arguments_match_canonical_contract() -> None:
-    args = build_public_action_log_merge_kpo_arguments(ActionLogDagSettings())
-
-    assert args == [
-        "--mode",
-        "merge",
-        "--partition-date",
-        PARTITION_DATE_TEMPLATE,
-        "--shard-count",
-        "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}",
-        "--shard-output-base-path",
-        _path_template(
-            "action_log_shard_output_base_path",
-            "ACTION_LOG_SHARD_WORK_DIR",
-        ),
-        "--output-base-path",
-        _path_template("action_log_output_base_path", "ACTION_LOG_OUTPUT_DIR"),
-        "--max-quarantine-ratio",
-        "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}",
-        "--overwrite={{ dag_run.conf.get('overwrite', false) }}",
-    ]
+def test_click_threshold_template_is_fail_closed_without_default() -> None:
+    # 캘리브레이션 전 값이 실수로 배포되는 것을 막기 위해 var.value.get(...) 기본값을
+    # 두지 않는다 — ACTION_LOG_CLICK_THRESHOLD 미설정 시 렌더링 단계에서 에러가 나야 한다.
+    assert (
+        ActionLogDagSettings().click_threshold_template
+        == "{{ var.value.ACTION_LOG_CLICK_THRESHOLD }}"
+    )
 
 
 def test_public_action_log_quality_arguments_validate_final_partition() -> None:

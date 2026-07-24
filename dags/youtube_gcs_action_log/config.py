@@ -19,10 +19,6 @@ QA_PATH_CONF_KEYS = frozenset(
         "virtual_users_path",
         "action_log_output_base_path",
         "action_log_quarantine_base_path",
-        "action_log_shard_output_base_path",
-        "action_log_shard_quarantine_base_path",
-        "action_log_progress_base_path",
-        "action_log_checkpoint_base_path",
     }
 )
 _ALLOWED_DAG_RUN_CONF_KEYS = frozenset(
@@ -209,24 +205,7 @@ class ActionLogDagSettings:
         "action_log_quarantine_base_path",
         "ACTION_LOG_QUARANTINE_DIR",
     )
-    shard_output_base_path_template: str = _qa_path_template(
-        "action_log_shard_output_base_path",
-        "ACTION_LOG_SHARD_WORK_DIR",
-    )
-    shard_quarantine_base_path_template: str = _qa_path_template(
-        "action_log_shard_quarantine_base_path",
-        "ACTION_LOG_SHARD_QUARANTINE_DIR",
-    )
-    progress_base_path_template: str = _qa_path_template(
-        "action_log_progress_base_path",
-        "ACTION_LOG_PROGRESS_DIR",
-    )
-    checkpoint_base_path_template: str = _qa_path_template(
-        "action_log_checkpoint_base_path",
-        "ACTION_LOG_CHECKPOINT_DIR",
-    )
     overwrite_template: str = "{{ dag_run.conf.get('overwrite', false) }}"
-    shard_count_template: str = "{{ var.value.get('ACTION_LOG_SHARD_COUNT', '5') }}"
     generator_name_template: str = (
         "{{ var.value.get('ACTION_LOG_GENERATOR', 'openrouter') }}"
     )
@@ -237,7 +216,8 @@ class ActionLogDagSettings:
         "{{ resolve_candidates_per_user(dag_run.conf, "
         "var.value.get('ACTION_LOG_CANDIDATES_PER_USER', '24')) }}"
     )
-    target_ctr_template: str = "{{ var.value.get('ACTION_LOG_TARGET_CTR', '0.02') }}"
+    # 캘리브레이션 전 값이 실수로 배포되지 않도록 기본값 없이 fail-closed로 둔다.
+    click_threshold_template: str = "{{ var.value.ACTION_LOG_CLICK_THRESHOLD }}"
     personalized_ratio_template: str = (
         "{{ var.value.get('ACTION_LOG_PERSONALIZED_RATIO', '0.7') }}"
     )
@@ -254,6 +234,10 @@ class ActionLogDagSettings:
     chunk_size_template: str = "{{ var.value.get('ACTION_LOG_CHUNK_SIZE', '24') }}"
     max_quarantine_ratio_template: str = (
         "{{ var.value.get('ACTION_LOG_MAX_QUARANTINE_RATIO', '0.5') }}"
+    )
+    rerank_url_template: str = (
+        "{{ var.value.get('ACTION_LOG_RERANK_URL', "
+        "'http://autoresearch-serving.autoresearch:8000') }}"
     )
 
 
@@ -277,15 +261,14 @@ def build_public_youtube_trending_kpo_arguments(
     ]
 
 
-def _build_public_action_log_common_arguments(
+def build_public_action_log_single_kpo_arguments(
     settings: ActionLogDagSettings,
-    *,
-    output_base_path_template: str,
-    quarantine_base_path_template: str,
 ) -> list[str]:
-    """Build the public action-log arguments shared by single and shard modes."""
+    """Build canonical public CLI arguments for the single-mode rerank-api run."""
 
     return [
+        "--mode",
+        "single",
         "--partition-date",
         settings.partition_date_template,
         "--youtube-base-path",
@@ -293,9 +276,9 @@ def _build_public_action_log_common_arguments(
         "--virtual-users-path",
         settings.virtual_users_path_template,
         "--output-base-path",
-        output_base_path_template,
+        settings.output_base_path_template,
         "--quarantine-base-path",
-        quarantine_base_path_template,
+        settings.quarantine_base_path_template,
         f"--overwrite={settings.overwrite_template}",
         "--generator-name",
         settings.generator_name_template,
@@ -303,8 +286,8 @@ def _build_public_action_log_common_arguments(
         settings.model_name_template,
         "--candidates-per-user",
         settings.candidates_per_user_template,
-        "--target-ctr",
-        settings.target_ctr_template,
+        "--click-threshold",
+        settings.click_threshold_template,
         "--personalized-ratio",
         settings.personalized_ratio_template,
         "--popular-ratio",
@@ -319,54 +302,10 @@ def _build_public_action_log_common_arguments(
         settings.chunk_size_template,
         "--max-quarantine-ratio",
         settings.max_quarantine_ratio_template,
-    ]
-
-
-def build_public_action_log_shard_kpo_arguments(
-    settings: ActionLogDagSettings,
-    *,
-    shard_index: int,
-) -> list[str]:
-    """Build canonical public CLI arguments for one action-log shard."""
-
-    return [
-        "--mode",
-        "shard",
-        *_build_public_action_log_common_arguments(
-            settings,
-            output_base_path_template=settings.shard_output_base_path_template,
-            quarantine_base_path_template=settings.shard_quarantine_base_path_template,
-        ),
-        "--shard-index",
-        str(shard_index),
-        "--shard-count",
-        settings.shard_count_template,
-        "--progress-base-path",
-        settings.progress_base_path_template,
-        "--checkpoint-base-path",
-        settings.checkpoint_base_path_template,
-    ]
-
-
-def build_public_action_log_merge_kpo_arguments(
-    settings: ActionLogDagSettings,
-) -> list[str]:
-    """Build canonical public CLI arguments for action-log shard merge."""
-
-    return [
-        "--mode",
-        "merge",
-        "--partition-date",
-        settings.partition_date_template,
-        "--shard-count",
-        settings.shard_count_template,
-        "--shard-output-base-path",
-        settings.shard_output_base_path_template,
-        "--output-base-path",
-        settings.output_base_path_template,
-        "--max-quarantine-ratio",
-        settings.max_quarantine_ratio_template,
-        f"--overwrite={settings.overwrite_template}",
+        "--exposure-source",
+        "rerank-api",
+        "--rerank-url",
+        settings.rerank_url_template,
     ]
 
 
