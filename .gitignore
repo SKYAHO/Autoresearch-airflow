@@ -37,3 +37,4 @@ airflow-diagnostics*.log
 
 # Personal working notes (brainstorming/plans), not for shared repo
 docs/superpowers/
+docs/airflow-repo-map.html
