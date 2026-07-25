@@ -168,6 +168,8 @@ def forget_pipeline_packages() -> None:
         "youtube_gcs_action_log.factory",
         "ctr_training",
         "ctr_training.config",
+        "ctr_model_promote",
+        "ctr_model_promote.config",
         "feast_materialize",
         "feast_materialize.config",
         "feature_store_build",
