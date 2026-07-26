@@ -109,20 +109,14 @@ airflow:
       value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log"
     - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
       value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_quarantine"
-    - name: AIRFLOW_VAR_ACTION_LOG_SHARD_WORK_DIR
-      value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_work"
-    - name: AIRFLOW_VAR_ACTION_LOG_SHARD_QUARANTINE_DIR
-      value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_quarantine_work"
-    - name: AIRFLOW_VAR_ACTION_LOG_PROGRESS_DIR
-      value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_progress"
-    - name: AIRFLOW_VAR_ACTION_LOG_CHECKPOINT_DIR
-      value: "gs://<gcs-bucket-name-without-gs-prefix>/data_lake/action_log_checkpoints"
-    - name: AIRFLOW_VAR_ACTION_LOG_SHARD_COUNT
-      value: "5"
     - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
       value: "24"
-    - name: AIRFLOW_VAR_ACTION_LOG_TARGET_CTR
-      value: "0.02"
+    # #135: single 모드(rerank-api) 전환 이후 fail-closed 필수값 — 기본값이
+    # 없어 이 Variable이 없으면 DAG 렌더링부터 실패한다. champion 모델이
+    # 바뀌면 재계산이 필요하다(고정 상수 아님) — 절차는 SKYAHO/Autoresearch
+    # docs/guides/action-log.md §7.7 참고. 환경별로 실측해 채운다(예시값 아님).
+    - name: AIRFLOW_VAR_ACTION_LOG_CLICK_THRESHOLD
+      value: "0.5"
     - name: AIRFLOW_VAR_ACTION_LOG_PERSONALIZED_RATIO
       value: "0.7"
     - name: AIRFLOW_VAR_ACTION_LOG_POPULAR_RATIO
