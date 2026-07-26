@@ -98,9 +98,7 @@ def test_action_log_dag_imports_and_builds_single_mode_pipeline(monkeypatch) -> 
     assert ensure_action_log.kwargs["pool_slots"] == 1
     assert ensure_action_log.kwargs["retries"] == 1
     assert ensure_action_log.kwargs["retry_delay"] == timedelta(minutes=10)
-    assert ensure_action_log.kwargs["execution_timeout"] == timedelta(
-        hours=6, minutes=30
-    )
+    assert ensure_action_log.kwargs["execution_timeout"] == timedelta(hours=12)
     assert ensure_action_log.kwargs["get_logs"] is True
     assert ensure_action_log.kwargs["do_xcom_push"] is False
     assert "cmds" not in ensure_action_log.kwargs

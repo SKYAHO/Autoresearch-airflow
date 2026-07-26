@@ -133,7 +133,13 @@ class ActionLogTasks:
             pool_slots=1,
             retries=1,
             retry_delay=timedelta(minutes=10),
-            execution_timeout=timedelta(hours=6, minutes=30),
+            # #150: 6h30m는 전체 유저(6,983명) 완주에 구조적으로 부족했다
+            # (2026-07-26 실측: 6h30m 시점 진행률 68.6%, 완주 예상 9.5~10h).
+            # 24h가 아니라 12h로 잡은 이유: batch-spot(Spot VM, 체크포인트
+            # 없음)이라 오래 뜰수록 회수 위험이 누적되고, retries=1이라
+            # 실패 시 최악의 경우 시간이 2배(24h→48h)로 늘어 장애 감지가
+            # 느려진다. 실측 완주 시간에 적당한 여유만 더한 값.
+            execution_timeout=timedelta(hours=12),
             cpu_request="250m",
             memory_request="512Mi",
             cpu_limit="2",

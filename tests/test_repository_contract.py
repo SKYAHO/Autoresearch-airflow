@@ -79,7 +79,7 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "datetime(2026, 7, 12" in production_source
     assert "max_users=" not in production_source
     assert "max_active_runs=1" in source
-    assert "execution_timeout=timedelta(hours=6, minutes=30)" in source
+    assert "execution_timeout=timedelta(hours=12)" in source
     assert "execution_timeout=timedelta(minutes=30)" in source
     assert "get_logs=True" in source
     assert "pool=_OPENROUTER_POOL" in source
