@@ -419,15 +419,13 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
         r"autoresearch-dev-docker/autoresearch-batch@sha256:[0-9a-f]{64}",
         values,
     )
+    # action_log_work/quarantine_work/progress/checkpoints는 shard 모드 전용
+    # 경로였고, #135(single 모드 + rerank-api 전환)로 더 이상 쓰지 않는다.
     for suffix in (
         "data_lake/youtube_trending_kr",
         "asset/virtual_user/vu_1000.parquet",
         "data_lake/action_log",
         "data_lake/action_log_quarantine",
-        "data_lake/action_log_work",
-        "data_lake/action_log_quarantine_work",
-        "data_lake/action_log_progress",
-        "data_lake/action_log_checkpoints",
     ):
         assert f"gs://ar-infra-501607-autoresearch-dev-raw-data/{suffix}" in values
 
@@ -452,11 +450,11 @@ def test_helm_values_map_backfill_paths_to_airflow_variables() -> None:
 def test_helm_values_define_action_log_pool_and_non_secret_runtime_settings() -> None:
     values = (ROOT / "deploy" / "airflow" / "values.yaml").read_text(encoding="utf-8")
 
+    # shard 계열(SHARD_WORK_DIR/SHARD_QUARANTINE_DIR/PROGRESS_DIR/CHECKPOINT_DIR)은
+    # #135(single 모드 + rerank-api 전환)로 제거됐다. CLICK_THRESHOLD는 그
+    # 전환으로 새로 생긴 fail-closed 필수값이라 계약에 추가한다.
     for variable_name in (
-        "ACTION_LOG_SHARD_WORK_DIR",
-        "ACTION_LOG_SHARD_QUARANTINE_DIR",
-        "ACTION_LOG_PROGRESS_DIR",
-        "ACTION_LOG_CHECKPOINT_DIR",
+        "ACTION_LOG_CLICK_THRESHOLD",
         "ACTION_LOG_MAX_QUARANTINE_RATIO",
         "OPENROUTER_TIMEOUT_SEC",
         "OPENROUTER_MAX_RETRIES",
