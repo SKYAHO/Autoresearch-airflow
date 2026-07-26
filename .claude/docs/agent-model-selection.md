@@ -42,8 +42,7 @@
   컨텍스트가 긴 구현은 Terra medium~high로 승격합니다.
 - Opus 5는 Opus 4.8과 단가가 같으므로(입력 $5 / 출력 $25 per MTok) 비용을
   이유로 Top 티어를 하위 모델로 대체하지 않습니다. 비용·지연이 문제가 되면
-  모델이 아니라 effort를 조정합니다: 코딩·에이전트 작업은 `xhigh`, 그 밖의
-  판단이 필요한 작업은 `high`, 단순·정형 작업은 `low`~`medium`.
+  모델이 아니라 effort를 조정합니다.
 
 ## Assignment Rules
 
