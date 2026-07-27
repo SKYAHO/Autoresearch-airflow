@@ -29,6 +29,19 @@ airflow:
     logging:
       base_log_folder: /tmp/airflow/logs
       dag_processor_manager_log_location: /tmp/airflow/logs/dag_processor_manager/dag_processor_manager.log
+      # #147 task 로그 GCS 원격 저장 — base_log_folder가 /tmp(비영속)라
+      # 파드 재시작 시 task 로그가 소실되고 웹서버 소급 조회가 불가하던
+      # 실사고 지점 해소. task 종료 시 GCSTaskHandler가 업로드하고
+      # 웹서버가 GCS에서 읽는다. 버킷·scheduler GSA objectAdmin은 인프라
+      # 기존재(Autoresearch-infra airflow.tf). 인증은 WI(ADC) —
+      # remote_log_conn_id는 미정의 conn이면 ADC 폴백이 기본 동작.
+      remote_logging: "True"
+      remote_base_log_folder: gs://ar-infra-501607-autoresearch-dev-airflow-logs/task-logs
+      # 참고(#147 계획 정정): 원안의 [logging] json_format은 Airflow에
+      # 존재하지 않는 설정(실측 — json_format은 Elasticsearch 태스크 핸들러
+      # 전용이고 GCS 핸들러와 배타). scheduler stdout JSON화는 내장 토글이
+      # 없어 범위 제외, dag_id/task_id Kibana 필터는 KPO 파드 라벨
+      # (kubernetes.labels.dag_id)로 이미 충족 — 이슈 코멘트 참조.
     scheduler:
       child_process_log_directory: /tmp/airflow/logs/scheduler
     webserver:
