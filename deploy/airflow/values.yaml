@@ -297,6 +297,18 @@ airflow:
         iam.gke.io/gcp-service-account: autoresearch-dev-airflow@ar-infra-501607.iam.gserviceaccount.com
     nodeSelector:
       cloud.google.com/gke-nodepool: airflow-dev
+    # #158 scheduler OOMKilled 대응 — 차트 기본 limit 1536Mi에서 12h 태스크
+    # 종반(07-27)과 실패 run 복구 국면(07-28, 재시작 67회 크래시루프)에
+    # 반복 OOM 실측. LocalExecutor는 태스크를 scheduler에서 fork하므로
+    # 여유가 필요하다. requests 1Gi로 스케줄러/CA 배치 판단도 실사용에
+    # 맞춘다(airflow-dev e2-standard-2 allocatable 내 수용 확인).
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1500m
+        memory: 2560Mi
     logGroomerSidecar:
       enabled: false
     livenessProbe:
