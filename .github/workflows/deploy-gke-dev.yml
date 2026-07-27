@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - deploy/airflow/values.yaml
+      - deploy/airflow/**
       - .github/workflows/deploy-gke-dev.yml
   workflow_dispatch:
 
