@@ -51,9 +51,7 @@ jobs:
         shell: sh
         run: |
           set -eu
-          vpa_manifest="$(mktemp)"
-          trap 'rm -f "$vpa_manifest"' EXIT
-          awk '
+          vpa_manifest="$(awk '
             /^---[[:space:]]*$/ {
               if (printing) exit
               capture = 0
@@ -72,10 +70,10 @@ jobs:
               printf "%s", buffer
             }
             END { if (!printing) exit 1 }
-          ' /tmp/airflow-gke-dev.yaml >"$vpa_manifest"
+          ' /tmp/airflow-gke-dev.yaml)"
 
           require() {
-            grep -Eq "$1" "$vpa_manifest" || {
+            printf '%s\n' "$vpa_manifest" | grep -Eq "$1" || {
               echo "::error::$2"
               exit 1
             }
@@ -88,8 +86,8 @@ jobs:
           require '^    kind: StatefulSet[[:space:]]*$' 'VPA targetRef kind must be StatefulSet'
           require '^    name: airflow-scheduler[[:space:]]*$' 'VPA targetRef name must be airflow-scheduler'
           require '^    updateMode: "Off"[[:space:]]*$' 'VPA updateMode must be Off'
-          if grep -Eq '^[[:space:]]*(resourcePolicy|containerPolicies|resources|selector|annotations):' \
-            "$vpa_manifest"; then
+          if printf '%s\n' "$vpa_manifest" | grep -Eq \
+            '^[[:space:]]*(resourcePolicy|containerPolicies|resources|selector|annotations):'; then
             echo '::error::VPA must not define resourcePolicy, containerPolicies, resources, selector, or annotations'
             exit 1
           fi
