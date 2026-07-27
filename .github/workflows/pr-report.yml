@@ -1,0 +1,185 @@
+name: PR Comprehension Report
+
+# PR 이해 리포트 4단계 체계의 1·2단계(파이프라인 시각화 + 쉬운 설명)를
+# 자동 생성합니다. 에이전트는 report.json 데이터만 출력하고, 고정 템플릿
+# (.github/pr-report/template.html)에 주입해 gh-pages의 pr/<번호>/로 배포한 뒤
+# sticky 코멘트를 남깁니다. 계약 정본: .github/pr-report/report.schema.json,
+# docs/specs/2026-07-24-pr-comprehension-report.md
+#
+# 갱신은 PR에 /claude-report 코멘트로 수동 트리거합니다 (synchronize 자동
+# 재생성은 비용·소음 때문에 제외). 이 워크플로우는 required check가 아니며
+# 실패해도 머지를 막지 않습니다 (soft-fail).
+#
+# 분석은 OpenRouter chat completions API를 사용합니다 (#319). 모델은 아래
+# PR_REPORT_MODEL 한 줄로 교체할 수 있습니다 (슬러그: openrouter.ai/models).
+# OPENROUTER_API_KEY 시크릿이 필요합니다.
+
+env:
+  PR_REPORT_MODEL: "google/gemini-3.6-flash"
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "리포트를 생성할 PR 번호"
+        required: true
+
+jobs:
+  analyze:
+    if: |
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(github.event.comment.body, '/claude-report')
+      )
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-report-analyze-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write # 실패 안내 코멘트
+      issues: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
+    outputs:
+      ok: ${{ steps.validate.outcome == 'success' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Generate report.json via OpenRouter
+        continue-on-error: true # 실패는 아래 validate → 안내 코멘트로 soft-fail
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/pr-report/generate_report.py
+
+      - name: Validate report.json against schema
+        id: validate
+        continue-on-error: true
+        run: |
+          test -f report.json
+          pipx run check-jsonschema \
+            --schemafile .github/pr-report/report.schema.json report.json
+
+      - name: Build static page
+        if: steps.validate.outcome == 'success'
+        run: |
+          mkdir -p "site/pr/${PR_NUMBER}"
+          python .github/pr-report/inject.py \
+            .github/pr-report/template.html report.json \
+            > "site/pr/${PR_NUMBER}/index.html"
+
+      - name: Upload site artifact
+        if: steps.validate.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-report-site
+          path: site
+          retention-days: 7
+
+      - name: Upload report.json artifact
+        if: steps.validate.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-report-json
+          path: report.json
+          retention-days: 7
+
+      - name: Comment on failure (soft-fail)
+        if: steps.validate.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "PR 이해 리포트 생성에 실패했습니다. 워크플로우 로그: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} — PR에 \`/claude-report\` 코멘트를 남기면 재시도합니다."
+
+  publish:
+    needs: analyze
+    if: needs.analyze.outputs.ok == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-report-publish # 저장소 전역: gh-pages push race 방지
+      cancel-in-progress: false
+    permissions:
+      contents: write # gh-pages push
+      pull-requests: write # sticky 코멘트
+      issues: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Download site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-report-site
+          path: site
+
+      - name: Download report.json artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-report-json
+          path: .
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true # 다른 PR의 pr/<m>/ 보존 (정리는 phase 2 cleanup에서)
+          commit_message: "pr-report: PR #${{ env.PR_NUMBER }}"
+
+      - name: Upsert sticky comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          PAGES_URL="https://${OWNER,,}.github.io/${REPO}/pr/${PR_NUMBER}/"
+          export PAGES_URL
+
+          BODY="$(python - <<'PYEOF'
+          import json, os
+          r = json.load(open("report.json", encoding="utf-8"))
+          url = os.environ["PAGES_URL"]
+          lines = ["<!-- pr-comprehension-report -->", "## PR 이해 리포트", ""]
+          lines += [f"{i}. {s}" for i, s in enumerate(r["summary_ko"], 1)]
+          lines += ["", "**쉬운 설명**", ""]
+          lines += [f"- {p}" for p in r["plain_points_ko"][:3]]
+          lines += [
+              "",
+              f"**[1·2단계 — 파이프라인 시각화·쉬운 설명 보기]({url})** (배포 반영에 1~2분 걸릴 수 있습니다)",
+              "",
+              "**4단계 — 이해도 확인:** 코드리뷰 봇이 diff 인라인에 남긴 '이해도 확인:' 질문에 답변한 뒤 스레드를 resolve해 주십시오.",
+              "",
+              "---",
+              "_이 코멘트는 pr-report 워크플로우가 자동 생성했습니다. 코드가 갱신되면 PR에 `/claude-report` 코멘트로 재생성할 수 있습니다._",
+          ]
+          print("\n".join(lines))
+          PYEOF
+          )"
+
+          CID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            --jq '.[] | select(.body | startswith("<!-- pr-comprehension-report -->")) | .id' \
+            | head -1)
+          if [ -n "$CID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${CID}" \
+              -f body="$BODY" --silent
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -f body="$BODY" --silent
+          fi
