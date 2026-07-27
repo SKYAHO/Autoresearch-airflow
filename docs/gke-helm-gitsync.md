@@ -217,6 +217,22 @@ kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow pools get ac
 kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-import-errors
 ```
 
+## task 로그 (#147)
+
+task 로그의 내구 저장은 **GCS 원격 로깅**이다: task 종료 시
+`gs://ar-infra-501607-autoresearch-dev-airflow-logs/task-logs/`로 업로드되고
+웹서버 UI가 GCS에서 읽어 **파드 재시작 후에도 소급 조회**된다
+(로컬 `/tmp/airflow/logs`는 실행 중 버퍼일 뿐 비영속). 인증은 WI(ADC),
+버킷·IAM은 인프라 저장소(`Autoresearch-infra` `airflow.tf`) 소유.
+
+검색·분석은 ELK 담당(역할 분리): KPO 파드 stdout이 Filebeat로 수집되며
+Kibana에서 `kubernetes.labels.dag_id` / `kubernetes.labels.task_id` 필드로
+DAG 단위 필터가 가능하다. GCS task 로그는 ELK 인제스트 대상이 아니다
+(스코프·중복 저장 방지, infra#359 합의).
+
+메트릭은 statsd-exporter(9102, #146)가 노출하고 수집·대시보드는 인프라
+저장소(Grafana) 소관이다.
+
 메일 알림을 배포할 때는 Secret 생성, Helm rollout, scheduler Ready,
 `airflow dags list-import-errors` 0건을 차례로 확인한 다음 운영 DAG를 실행하지 않고
 scheduler pod의 합성 context로 실제 callback 경로를 검증합니다.
