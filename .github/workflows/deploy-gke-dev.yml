@@ -81,8 +81,10 @@ jobs:
           set -euo pipefail
           kubectl api-resources --api-group=autoscaling.k8s.io --api-version=v1 \
             | grep -Eq '^verticalpodautoscalers[[:space:]]+'
-          kubectl auth can-i create verticalpodautoscalers.autoscaling.k8s.io \
-            -n "$AIRFLOW_NAMESPACE" --quiet
+          for verb in get list watch create update patch delete; do
+            kubectl auth can-i "$verb" verticalpodautoscalers.autoscaling.k8s.io \
+              -n "$AIRFLOW_NAMESPACE" --quiet
+          done
           # kubectl auth can-i는 yes/no를 출력하고 허용 시 exit 0을 반환한다.
           # --quiet로 출력을 억제하고 종료 코드로만 판정한다(set -e가 거부 시 실패시킴).
           kubectl auth can-i get pods -n "$AIRFLOW_NAMESPACE" --quiet
