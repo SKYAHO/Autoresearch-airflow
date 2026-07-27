@@ -42,8 +42,20 @@ airflow:
   flower:
     enabled: false
 
+  # #146 Airflow 앱 메트릭(scheduler heartbeat, DAG duration, task 실패)을
+  # statsd-exporter(9102)로 노출한다. 수집 연결(ServiceMonitor)과 Grafana
+  # 대시보드는 인프라 저장소 소관(SKYAHO/Autoresearch-infra#358).
   statsd:
-    enabled: false
+    enabled: true
+    # LimitRange 기본값(250m/256Mi) 자동 주입 방지 — exporter는 아주 작다.
+    # airflow ns ResourceQuota(4CPU/8Gi) 소진 최소화(리뷰·이슈 요구).
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
 
   triggerer:
     enabled: false
