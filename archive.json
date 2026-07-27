@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-27T06:46:34Z",
+  "reports": [
+    {
+      "number": 157,
+      "title": "feat: Autoresearch의 merge PR 아카이브 워크플로우 이식 (#156)",
+      "author": "bbungjun",
+      "merged_at": "2026-07-27T06:46:20Z",
+      "summary_ko": [
+        "병합 완료된 PR 이해 리포트를 수집하여 정적 아카이브 페이지로 구축하는 파이썬 스크립트와 워크플로우를 이식하였습니다.",
+        "GitHub API로 병합 정보를 확인하고 gh-pages에 보존된 리포트 데이터를 모아 검색 가능한 아카이브(index.html, archive.json)를 자동 생성합니다.",
+        "Autoresearch-airflow 저장소명에 맞추어 아카이브 HTML 템플릿의 브랜딩 명칭을 조정하였습니다."
+      ],
+      "report_url": "pr/157/"
+    },
+    {
+      "number": 155,
+      "title": "feat: task 로그 GCS 원격 로깅 활성화 (#147)",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-07-27T05:41:01Z",
+      "summary_ko": [
+        "Airflow task 로그의 비영속 소실 문제를 해결하기 위해 GCS 원격 로깅 설정을 활성화하였습니다.",
+        "Airflow Helm 차트 설정에 GCS 버킷 경로 및 remote_logging 속성을 추가하였습니다.",
+        "GCS 원격 저장과 ELK 로그 검색 간의 역할을 분리하고 관련 운영 문서를 신설 및 정비하였습니다."
+      ],
+      "report_url": "pr/155/"
+    },
+    {
+      "number": 153,
+      "title": "feat: Autoresearch의 PR 이해 리포트 워크플로우 이식 (#152)",
+      "author": "bbungjun",
+      "merged_at": "2026-07-27T05:20:32Z",
+      "summary_ko": [
+        "SKYAHO/Autoresearch 저장소의 PR 이해 리포트 워크플로우를 Autoresearch-airflow로 이식하였습니다.",
+        "OpenRouter API 기반 리포트 생성, JSON 스키마 검증, GitHub Pages 배포 및 Sticky 코멘트 자동화 흐름을 구축하였습니다.",
+        "이 저장소의 DAG 및 파이프라인 구성에 맞춰 파이프라인 노드 카탈로그와 정본 참조 문서 경로를 재설정하였습니다."
+      ],
+      "report_url": "pr/153/"
+    }
+  ]
+}

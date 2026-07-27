@@ -1,9 +1,187 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><title>Autoresearch-airflow PR Reports</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Autoresearch-airflow의 merge된 PR 이해 리포트 아카이브">
+<title>PR Report Archive · Autoresearch-airflow</title>
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --surface: #ffffff;
+    --border: #d1d9e0;
+    --text: #1f2328;
+    --muted: #59636e;
+    --accent: #0969da;
+    --accent-soft: #ddf4ff;
+    --shadow: 0 1px 2px rgba(31, 35, 40, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8d96a0;
+      --accent: #4493f8;
+      --accent-soft: #0c2d6b;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+      "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    line-height: 1.6;
+  }
+  .archive-shell {
+    width: min(100% - 32px, 920px);
+    margin: 0 auto;
+    padding: clamp(32px, 7vw, 72px) 0 80px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    color: var(--accent);
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    line-height: 1.15;
+    letter-spacing: -.035em;
+  }
+  .intro {
+    max-width: 640px;
+    margin: 16px 0 0;
+    color: var(--muted);
+  }
+  .toolbar {
+    margin: 32px 0 20px;
+  }
+  .toolbar label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: .85rem;
+    font-weight: 650;
+  }
+  #archive-search {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    outline: none;
+  }
+  #archive-search:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .archive-count {
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-size: .86rem;
+  }
+  #report-list {
+    display: grid;
+    gap: 14px;
+  }
+  .report-card {
+    padding: clamp(18px, 4vw, 24px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .card-heading {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .pr-number {
+    flex: 0 0 auto;
+    color: var(--accent);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: .86rem;
+    font-weight: 700;
+  }
+  .pr-title {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.4;
+  }
+  .report-meta {
+    display: flex;
+    gap: 12px;
+    margin: 8px 0 16px;
+    color: var(--muted);
+    font-size: .8rem;
+  }
+  .summary-list {
+    margin: 0;
+    padding-left: 22px;
+    font-size: .92rem;
+  }
+  .summary-list li + li { margin-top: 5px; }
+  .report-link {
+    display: inline-block;
+    margin-top: 18px;
+    color: var(--accent);
+    font-size: .86rem;
+    font-weight: 650;
+    text-decoration: none;
+  }
+  .report-link:hover { text-decoration: underline; }
+  #empty-state {
+    padding: 48px 20px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+    text-align: center;
+  }
+  @media (max-width: 560px) {
+    .archive-shell { width: min(100% - 24px, 920px); }
+    .card-heading { display: block; }
+    .pr-number { display: block; margin-bottom: 4px; }
+    .report-meta { flex-wrap: wrap; }
+  }
+</style>
+</head>
 <body>
-<h1>Autoresearch-airflow PR 이해 리포트</h1>
-<p>이 페이지는 pr-report 워크플로우가 배포하는 정적 사이트의 루트입니다.
-각 PR 리포트는 워크플로우 실행 후 <code>/pr/&lt;PR번호&gt;/</code> 아래에 생성됩니다.</p>
+<main class="archive-shell">
+  <header>
+    <p class="eyebrow">Autoresearch-airflow</p>
+    <h1>PR Report Archive</h1>
+    <p class="intro">
+      merge된 변경의 목적과 파이프라인 영향을 빠르게 되짚어보는
+      PR 이해 리포트 모음입니다.
+    </p>
+  </header>
+
+  <section class="toolbar" aria-label="아카이브 검색">
+    <label for="archive-search">PR 번호·제목·작성자 검색</label>
+    <input
+      id="archive-search"
+      type="search"
+      placeholder="예: 345, ONNX, waieiches"
+      autocomplete="off"
+    >
+    <p class="archive-count"><strong id="report-count">0</strong>개의 merge 리포트</p>
+  </section>
+
+  <p id="empty-state" hidden>검색 결과가 없습니다.</p>
+  <section id="report-list" aria-label="merge된 PR 리포트" aria-live="polite"></section>
+</main>
+
+<script id="archive-data" type="application/json">{"schema_version": 1, "generated_at": "2026-07-27T06:46:34Z", "reports": [{"number": 157, "title": "feat: Autoresearch의 merge PR 아카이브 워크플로우 이식 (#156)", "author": "bbungjun", "merged_at": "2026-07-27T06:46:20Z", "summary_ko": ["병합 완료된 PR 이해 리포트를 수집하여 정적 아카이브 페이지로 구축하는 파이썬 스크립트와 워크플로우를 이식하였습니다.", "GitHub API로 병합 정보를 확인하고 gh-pages에 보존된 리포트 데이터를 모아 검색 가능한 아카이브(index.html, archive.json)를 자동 생성합니다.", "Autoresearch-airflow 저장소명에 맞추어 아카이브 HTML 템플릿의 브랜딩 명칭을 조정하였습니다."], "report_url": "pr/157/"}, {"number": 155, "title": "feat: task 로그 GCS 원격 로깅 활성화 (#147)", "author": "hyeongyu-data", "merged_at": "2026-07-27T05:41:01Z", "summary_ko": ["Airflow task 로그의 비영속 소실 문제를 해결하기 위해 GCS 원격 로깅 설정을 활성화하였습니다.", "Airflow Helm 차트 설정에 GCS 버킷 경로 및 remote_logging 속성을 추가하였습니다.", "GCS 원격 저장과 ELK 로그 검색 간의 역할을 분리하고 관련 운영 문서를 신설 및 정비하였습니다."], "report_url": "pr/155/"}, {"number": 153, "title": "feat: Autoresearch의 PR 이해 리포트 워크플로우 이식 (#152)", "author": "bbungjun", "merged_at": "2026-07-27T05:20:32Z", "summary_ko": ["SKYAHO/Autoresearch 저장소의 PR 이해 리포트 워크플로우를 Autoresearch-airflow로 이식하였습니다.", "OpenRouter API 기반 리포트 생성, JSON 스키마 검증, GitHub Pages 배포 및 Sticky 코멘트 자동화 흐름을 구축하였습니다.", "이 저장소의 DAG 및 파이프라인 구성에 맞춰 파이프라인 노드 카탈로그와 정본 참조 문서 경로를 재설정하였습니다."], "report_url": "pr/153/"}]}</script>
+<script src="./archive.js"></script>
 </body>
 </html>
