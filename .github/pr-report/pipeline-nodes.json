@@ -1,0 +1,38 @@
+{
+  "$comment": "PR 이해 리포트의 canonical 파이프라인 노드/에지 정본. 근거: README.md(## 데이터 흐름, ## DAG 구성). 에이전트는 이 카탈로그를 그대로 복사해 status만 판정하며, 노드를 임의로 발명하지 않습니다. 신규 구성요소 도입 PR에서만 'custom:' 접두 id로 노드를 추가할 수 있습니다. DAG 구성이 바뀌면 README.md 갱신과 같은 PR에서 이 파일도 갱신합니다. lane 체계(batch/data/train/serve/cross/external)와 report.schema.json/template.html은 SKYAHO/Autoresearch 원본과 동일하게 유지합니다.",
+  "lanes": ["batch", "data", "train", "serve", "cross", "external"],
+  "lane_labels": {
+    "batch": "일일 운영 DAG",
+    "data": "적재·피처 DAG",
+    "train": "학습·승격 DAG",
+    "serve": "온라인 동기화 DAG",
+    "cross": "공통·배포·문서",
+    "external": "외부 저장소"
+  },
+  "nodes": [
+    { "id": "dag_youtube_action_log", "label": "YouTube 수집→Action Log 생성 DAG (일일 운영)", "lane": "batch", "order": 1, "paths": ["dags/youtube_gcs_action_log/"] },
+    { "id": "dag_youtube_backfill", "label": "YouTube 백필 DAG", "lane": "batch", "order": 2, "paths": ["dags/youtube_backfill/"] },
+    { "id": "dag_lake_to_bigquery", "label": "Data Lake(GCS)→BigQuery 적재 DAG", "lane": "data", "order": 1, "paths": ["dags/lake_to_bigquery/"] },
+    { "id": "dag_feature_store_build", "label": "Feature Store Build DAG (offline 적재)", "lane": "data", "order": 2, "paths": ["dags/feature_store_build/"] },
+    { "id": "dag_ctr_training", "label": "CTR 학습 DAG (MLflow 연동)", "lane": "train", "order": 1, "paths": ["dags/ctr_training/"] },
+    { "id": "dag_ctr_model_promote", "label": "champion 승격 게이트 DAG", "lane": "train", "order": 2, "paths": ["dags/ctr_model_promote/"] },
+    { "id": "dag_feast_materialize", "label": "Feast offline→online store 동기화 DAG", "lane": "serve", "order": 1, "paths": ["dags/feast_materialize/"] },
+    { "id": "common", "label": "공통 Operator·이메일 알림 헬퍼", "lane": "cross", "order": 1, "paths": ["dags/common/"] },
+    { "id": "deploy_helm", "label": "GKE Helm 배포 (umbrella chart)", "lane": "cross", "order": 2, "paths": ["deploy/airflow/"] },
+    { "id": "docker_images", "label": "이미지 빌드 (Dockerfile·Cloud Build)", "lane": "cross", "order": 3, "paths": ["docker/", "cloudbuild.yaml"] },
+    { "id": "ci_release", "label": "CI·릴리스", "lane": "cross", "order": 4, "paths": [".github/workflows/", "Makefile"] },
+    { "id": "docs", "label": "문서·스펙", "lane": "cross", "order": 5, "paths": ["docs/", "CLAUDE.md", "README.md"] },
+    { "id": "ext_app", "label": "(외부) 애플리케이션 코드·공개 batch CLI", "lane": "external", "order": 1, "paths": ["SKYAHO/Autoresearch"] },
+    { "id": "ext_infra", "label": "(외부) GCP 인프라", "lane": "external", "order": 2, "paths": ["SKYAHO/Autoresearch-infra"] }
+  ],
+  "edges": [
+    { "from": "dag_youtube_action_log", "to": "dag_lake_to_bigquery" },
+    { "from": "dag_youtube_backfill", "to": "dag_lake_to_bigquery", "style": "dashed" },
+    { "from": "dag_lake_to_bigquery", "to": "dag_feature_store_build" },
+    { "from": "dag_feature_store_build", "to": "dag_ctr_training" },
+    { "from": "dag_feature_store_build", "to": "dag_feast_materialize" },
+    { "from": "dag_ctr_training", "to": "dag_ctr_model_promote" },
+    { "from": "ext_app", "to": "common", "style": "dashed" },
+    { "from": "ext_infra", "to": "deploy_helm", "style": "dashed" }
+  ]
+}
