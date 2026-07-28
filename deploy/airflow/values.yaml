@@ -297,18 +297,6 @@ airflow:
         iam.gke.io/gcp-service-account: autoresearch-dev-airflow@ar-infra-501607.iam.gserviceaccount.com
     nodeSelector:
       cloud.google.com/gke-nodepool: airflow-dev
-    # #158 scheduler OOMKilled 대응 — 차트 기본 limit 1536Mi에서 12h 태스크
-    # 종반(07-27)과 실패 run 복구 국면(07-28, 재시작 67회 크래시루프)에
-    # 반복 OOM 실측. LocalExecutor는 태스크를 scheduler에서 fork하므로
-    # 여유가 필요하다. requests 1Gi로 스케줄러/CA 배치 판단도 실사용에
-    # 맞춘다(airflow-dev e2-standard-2 allocatable 내 수용 확인).
-    resources:
-      requests:
-        cpu: 200m
-        memory: 1Gi
-      limits:
-        cpu: 1500m
-        memory: 2560Mi
     logGroomerSidecar:
       enabled: false
     livenessProbe:
@@ -322,14 +310,19 @@ airflow:
     # 30초를 넘겨 DagBag import timeout과 liveness probe timeout이 함께
     # 발생했다. limit은 스케줄링 비용이 없으므로 노드 allocatable(1930m)
     # 안에서 넉넉히 올리고, request는 airflow-dev 노드의 남은 예약 여유
-    # (약 300m) 안에서만 올린다. memory는 OOM 근거가 없어 유지한다.
+    # (약 300m) 안에서만 올린다.
+    # memory(#158/#161): 07-27 12h 태스크 종반 OOM + 07-28 재시작 67회
+    # 크래시루프 실측으로 1536Mi→2560Mi, requests 1Gi(실사용 ~1GB 반영).
+    # 주의(#161 사후): 같은 블록에 resources 키가 2개 존재해 YAML 중복 키
+    # 규칙(후자 승)으로 #161 값이 무효화·배포가 break-glass를 되돌렸던
+    # 사고의 재발 방지 — resources는 이 블록 하나만 유지할 것.
     resources:
       requests:
         cpu: 200m
-        memory: 512Mi
+        memory: 1Gi
       limits:
         cpu: 1500m
-        memory: 1536Mi
+        memory: 2560Mi
 
   webserver:
     replicas: 2
