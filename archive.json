@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T02:55:18Z",
+  "generated_at": "2026-07-28T06:06:14Z",
   "reports": [
+    {
+      "number": 160,
+      "title": "feat: scheduler VPA 관측 리소스 추가",
+      "author": "Noah-JuYong",
+      "merged_at": "2026-07-28T06:06:05Z",
+      "summary_ko": [
+        "Airflow 스케줄러 StatefulSet을 대상으로 리소스 권장 사양만 관측하는 VPA 매니페스트를 Helm 차트에 추가하였습니다.",
+        "VPA updateMode를 Off로 지정하여 스케줄러 파드의 자동 재시작 및 자원 자동 변경을 방지하도록 구성하였습니다.",
+        "GKE 배포 워크플로우에 VPA CRD 사전 검증을 추가하고, Helm lint 단계에 rendered VPA 계약 검증 CI를 도입하였습니다."
+      ],
+      "report_url": "pr/160/"
+    },
     {
       "number": 164,
       "title": "chore: batch image digest 승격 (b3b804dbb878)",
