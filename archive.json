@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T02:46:40Z",
+  "generated_at": "2026-07-28T02:53:38Z",
   "reports": [
+    {
+      "number": 163,
+      "title": "chore: feast image digest 승격 (b3b804dbb878)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-28T02:53:23Z",
+      "summary_ko": [
+        "Feast 온라인 저장소 동기화 작업에 사용되는 도커 이미지 다이제스트를 최신 버전으로 승격합니다.",
+        "개발 환경 Helm 차트의 values.yaml 설정에서 Feast 이미지 다이제스트 값을 업데이트합니다.",
+        "자동화 릴리스 워크플로우에서 검증된 최신 Feast 이미지를 적용하여 동기화 작업의 안정성을 유지합니다."
+      ],
+      "report_url": "pr/163/"
+    },
     {
       "number": 157,
       "title": "feat: Autoresearch의 merge PR 아카이브 워크플로우 이식 (#156)",
