@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T06:13:41Z",
+  "generated_at": "2026-07-28T06:15:48Z",
   "reports": [
+    {
+      "number": 170,
+      "title": "docs: 에이전트 모델 선택 가이드 제거",
+      "author": "hyochangsung",
+      "merged_at": "2026-07-28T06:15:37Z",
+      "summary_ko": [
+        "서브에이전트 모델 선택 및 작업 위임 기준을 안내하던 가이드 문서를 삭제하였습니다.",
+        "CLAUDE.md 메인 문서에서 삭제된 가이드로 연결되는 내비게이션 섹션을 제거하였습니다.",
+        "실제 파이프라인 코드 및 런타임 배포 설정에는 아무런 영향을 주지 않는 순수 문서 정제입니다."
+      ],
+      "report_url": "pr/170/"
+    },
     {
       "number": 168,
       "title": "fix: VPA preflight kubectl flag 수정",
