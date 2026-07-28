@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          kubectl api-resources --api-group=autoscaling.k8s.io --api-version=v1 \
+          kubectl api-resources --api-group=autoscaling.k8s.io \
             | grep -Eq '^verticalpodautoscalers[[:space:]]+'
           for verb in get list watch create update patch delete; do
             kubectl auth can-i "$verb" verticalpodautoscalers.autoscaling.k8s.io \
