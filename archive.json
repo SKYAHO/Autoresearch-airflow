@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T11:21:10Z",
+  "generated_at": "2026-07-28T11:21:40Z",
   "reports": [
+    {
+      "number": 174,
+      "title": "fix: scheduler resources 중복 키 병합 — 2560Mi 무효화 사고 수정 (#158)",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-07-28T11:21:27Z",
+      "summary_ko": [
+        "Airflow 스케줄러 설정 파일에서 중복 선언되어 있던 resources 키 블록을 단일 블록으로 병합하였습니다.",
+        "중복 키로 인해 상향된 메모리 설정(2560Mi)이 무효화되던 문제를 해결하고 정상 반영되도록 수정하였습니다.",
+        "설정 파일 내 재발 방지 주석을 명시하여 향후 리소스 설정 충돌을 예방하였습니다."
+      ],
+      "report_url": "pr/174/"
+    },
     {
       "number": 166,
       "title": "feat: 개별 PR 이해 리포트를 레일 디자인 언어로 개편 (#165)",
