@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T07:15:06Z",
+  "generated_at": "2026-07-28T08:16:28Z",
   "reports": [
+    {
+      "number": 161,
+      "title": "fix: scheduler 메모리 상향 2560Mi — OOM 크래시루프 대응 (#158)",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-07-28T08:16:07Z",
+      "summary_ko": [
+        "Airflow scheduler의 메모리 Limit을 1536Mi에서 2560Mi로, Request를 1Gi로 상향 조정하였습니다.",
+        "장시간 태스크 및 실패 파이프라인 복구 과정에서 발생하던 OOMKilled 크래시루프 현상을 완화하였습니다.",
+        "GKE 클러스터 노드 리소스 용량 범위 내에서 스케줄러 배치 안정성을 확보하였습니다."
+      ],
+      "report_url": "pr/161/"
+    },
     {
       "number": 170,
       "title": "docs: 에이전트 모델 선택 가이드 제거",
