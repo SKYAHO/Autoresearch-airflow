@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T13:27:45Z",
+  "generated_at": "2026-07-28T13:28:28Z",
   "reports": [
+    {
+      "number": 176,
+      "title": "feat: yamllint key-duplicates 검사 — YAML 중복 키 무음 무효화 차단 (#175)",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-07-28T13:27:24Z",
+      "summary_ko": [
+        "Helm CI 검사 워크플로우에 yamllint를 이용한 YAML 중복 키(key-duplicates) 검사 스텝을 추가했습니다.",
+        "두 PR 간 머지 시 동일 블록에 중복 키가 작성되어 이전 설정이 덮어씌워지는 무음 무효화 버그를 차단합니다.",
+        "배포 설정 파일(values.yaml, values.example.yaml, Chart.yaml)을 대상으로 린트를 자동 수행하도록 개선했습니다."
+      ],
+      "report_url": "pr/176/"
+    },
     {
       "number": 174,
       "title": "fix: scheduler resources 중복 키 병합 — 2560Mi 무효화 사고 수정 (#158)",
