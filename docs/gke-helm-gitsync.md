@@ -467,6 +467,31 @@ helm get values autoresearch-airflow --namespace airflow \
   | grep -A4 -E 'dagbag_import_timeout|resources:'
 ```
 
+### scheduler VPA recommendation 관측 (#159)
+
+Autoresearch-infra#373의 VPA addon이 적용된 뒤 Helm chart는
+`airflow-scheduler` StatefulSet을 대상으로 하는 VPA를 배포합니다. update mode는
+`Off`이므로 scheduler 또는 git-sync container의 resource를 자동 변경하거나 Pod를
+eviction하지 않습니다. 따라서 `Off` mode는 scheduler 재시작을 유발하지 않습니다.
+
+LocalExecutor task는 scheduler Pod에서 실행됩니다. `Auto`와 `Recreate` mode는 VPA
+recommendation을 적용하기 위해 Pod를 eviction하거나 재생성할 수 있으므로, 장시간
+실행 중인 task를 중단시킬 수 있어 사용하지 않습니다.
+
+```bash
+kubectl get vpa airflow-scheduler --namespace airflow
+kubectl describe vpa airflow-scheduler --namespace airflow
+```
+
+실제 사용 데이터가 쌓이기 전에는 recommendation이 비어 있을 수 있습니다. 수동으로
+resource를 조정하기 전에는 scheduler와 git-sync의 `target`, `lowerBound`,
+`upperBound`, `airflow` namespace의 request quota, `airflow-dev` 노드의 allocatable
+resource, 그리고 위에서 설명한 기존 CPU throttling 근거를 함께 검토합니다.
+
+문제가 발생하면 VPA template을 제거한 PR을 배포하거나 이전 Helm revision으로
+rollback합니다. `Off` mode는 scheduler 또는 git-sync resource를 자동 변경하거나
+eviction하지 않으므로, 이 관측 절차 자체로 scheduler가 재시작되지는 않습니다.
+
 ## dev Webserver 내부 접근
 
 dev Airflow Webserver는 공용 URL로 열지 않습니다. 인프라 저장소의 #47/#48

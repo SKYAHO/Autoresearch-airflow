@@ -46,3 +46,48 @@ jobs:
             --namespace airflow \
             --values deploy/airflow/values.yaml \
             >/tmp/airflow-gke-dev.yaml
+
+      - name: Verify rendered scheduler VPA contract
+        shell: sh
+        run: |
+          set -eu
+          vpa_manifest="$(awk '
+            /^---[[:space:]]*$/ {
+              if (printing) exit
+              capture = 0
+              buffer = ""
+              next
+            }
+            printing { print; next }
+            /^apiVersion:[[:space:]]*autoscaling\.k8s\.io\/v1[[:space:]]*$/ {
+              capture = 1
+              buffer = $0 ORS
+              next
+            }
+            capture { buffer = buffer $0 ORS }
+            capture && /^kind:[[:space:]]*VerticalPodAutoscaler[[:space:]]*$/ {
+              printing = 1
+              printf "%s", buffer
+            }
+            END { if (!printing) exit 1 }
+          ' /tmp/airflow-gke-dev.yaml)"
+
+          require() {
+            printf '%s\n' "$vpa_manifest" | grep -Eq "$1" || {
+              echo "::error::$2"
+              exit 1
+            }
+          }
+
+          require '^  name: airflow-scheduler[[:space:]]*$' 'VPA name must be airflow-scheduler'
+          require '^  namespace: airflow[[:space:]]*$' 'VPA namespace must be airflow'
+          require '^  targetRef:[[:space:]]*$' 'VPA targetRef is missing'
+          require '^    apiVersion: apps/v1[[:space:]]*$' 'VPA targetRef apiVersion must be apps/v1'
+          require '^    kind: StatefulSet[[:space:]]*$' 'VPA targetRef kind must be StatefulSet'
+          require '^    name: airflow-scheduler[[:space:]]*$' 'VPA targetRef name must be airflow-scheduler'
+          require '^    updateMode: "Off"[[:space:]]*$' 'VPA updateMode must be Off'
+          if printf '%s\n' "$vpa_manifest" | grep -Eq \
+            '^[[:space:]]*(resourcePolicy|containerPolicies|resources|selector|annotations):'; then
+            echo '::error::VPA must not define resourcePolicy, containerPolicies, resources, selector, or annotations'
+            exit 1
+          fi
