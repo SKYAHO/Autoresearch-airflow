@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T06:10:35Z",
+  "generated_at": "2026-07-28T06:11:24Z",
   "reports": [
+    {
+      "number": 168,
+      "title": "fix: VPA preflight kubectl flag 수정",
+      "author": "Noah-JuYong",
+      "merged_at": "2026-07-28T06:10:19Z",
+      "summary_ko": [
+        "GKE dev 배포 CI 워크플로우의 VPA API 사전 확인 과정에서 잘못된 kubectl 플래그를 제거하였습니다.",
+        "kubectl api-resources 명령어가 지원하지 않는 --api-version 옵션으로 인해 발생하던 배포 중단 문제를 해결하였습니다.",
+        "이 변경을 통해 자동 배포 파이프라인의 VPA 커스텀 리소스 확인 단계가 정상 동작하게 됩니다."
+      ],
+      "report_url": "pr/168/"
+    },
     {
       "number": 160,
       "title": "feat: scheduler VPA 관측 리소스 추가",
