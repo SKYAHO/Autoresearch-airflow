@@ -17,6 +17,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Lint YAML for duplicate keys
+        # #175: 두 PR이 같은 블록의 다른 위치에 같은 키를 추가하면 git은
+        # 무충돌 머지하지만 YAML 중복 키 규칙(후자 승)으로 앞 값이 조용히
+        # 무효화된다(#174 사고 — scheduler resources 2560Mi 무효화·롤백).
+        # helm lint는 이를 잡지 못하므로 key-duplicates 규칙만 검사한다.
+        run: |
+          pip install --quiet yamllint
+          yamllint -d '{rules: {key-duplicates: enable}}' \
+            deploy/airflow/values.yaml \
+            deploy/airflow/values.example.yaml \
+            deploy/airflow/Chart.yaml
+
       - name: Set up Helm
         uses: azure/setup-helm@v4
         with:
