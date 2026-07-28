@@ -1,7 +1,31 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28T02:53:38Z",
+  "generated_at": "2026-07-28T02:55:06Z",
   "reports": [
+    {
+      "number": 164,
+      "title": "chore: batch image digest 승격 (b3b804dbb878)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-28T02:54:58Z",
+      "summary_ko": [
+        "애플리케이션 저장소(Autoresearch)에서 검증을 마친 최신 배치 이미지 다이제스트를 반영하였습니다.",
+        "개발 환경 Helm values 설정의 AUTORESEARCH_BATCH_IMAGE 변수를 새 이미지 다이제스트(sha256:0d3cc9b1...)로 승격하였습니다.",
+        "본 PR 병합 후 배포 워크플로우를 통해 dev GKE의 Airflow 배치 런타임에 신규 이미지가 적용됩니다."
+      ],
+      "report_url": "pr/164/"
+    },
+    {
+      "number": 162,
+      "title": "chore: training image digest 승격 (b3b804dbb878)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-28T02:54:49Z",
+      "summary_ko": [
+        "CTR 모델 학습 파이프라인에서 사용할 최신 학습 Docker 이미지의 immutable digest를 업데이트합니다.",
+        "애플리케이션 저장소에서 검증된 특정 커밋(b3b804dbb878)의 빌드 산출물을 개발 환경 Helm 값에 반영합니다.",
+        "PR 병합 후 GKE 배포 워크플로우를 통해 실제 Airflow 런타임 환경변수(AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE)에 적용됩니다."
+      ],
+      "report_url": "pr/162/"
+    },
     {
       "number": 163,
       "title": "chore: feast image digest 승격 (b3b804dbb878)",
