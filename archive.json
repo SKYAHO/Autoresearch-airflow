@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T06:24:36Z",
+  "generated_at": "2026-07-29T06:24:55Z",
   "reports": [
+    {
+      "number": 181,
+      "title": "chore: training image digest 승격 (a0700436d3b9)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-29T06:24:36Z",
+      "summary_ko": [
+        "CTR 모델 학습에 사용되는 Docker 이미지를 최근 검증을 통과한 최신 불변 다이제스트로 승격합니다.",
+        "Helm 배포 설정(values.yaml) 내 AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE 환경변수 값을 변경합니다.",
+        "PR 병합 후 실행되는 배포 워크플로우를 통해 dev Airflow 클러스터에 최신 학습 환경이 적용됩니다."
+      ],
+      "report_url": "pr/181/"
+    },
     {
       "number": 182,
       "title": "chore: batch image digest 승격 (a0700436d3b9)",
