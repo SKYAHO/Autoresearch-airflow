@@ -143,6 +143,41 @@ jobs:
           echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
           echo "was_paused=$was_paused" >> "$GITHUB_OUTPUT"
 
+      - name: Preflight Slack alert Secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl get secret airflow-slack-webhooks -n "$AIRFLOW_NAMESPACE" -o json \
+            | python -c '
+          import base64
+          import binascii
+          import json
+          import sys
+
+          expected = {
+              "pipeline-status-connection",
+              "alerts-airflow-connection",
+              "model-events-connection",
+          }
+          data = json.load(sys.stdin).get("data") or {}
+          actual = set(data)
+          missing = sorted(expected - actual)
+          extra = sorted(actual - expected)
+          if missing or extra:
+              raise SystemExit(f"Secret key mismatch: missing={missing}, extra={extra}")
+
+          for key in sorted(expected):
+              try:
+                  value = base64.b64decode(data[key], validate=True)
+              except (binascii.Error, ValueError):
+                  raise SystemExit(f"Secret value is not valid base64: key={key}") from None
+              if not value:
+                  raise SystemExit(f"Secret value is empty: key={key}")
+              if not value.startswith(b"slackwebhook://"):
+                  raise SystemExit(f"Secret value is not a Slack webhook URI: key={key}")
+              if value.endswith((b"\n", b"\r")):
+                  raise SystemExit(f"Secret value has a trailing newline: key={key}")
+          '
       - name: Preflight email alert Secret
         shell: bash
         run: |

@@ -378,12 +378,10 @@ SMTP callback은 Slack live smoke 전 rollback 경로로만 유지합니다. 현
 callback은 Slack 모듈을 사용하며, 세 채널 smoke와 최소 한 번의 예약 성공을
 확인한 뒤 별도 변경으로 SMTP 코드와 Secret 참조를 제거합니다.
 
-모든 DAG는 scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때 공통
-callback으로 메일을 한 통 보냅니다. task retry 중간, UI/CLI 상태 변경, callback
-수동 재호출은 한 통 보장 범위가 아닙니다. 실패 메일에는 실패 task ID와 제한·마스킹된
-진단 요약만 포함합니다. 표준 DagRun callback은 scheduler가 제공하는 실패 reason을
-전달하며 task의 원본 exception이나 traceback은 보장되지 않습니다. 실제 exception이
-있는 context에서만 타입과 메시지를 표시하고, 전체 log와 traceback은 포함하지 않습니다.
+이 절의 메일 동작은 Slack 전환 실패 시 되돌릴 rollback 계약입니다. 현재 운영
+DAG는 scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때 Slack 공통
+callback을 사용합니다. rollback 시에만 email callback으로 복원하며, task retry
+중간과 UI/CLI 상태 변경은 알림 한 건 보장 범위가 아닙니다.
 
 비밀값이 아닌 환경명은 `AUTORESEARCH_AIRFLOW_ENVIRONMENT`로, SMTP 설정과 수신자는
 `airflow-email-alerts` Secret으로 scheduler에만 주입합니다. Secret payload와 실제

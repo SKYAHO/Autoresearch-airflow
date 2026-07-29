@@ -86,6 +86,11 @@ def safe_task_log_url(context: Mapping[str, object]) -> str | None:
         return None
     if not raw_url:
         return None
+    return safe_http_url(raw_url)
+
+
+def safe_http_url(raw_url: object) -> str | None:
+    """userinfo가 없는 HTTP(S) URL만 credential 제거 후 반환한다."""
     try:
         parsed = urlsplit(str(raw_url))
     except ValueError:
