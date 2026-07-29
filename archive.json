@@ -1,7 +1,31 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T02:52:57Z",
+  "generated_at": "2026-07-29T02:53:50Z",
   "reports": [
+    {
+      "number": 179,
+      "title": "chore: batch image digest 승격 (704e91dfd173)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-29T02:53:46Z",
+      "summary_ko": [
+        "dev Airflow 환경에서 사용할 배치 애플리케이션 Docker 이미지 다이제스트를 승격하였습니다.",
+        "애플리케이션 저장소의 릴리스 워크플로우에서 검증된 최신 불변 이미지 다이제스트가 반영되었습니다.",
+        "PR 머지 후 배포 워크플로우가 실행되어 일일 운영 및 백필 파이프라인에 새 배치 이미지가 적용됩니다."
+      ],
+      "report_url": "pr/179/"
+    },
+    {
+      "number": 178,
+      "title": "chore: training image digest 승격 (704e91dfd173)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-29T02:53:32Z",
+      "summary_ko": [
+        "CTR 모델 학습 파이프라인이 사용할 Docker 이미지 다이제스트를 신규 검증 버전으로 승격합니다.",
+        "Helm 차트 설정 파일에서 학습 이미지 다이제스트 환경변수 값을 최신 빌드 결과물로 업데이트합니다.",
+        "PR 병합 시 개발 환경 Airflow 배포 워크플로우가 자동 실행되어 최신 이미지 기반 학습이 적용됩니다."
+      ],
+      "report_url": "pr/178/"
+    },
     {
       "number": 180,
       "title": "chore: feast image digest 승격 (704e91dfd173)",
