@@ -1,7 +1,31 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T05:48:27Z",
+  "generated_at": "2026-07-29T06:24:36Z",
   "reports": [
+    {
+      "number": 182,
+      "title": "chore: batch image digest 승격 (a0700436d3b9)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-29T06:24:21Z",
+      "summary_ko": [
+        "배치 파이프라인에서 사용하는 애플리케이션 Docker 이미지 다이제스트를 최신 검증 버전으로 승격합니다.",
+        "상위 애플리케이션 저장소(Autoresearch)의 릴리스 워크플로우에서 빌드 및 검증된 이미지를 적용합니다.",
+        "PR 머지 시 dev GKE 환경에 Airflow 배포 워크플로우가 자동 실행되어 신규 이미지가 적용됩니다."
+      ],
+      "report_url": "pr/182/"
+    },
+    {
+      "number": 183,
+      "title": "chore: feast image digest 승격 (a0700436d3b9)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-29T06:23:55Z",
+      "summary_ko": [
+        "Feast 온라인 동기화 작업에 사용되는 Feast Docker 이미지 다이제스트를 최신 불변 이미지로 승격하였습니다.",
+        "애플리케이션 저장소의 릴리스 워크플로우에서 검증된 이미지 다이제스트를 dev 환경 Helm 설정에 반영하였습니다.",
+        "이 PR이 머지된 후 Airflow 배포 워크플로우를 통해 dev GKE 환경에 자동 배포됩니다."
+      ],
+      "report_url": "pr/183/"
+    },
     {
       "number": 177,
       "title": "feat: CTR 학습 DAG를 Feast offline PIT 이미지·인자로 전환 (Autoresearch#359)",
