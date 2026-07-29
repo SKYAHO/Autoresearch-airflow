@@ -160,6 +160,8 @@ def forget_pipeline_packages() -> None:
         "common.batch_pod_operator",
         "common.datasets",
         "common.email_notifications",
+        "common.notification_safety",
+        "common.slack_notifications",
         "youtube_backfill",
         "youtube_backfill.config",
         "youtube_gcs_action_log",
