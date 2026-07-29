@@ -614,6 +614,19 @@ def test_github_workflow_builds_only_the_airflow_runtime_image() -> None:
     assert "autoresearch-batch:" not in workflow
 
 
+def test_github_airflow_image_workflow_uses_dev_gke_wif_variables() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "build-and-push.yml").read_text(
+        encoding="utf-8"
+    )
+    auth_step = _workflow_step(workflow, "Authenticate to GCP (WIF)")
+
+    assert "    environment: dev-gke" in workflow
+    assert "PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}" in workflow
+    assert "workload_identity_provider: ${{ vars.WIF_PROVIDER_ID }}" in auth_step
+    assert "project_id: ${{ vars.GCP_PROJECT_ID }}" in auth_step
+    assert "projects/185508640491/" not in workflow
+
+
 def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
