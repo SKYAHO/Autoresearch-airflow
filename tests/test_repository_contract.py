@@ -23,6 +23,11 @@ EMAIL_SECRET_ENV = {
     "AIRFLOW__SMTP__SMTP_MAIL_FROM": "smtp-mail-from",
     "AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS": "alert-recipients",
 }
+SLACK_SECRET_ENV = {
+    "AIRFLOW_CONN_SLACK_PIPELINE_STATUS": "pipeline-status-connection",
+    "AIRFLOW_CONN_SLACK_ALERTS_AIRFLOW": "alerts-airflow-connection",
+    "AIRFLOW_CONN_SLACK_MODEL_EVENTS": "model-events-connection",
+}
 
 
 def _split_scheduler_values(values: str) -> tuple[str, str]:
@@ -84,7 +89,7 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "get_logs=True" in source
     assert "pool=_OPENROUTER_POOL" in source
     assert "pool_slots=1" in source
-    assert "do_xcom_push=False" in source
+    assert "do_xcom_push: bool=False" in source
     assert "trigger_rule='all_success'" in source
     assert (
         "collect_youtube_trending_partition >> ensure_action_log_partition >> validate_action_log_partition"
@@ -144,10 +149,15 @@ def test_legacy_batch_build_and_wrapper_sources_are_removed() -> None:
 def test_astro_airflow_image_has_required_build_context_files() -> None:
     context = ROOT / "docker" / "airflow"
 
-    for filename in ("packages.txt", "requirements.txt"):
-        lines = (context / filename).read_text(encoding="utf-8").splitlines()
-        assert lines
-        assert all(not line.strip() or line.lstrip().startswith("#") for line in lines)
+    package_lines = (context / "packages.txt").read_text(encoding="utf-8").splitlines()
+    assert package_lines
+    assert all(
+        not line.strip() or line.lstrip().startswith("#") for line in package_lines
+    )
+    requirement_lines = (
+        context / "requirements.txt"
+    ).read_text(encoding="utf-8").splitlines()
+    assert "apache-airflow-providers-slack==9.10.2" in requirement_lines
 
     assert not (ROOT / "packages.txt").exists()
     assert not (ROOT / "requirements.txt").exists()
@@ -185,6 +195,56 @@ def test_helm_values_inject_email_secret_only_into_scheduler() -> None:
 
         assert "<smtp-" not in values
         assert "@example.com" not in values
+
+
+def test_all_dag_callbacks_use_slack_notifications() -> None:
+    callback_files = []
+    for path in (ROOT / "dags").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if "on_success_callback=" not in source:
+            continue
+        callback_files.append(path)
+        assert "common.email_notifications" not in source
+        imports = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "common.slack_notifications"
+        ]
+        imported_names = {
+            alias.name for node in imports for alias in node.names
+        }
+        assert {"notify_dag_failure", "notify_dag_success"} <= imported_names
+        assert "on_success_callback=notify_dag_success" in source
+        assert "on_failure_callback=notify_dag_failure" in source
+
+    assert callback_files
+
+
+def test_slack_provider_runtime_and_scheduler_connections_are_pinned() -> None:
+    requirements = (
+        ROOT / "docker" / "airflow" / "requirements.txt"
+    ).read_text(encoding="utf-8")
+    assert "apache-airflow-providers-slack==9.10.2" in requirements.splitlines()
+
+    actual_values = (
+        ROOT / "deploy" / "airflow" / "values.yaml"
+    ).read_text(encoding="utf-8")
+    assert 'airflowVersion: "2.11.2"' in actual_values
+
+    for relative_path in (
+        "deploy/airflow/values.example.yaml",
+        "deploy/airflow/values.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+        scheduler, outside_scheduler = _split_scheduler_values(values)
+        for env_name, key in SLACK_SECRET_ENV.items():
+            pattern = (
+                rf"- name: {env_name}\s+valueFrom:\s+secretKeyRef:\s+"
+                rf"name: airflow-slack-webhooks\s+key: {key}\s+optional: false"
+            )
+            assert re.search(pattern, scheduler)
+            assert env_name not in outside_scheduler
 
 
 def test_readme_documents_dag_email_notification_operations_contract() -> None:

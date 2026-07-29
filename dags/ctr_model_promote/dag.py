@@ -28,8 +28,11 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from common.batch_pod_operator import AutoresearchBatchPodOperator
-from common.email_notifications import notify_dag_failure, notify_dag_success
-from common.slack_notifications import notify_model_promotion
+from common.slack_notifications import (
+    notify_dag_failure,
+    notify_dag_success,
+    notify_model_promotion,
+)
 
 from ctr_model_promote.config import (
     CALIBRATION_MODEL_NAME,

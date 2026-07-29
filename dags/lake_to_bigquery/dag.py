@@ -20,7 +20,7 @@ from airflow.providers.google.cloud.operators.bigquery import (
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 
 from common.datasets import RAW_DATASETS_BY_KEY
-from common.email_notifications import notify_dag_failure, notify_dag_success
+from common.slack_notifications import notify_dag_failure, notify_dag_success
 from lake_to_bigquery.config import (
     ACTION_LOG_SETTINGS,
     BQ_PROJECT_TEMPLATE,

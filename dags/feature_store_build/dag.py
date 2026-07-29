@@ -34,7 +34,7 @@ from common.datasets import (
     RAW_ACTION_LOG,
     RAW_YOUTUBE_TRENDING,
 )
-from common.email_notifications import notify_dag_failure, notify_dag_success
+from common.slack_notifications import notify_dag_failure, notify_dag_success
 from feature_store_build.config import (
     BATCH_IMAGE_TEMPLATE,
     BATCH_MODULE,
