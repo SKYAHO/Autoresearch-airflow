@@ -107,6 +107,20 @@ def install_airflow_stubs(monkeypatch) -> None:
 
     airflow_models.Variable = Variable
     airflow_providers = ModuleType("airflow.providers")
+    airflow_slack = ModuleType("airflow.providers.slack")
+    airflow_slack_hooks = ModuleType("airflow.providers.slack.hooks")
+    airflow_slack_webhook = ModuleType(
+        "airflow.providers.slack.hooks.slack_webhook"
+    )
+
+    class SlackWebhookHook:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def send(self, **_kwargs) -> None:
+            return None
+
+    airflow_slack_webhook.SlackWebhookHook = SlackWebhookHook
     airflow_cncf = ModuleType("airflow.providers.cncf")
     airflow_kubernetes = ModuleType("airflow.providers.cncf.kubernetes")
     airflow_operators = ModuleType("airflow.providers.cncf.kubernetes.operators")
@@ -133,6 +147,9 @@ def install_airflow_stubs(monkeypatch) -> None:
         "airflow.utils.email": airflow_email,
         "airflow.utils.task_group": airflow_task_group,
         "airflow.providers": airflow_providers,
+        "airflow.providers.slack": airflow_slack,
+        "airflow.providers.slack.hooks": airflow_slack_hooks,
+        "airflow.providers.slack.hooks.slack_webhook": airflow_slack_webhook,
         "airflow.providers.cncf": airflow_cncf,
         "airflow.providers.cncf.kubernetes": airflow_kubernetes,
         "airflow.providers.cncf.kubernetes.operators": airflow_operators,
