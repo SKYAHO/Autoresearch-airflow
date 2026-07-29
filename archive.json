@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T10:22:29Z",
+  "generated_at": "2026-07-29T10:23:29Z",
   "reports": [
+    {
+      "number": 190,
+      "title": "fix: Airflow 이미지 게시 WIF 변수를 정렬합니다",
+      "author": "Noah-JuYong",
+      "merged_at": "2026-07-29T10:22:13Z",
+      "summary_ko": [
+        "Airflow 이미지 빌드 워크플로우의 WIF 인증 변수를 dev-gke 환경 변수로 정렬합니다.",
+        "하드코딩된 구 GCP 프로젝트 번호를 제거하고 동적 환경 변수를 참조하도록 수정합니다.",
+        "워크플로우 내 GCP 프로젝트 및 WIF 변수 참조 계약을 검증하는 자동화 테스트를 추가합니다."
+      ],
+      "report_url": "pr/190/"
+    },
     {
       "number": 188,
       "title": "feat: Airflow Slack 실시간 알림 전환",
