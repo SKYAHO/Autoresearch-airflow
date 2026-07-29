@@ -68,6 +68,10 @@ class FakeKubernetesPodOperator:
         return self
 
 
+class FakePythonOperator(FakeKubernetesPodOperator):
+    """PythonOperator의 parse-time task/dependency 표면 대역."""
+
+
 class FakeDataset:
     """airflow.datasets.Dataset 대역 — URI 동일성만 비교한다."""
 
@@ -90,6 +94,9 @@ def install_airflow_stubs(monkeypatch) -> None:
     airflow_datasets = ModuleType("airflow.datasets")
     airflow_datasets.Dataset = FakeDataset
     airflow_models = ModuleType("airflow.models")
+    airflow_core_operators = ModuleType("airflow.operators")
+    airflow_python_operator = ModuleType("airflow.operators.python")
+    airflow_python_operator.PythonOperator = FakePythonOperator
     airflow_utils = ModuleType("airflow.utils")
     airflow_email = ModuleType("airflow.utils.email")
 
@@ -143,6 +150,8 @@ def install_airflow_stubs(monkeypatch) -> None:
         "airflow": airflow,
         "airflow.datasets": airflow_datasets,
         "airflow.models": airflow_models,
+        "airflow.operators": airflow_core_operators,
+        "airflow.operators.python": airflow_python_operator,
         "airflow.utils": airflow_utils,
         "airflow.utils.email": airflow_email,
         "airflow.utils.task_group": airflow_task_group,

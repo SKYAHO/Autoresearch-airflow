@@ -25,7 +25,10 @@ def test_ctr_model_promote_dag_uses_training_image_and_mlflow_env(monkeypatch) -
     dag = module.dag
     assert dag.kwargs["schedule"] == "0 6 * * *"
     assert dag.kwargs["max_active_runs"] == 1
-    assert list(dag.task_dict) == ["promote_ctr_model"]
+    assert list(dag.task_dict) == [
+        "promote_ctr_model",
+        "notify_model_promotion_event",
+    ]
 
     task = dag.task_dict["promote_ctr_model"]
     assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
@@ -41,11 +44,21 @@ def test_ctr_model_promote_dag_uses_training_image_and_mlflow_env(monkeypatch) -
         "champion",
         "--calibration-model-name",
         "ctr-calibration-model",
+        "--result-contract",
+        "model-promotion-result-v1",
+        "--result-path",
+        "/airflow/xcom/return.json",
     ]
     assert task.kwargs["retries"] == 2
     assert task.kwargs["execution_timeout"] == timedelta(minutes=30)
     assert task.kwargs["get_logs"] is True
-    assert task.kwargs["do_xcom_push"] is False
+    assert task.kwargs["do_xcom_push"] is True
+    assert task.downstream_task_ids == {"notify_model_promotion_event"}
+    notification_task = dag.task_dict["notify_model_promotion_event"]
+    assert notification_task.kwargs["op_kwargs"] == {
+        "source_task_id": "promote_ctr_model"
+    }
+    assert notification_task.kwargs["retries"] == 0
 
     # 게이트 판정 + alias 이동만 하는 가벼운 태스크라 operator 기본값인
     # batch-spot 노드풀·소형 리소스로 충분하다.
@@ -117,4 +130,8 @@ def test_ctr_model_promote_dag_model_names_respect_variable_override(
         "champion-qa",
         "--calibration-model-name",
         "ctr-calibration-model-qa",
+        "--result-contract",
+        "model-promotion-result-v1",
+        "--result-path",
+        "/airflow/xcom/return.json",
     ]
