@@ -11,7 +11,7 @@
 
 ```text
 python -m autoresearch.jobs.feature_store_build \
-  --project ar-infra-501607 \
+  --project autoresearch-503903 \
   --dataset feast_offline_store \
   --raw-dataset data_lake_raw \
   --location asia-northeast3 \
@@ -113,7 +113,7 @@ DAG 재실행으로는 해결되지 않는다. 원본 적재 파이프라인을 
 | Variable | dev 값 |
 | --- | --- |
 | `AUTORESEARCH_BATCH_IMAGE` | `autoresearch-app`의 immutable GAR digest |
-| `FEATURE_BUILD_BQ_PROJECT` | `ar-infra-501607` |
+| `FEATURE_BUILD_BQ_PROJECT` | `autoresearch-503903` |
 | `FEATURE_BUILD_BQ_RAW_DATASET` | `data_lake_raw` |
 | `FEATURE_BUILD_BQ_DATASET` | `feast_offline_store` |
 | `FEATURE_BUILD_BQ_LOCATION` | `asia-northeast3` |

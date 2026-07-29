@@ -59,7 +59,7 @@ def test_ctr_model_promote_dag_uses_training_image_and_mlflow_env(monkeypatch) -
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert env_by_name == {
         "MLFLOW_TRACKING_URI": "http://mlflow.mlflow:5000",
-        "CODE_ARTIFACTS_BUCKET": "ar-infra-501607-code-artifacts",
+        "CODE_ARTIFACTS_BUCKET": "autoresearch-503903-code-artifacts",
         "CTR_SERVING_CALIBRATION_READY": "true",
     }
 

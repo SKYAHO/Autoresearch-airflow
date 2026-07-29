@@ -403,7 +403,7 @@ def test_scheduler_service_account_uses_workload_identity_for_google_operators()
         r"scheduler:\s*\n"
         r"(?:.*\n)*?\s+serviceAccount:\s*\n"
         r"(?:.*\n)*?\s+iam\.gke\.io/gcp-service-account:\s*"
-        r"autoresearch-dev-airflow@ar-infra-501607\.iam\.gserviceaccount\.com",
+        r"autoresearch-dev-airflow@autoresearch-503903\.iam\.gserviceaccount\.com",
         production_values,
     )
     assert "iam.gke.io/gcp-service-account:" in example_values
@@ -415,7 +415,7 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE_OVERRIDE" not in values
     assert "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE" in values
     assert re.search(
-        r"asia-northeast3-docker\.pkg\.dev/ar-infra-501607/"
+        r"asia-northeast3-docker\.pkg\.dev/autoresearch-503903/"
         r"autoresearch-dev-docker/autoresearch-batch@sha256:[0-9a-f]{64}",
         values,
     )
@@ -427,7 +427,7 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
         "data_lake/action_log",
         "data_lake/action_log_quarantine",
     ):
-        assert f"gs://ar-infra-501607-autoresearch-dev-raw-data/{suffix}" in values
+        assert f"gs://autoresearch-503903-autoresearch-dev-raw-data/{suffix}" in values
 
 
 def test_helm_values_map_backfill_paths_to_airflow_variables() -> None:

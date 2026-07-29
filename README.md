@@ -340,7 +340,7 @@ Helm values에서는 Airflow Variable을 `AIRFLOW_VAR_<이름>` 환경변수로 
 | `ACTION_LOG_RERANK_URL` | rerank-api 서비스 URL, 기본값 `http://autoresearch-serving.autoresearch:8000` |
 | `ACTION_LOG_OPENROUTER_POOL` | action-log task가 사용할 Airflow Pool |
 | `ACTION_LOG_MAX_CONCURRENCY` | action-log pod 내부 요청 동시성 |
-| `LAKE_TO_BQ_PROJECT` | BigQuery 적재 대상 프로젝트, 기본값 `ar-infra-501607` |
+| `LAKE_TO_BQ_PROJECT` | BigQuery 적재 대상 프로젝트, 기본값 `autoresearch-503903` |
 | `LAKE_TO_BQ_DATASET` | BigQuery raw 테이블 적재 대상 데이터셋, 기본값 `data_lake_raw` |
 | `CTR_TRAINING_BQ_RAW_DATASET` | CTR 학습 Pod에 주입되어 앱이 raw 테이블을 읽을 데이터셋, 기본값 `data_lake_raw` |
 | `LAKE_TO_BQ_YOUTUBE_TABLE` | youtube trending 대상 테이블, 기본값 `data_lake_youtube_trending_kr` |
@@ -466,7 +466,7 @@ workflow는 `dev-gke` environment와 다음 repository variable을 사용합니�
 
 | Variable | 값 |
 | --- | --- |
-| `GCP_PROJECT_ID` | `ar-infra-501607` |
+| `GCP_PROJECT_ID` | `autoresearch-503903` |
 | `GKE_CLUSTER` | `autoresearch-dev-gke` |
 | `GKE_LOCATION` | `asia-northeast3-a` |
 | `GKE_DEPLOYER_SA` | infra output `github_actions_airflow_deployer_service_account_email` |
@@ -488,10 +488,10 @@ Bastion에서 접근할 수 있으며 Google OAuth redirect URI는 현재
 
 ```powershell
 gcloud auth login
-gcloud config set project ar-infra-501607
+gcloud config set project autoresearch-503903
 gcloud container clusters get-credentials autoresearch-dev-gke `
   --zone asia-northeast3-a `
-  --project ar-infra-501607
+  --project autoresearch-503903
 
 kubectl get pods -n airflow
 kubectl port-forward -n airflow svc/airflow-webserver 8080:8080
@@ -524,7 +524,7 @@ Cloud Build 실행 예시는 다음과 같습니다.
 
 ```bash
 gcloud builds submit \
-  --project ar-infra-501607 \
+  --project autoresearch-503903 \
   --config cloudbuild.yaml \
   --substitutions _IMAGE_TAG=<tag>
 ```
@@ -532,7 +532,7 @@ gcloud builds submit \
 생성되는 이미지는 다음과 같습니다.
 
 ```text
-asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow:<tag>
+asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-airflow:<tag>
 ```
 
 GitHub Actions의 `Build and Push Airflow Image` workflow도 수동 실행할 수 있으며,

@@ -58,11 +58,11 @@ Spot node의 taint toleration은 유지하므로 해당 node가 수용 가능하
 | Variable | dev 값 |
 | --- | --- |
 | `AUTORESEARCH_FEAST_IMAGE` | `autoresearch-feast`의 immutable GAR digest |
-| `FEAST_CODE_ARTIFACTS_BUCKET` | `ar-infra-501607-code-artifacts` |
-| `FEAST_GCP_PROJECT_ID` | `ar-infra-501607` |
+| `FEAST_CODE_ARTIFACTS_BUCKET` | `autoresearch-503903-code-artifacts` |
+| `FEAST_GCP_PROJECT_ID` | `autoresearch-503903` |
 | `FEAST_BQ_DATASET` / `FEAST_BQ_LOCATION` | `feast_offline_store` / `asia-northeast3` |
-| `FEAST_GCS_REGISTRY_PATH` | `gs://ar-infra-501607-feast-registry/registry.db` |
-| `FEAST_GCS_STAGING_LOCATION` | `gs://ar-infra-501607-feast-staging/` |
+| `FEAST_GCS_REGISTRY_PATH` | `gs://autoresearch-503903-feast-registry/registry.db` |
+| `FEAST_GCS_STAGING_LOCATION` | `gs://autoresearch-503903-feast-staging/` |
 | `FEAST_REDIS_HOST` / `FEAST_REDIS_PORT` | Redis Cluster discovery endpoint / `6379` |
 | `FEAST_REDIS_CA_SECRET_ID` | `autoresearch-dev-redis-server-ca` |
 

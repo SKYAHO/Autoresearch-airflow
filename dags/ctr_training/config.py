@@ -25,7 +25,7 @@ TRAINING_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
 # 실행한다(Autoresearch#177/#196의 gcs_code_bootstrap.sh ENTRYPOINT).
 # feast_materialize/config.py의 CODE_ARTIFACTS_BUCKET과 같은 버킷·패턴.
 CODE_ARTIFACTS_BUCKET = _airflow_env(
-    "TRAINING_CODE_ARTIFACTS_BUCKET", "ar-infra-501607-code-artifacts"
+    "TRAINING_CODE_ARTIFACTS_BUCKET", "autoresearch-503903-code-artifacts"
 )
 
 # MLflow tracking server는 mlflow 네임스페이스의 ClusterIP로 노출되어 있고
@@ -42,10 +42,10 @@ MLFLOW_TRACKING_URI = _airflow_env(
 # staging을 가리키도록 동일한 FEAST_GCS_* Airflow env 이름을 공유한다.
 GCS_REGISTRY_PATH = _airflow_env(
     "FEAST_GCS_REGISTRY_PATH",
-    "gs://ar-infra-501607-feast-registry/registry.db",
+    "gs://autoresearch-503903-feast-registry/registry.db",
 )
 GCS_STAGING_LOCATION = _airflow_env(
-    "FEAST_GCS_STAGING_LOCATION", "gs://ar-infra-501607-feast-staging/"
+    "FEAST_GCS_STAGING_LOCATION", "gs://autoresearch-503903-feast-staging/"
 )
 
 # 검증된 두 raw Dataset이 모두 갱신되면 자동 실행한다. 기간은 dag_run.conf
