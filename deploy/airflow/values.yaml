@@ -6,12 +6,12 @@ airflow:
   executor: LocalExecutor
 
   defaultAirflowRepository: asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-airflow
-  defaultAirflowTag: "action-log-shard-6db0728-20260710T0452Z"
+  defaultAirflowTag: "slack-alerts-e526bab"
 
   images:
     airflow:
       repository: asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-airflow
-      tag: "action-log-shard-6db0728-20260710T0452Z"
+      tag: "slack-alerts-e526bab"
       pullPolicy: IfNotPresent
 
   webserverSecretKey: autoresearch-airflow-dev-webserver-secret-key
