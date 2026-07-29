@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T09:10:40Z",
+  "generated_at": "2026-07-29T10:04:11Z",
   "reports": [
+    {
+      "number": 188,
+      "title": "feat: Airflow Slack 실시간 알림 전환",
+      "author": "Noah-JuYong",
+      "merged_at": "2026-07-29T10:04:00Z",
+      "summary_ko": [
+        "Airflow DAG 실행 알림 수단을 기존 Gmail 메일 발송에서 채널별 Slack Incoming Webhook 및 Block Kit 카드로 전환했습니다.",
+        "정기 실행 성공은 `#pipeline-status`, 모든 최종 실패는 `@here` 멘션과 함께 `#alerts-airflow`, 모델 승격 결과는 `#model-events`로 전송을 분리했습니다.",
+        "Slack provider 추가, scheduler 전용 Connection Secret 주입, 배포 전 preflight 검증 및 XCom 기반 모델 승격 알림 태스크를 추가했습니다."
+      ],
+      "report_url": "pr/188/"
+    },
     {
       "number": 187,
       "title": "feat: GCP 프로젝트 이전 — 배포 값·CI 프로젝트 참조 전환 (#186)",
