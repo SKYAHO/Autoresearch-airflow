@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T08:22:05Z",
+  "generated_at": "2026-07-29T08:35:48Z",
   "reports": [
+    {
+      "number": 187,
+      "title": "feat: GCP 프로젝트 이전 — 배포 값·CI 프로젝트 참조 전환 (#186)",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-07-29T08:35:30Z",
+      "summary_ko": [
+        "GCP 인프라 이전에 따라 배포 대상 프로젝트 ID를 기존 ar-infra-501607에서 autoresearch-503903으로 일괄 전환하였습니다.",
+        "Helm umbrella 차트의 Artifact Registry 이미지 주소, GCS 버킷 경로, IAM 서비스 계정 어노테이션을 신규 프로젝트 값으로 교체하였습니다.",
+        "GitHub Actions CI 워크플로우의 프로젝트 ID 환경변수를 전환하여 이미지 빌드 및 배포 파이프라인 연동을 완료하였습니다."
+      ],
+      "report_url": "pr/187/"
+    },
     {
       "number": 181,
       "title": "chore: training image digest 승격 (a0700436d3b9)",
