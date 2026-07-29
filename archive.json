@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T02:54:13Z",
+  "generated_at": "2026-07-29T03:02:49Z",
   "reports": [
+    {
+      "number": 177,
+      "title": "feat: CTR 학습 DAG를 Feast offline PIT 이미지·인자로 전환 (Autoresearch#359)",
+      "author": "waieiches",
+      "merged_at": "2026-07-29T03:02:37Z",
+      "summary_ko": [
+        "CTR 모델 학습 파이프라인의 피처 생성 방식을 Feast 오프라인 저장소(PIT) 조회로 전환하였습니다.",
+        "실행 이미지를 Feast 런타임이 포함된 이미지로 교체하고, 불필요해진 DuckDB 재계산용 명령줄 인자 및 환경변수를 정리하였습니다.",
+        "Feast 오프라인 피처 조립 시의 메모리 피크 증가(4.36GB)를 반영하여 파드 메모리 요청량을 2Gi에서 5Gi로 상향 조정하였습니다."
+      ],
+      "report_url": "pr/177/"
+    },
     {
       "number": 179,
       "title": "chore: batch image digest 승격 (704e91dfd173)",
