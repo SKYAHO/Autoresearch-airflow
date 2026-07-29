@@ -10,12 +10,14 @@ on:
 
 env:
   REGION: asia-northeast3
-  PROJECT_ID: autoresearch-503903
   REPOSITORY: autoresearch-dev-docker
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    environment: dev-gke
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
     permissions:
       contents: read
       id-token: write
@@ -36,7 +38,8 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/185508640491/locations/global/workloadIdentityPools/autoresearch-github/providers/github
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER_ID }}
           service_account: ${{ secrets.GAR_PUSHER_SA }}
 
       - name: Set up Cloud SDK
