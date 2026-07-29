@@ -1,8 +1,10 @@
-"""CTR 학습 DAG의 이미지·MLflow 연동 설정.
+"""CTR 학습 DAG의 이미지·MLflow·Feast 연동 설정.
 
-학습 이미지는 SKYAHO/Autoresearch 저장소의 Dockerfile.train으로 빌드된다.
-autoresearch-batch와 달리 GAR push/digest 승격 자동화가 아직 없어서,
-AUTORESEARCH_TRAINING_IMAGE Airflow Variable 값을 수동으로 갱신해야 한다.
+학습 run-pipeline의 build-features 단계가 Feast offline store(point-in-time)로
+피처를 조립하므로(Autoresearch#359에서 DuckDB 재계산 경로 제거), feast 런타임이
+포함된 이미지(SKYAHO/Autoresearch의 Dockerfile.feast, GAR `autoresearch-feast`)를
+쓴다. 서빙·materialize와 같은 AUTORESEARCH_FEAST_IMAGE Airflow Variable을 공유해
+digest 승격을 한 곳에서 관리한다.
 """
 
 from __future__ import annotations
@@ -14,7 +16,10 @@ def _airflow_env(name: str, default: str) -> str:
     return os.environ.get(f"AIRFLOW_VAR_{name}", default)
 
 
-TRAINING_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
+# build-features가 Feast offline store로 피처를 조립하므로 feast 런타임이 담긴
+# 이미지를 쓴다. feast_materialize/서빙과 동일한 AUTORESEARCH_FEAST_IMAGE
+# Variable을 공유한다(digest 승격 단일 지점).
+TRAINING_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
 
 # 학습 이미지는 코드를 굽지 않고 파드 시작 시 GCS 코드 아카이브를 받아
 # 실행한다(Autoresearch#177/#196의 gcs_code_bootstrap.sh ENTRYPOINT).
@@ -31,23 +36,16 @@ MLFLOW_TRACKING_URI = _airflow_env(
     "MLFLOW_TRACKING_URI", "http://mlflow.mlflow:5000"
 )
 
-# run-pipeline의 build-features 단계가 BigQuery에서 읽는 raw 테이블
-# (data_lake_youtube_trending_kr / data_lake_action_log)이 들어 있는 dataset.
-# raw 테이블이 feast_offline_store에서 data_lake_raw로 분리 이전됐기 때문에,
-# 앱이 raw dataset을 해석할 때 쓰는 CTR_TRAINING_BQ_RAW_DATASET 환경변수를
-# 학습 Pod에 명시적으로 주입한다. Feast feature/서빙 테이블용 dataset 변수는
-# 계속 feast_offline_store를 가리키므로 여기서 건드리지 않는다.
-BQ_RAW_DATASET = _airflow_env("CTR_TRAINING_BQ_RAW_DATASET", "data_lake_raw")
-
-# build-features가 읽는 가상 유저(페르소나) parquet 경로. run-pipeline은
-# videos/events를 BigQuery에서 읽지만 personas는 GCS parquet에서 읽는다.
-# --personas-path를 주지 않으면 앱이 존재하지 않는 로컬 CSV 기본값
-# (<raw_dir>/personas.csv)으로 떨어져, GCS 코드 부트스트랩 컨테이너에는
-# 그 파일이 없으므로 build-features가 즉시 FileNotFoundError로 실패한다.
-# action-log DAG가 쓰는 동일한 vu_1000.parquet(가상 유저 6,983명)을 가리킨다.
-PERSONAS_PATH = _airflow_env(
-    "AUTORESEARCH_TRAINING_PERSONAS_PATH",
-    "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet",
+# Feast offline store(point-in-time) 조회에 필요한 GCS 경로. build-features가
+# 배포 apply job이 갱신한 prod 레지스트리(registry.db)를 읽고, BigQuery offline
+# 조회 결과를 staging 버킷에 언로드한다. feast_materialize DAG과 같은 registry·
+# staging을 가리키도록 동일한 FEAST_GCS_* Airflow env 이름을 공유한다.
+GCS_REGISTRY_PATH = _airflow_env(
+    "FEAST_GCS_REGISTRY_PATH",
+    "gs://ar-infra-501607-feast-registry/registry.db",
+)
+GCS_STAGING_LOCATION = _airflow_env(
+    "FEAST_GCS_STAGING_LOCATION", "gs://ar-infra-501607-feast-staging/"
 )
 
 # 검증된 두 raw Dataset이 모두 갱신되면 자동 실행한다. 기간은 dag_run.conf

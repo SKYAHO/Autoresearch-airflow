@@ -4,17 +4,20 @@ MLflow에 기록하는 KPO DAG.
 RAW_YOUTUBE_TRENDING과 RAW_ACTION_LOG가 모두 갱신되면 실행하며,
 action-log 생성 DAG의 내부 topology에는 의존하지 않는다.
 
-SKYAHO/Autoresearch 저장소의 Dockerfile.train 이미지(src.cli run-pipeline)를
-KubernetesPodOperator로 실행한다. build-features(BigQuery videos/events)와
+SKYAHO/Autoresearch 저장소의 Dockerfile.feast 이미지(feast 런타임 포함,
+src.cli run-pipeline)를 KubernetesPodOperator로 실행한다. build-features와
 train-model을 한 Pod 안에서 순차 실행하는 run-pipeline으로 묶은 이유는,
 KubernetesPodOperator가 Task마다 격리된 Pod를 띄우기 때문에 여러 Task로
 나누면 build-features가 만든 training_dataset.csv를 train-model Task로
 넘길 방법이 없기 때문이다(issue #188).
 
-build-features가 읽는 raw 테이블(data_lake_youtube_trending_kr /
-data_lake_action_log)은 feast_offline_store에서 분리되어 data_lake_raw
-dataset으로 이전됐다. 앱이 raw dataset을 해석하는 CTR_TRAINING_BQ_RAW_DATASET
-환경변수를 Pod에 주입해 dataset 분리 이후에도 읽기가 깨지지 않게 한다.
+build-features는 Feast offline store에서 training_entity spine을 읽고
+get_historical_features(point-in-time)로 피처를 조립한다(Autoresearch#359에서
+DuckDB raw 재계산 경로 제거). raw 테이블(data_lake_*)을 더 이상 읽지 않으므로,
+feast offline 조회에 필요한 GCS_REGISTRY_PATH/GCS_STAGING_LOCATION을 대신
+주입한다(config.py). 이 전환은 애플리케이션 PR Autoresearch#389와 lockstep이다 —
+앱 이미지가 먼저 배포되고 그 digest로 AUTORESEARCH_FEAST_IMAGE가 갱신된 뒤에
+이 DAG 변경을 배포한다.
 
 events_start_date/events_end_date는 dag_run.conf override가 있으면 그 값을,
 없으면 Dataset-triggered run의 data_interval_end를 기준으로 최근 7개 KST
@@ -32,12 +35,12 @@ from common.batch_pod_operator import AutoresearchBatchPodOperator
 from common.datasets import RAW_ACTION_LOG, RAW_YOUTUBE_TRENDING
 from common.email_notifications import notify_dag_failure, notify_dag_success
 from ctr_training.config import (
-    BQ_RAW_DATASET,
     CODE_ARTIFACTS_BUCKET,
     EVENTS_END_DATE_TEMPLATE,
     EVENTS_START_DATE_TEMPLATE,
+    GCS_REGISTRY_PATH,
+    GCS_STAGING_LOCATION,
     MLFLOW_TRACKING_URI,
-    PERSONAS_PATH,
     TRAINING_IMAGE_TEMPLATE,
 )
 
@@ -60,20 +63,11 @@ with DAG(
         module="src.cli",
         arguments=[
             "run-pipeline",
-            "--videos-source",
-            "bigquery",
-            "--events-source",
-            "bigquery",
-            # topic_similarity를 매 실행마다 Vertex AI로 즉석 계산하지 않고 이미
-            # 적재된 feast_offline_store.user_category_similarity에서 조회한다
-            # (Autoresearch#214). 기본값 inmemory로 두면 Vertex AI 쿼터 초과
-            # (Autoresearch#244)에 다시 막히므로 실 데이터 학습에서는 필수다.
-            "--topic-similarity-source",
-            "bigquery",
-            # personas는 BigQuery가 아니라 GCS parquet에서 읽는다. 명시하지 않으면
-            # 존재하지 않는 로컬 CSV 기본값으로 떨어져 build-features가 즉시 실패한다.
-            "--personas-path",
-            PERSONAS_PATH,
+            # build-features는 Feast offline store(training_entity spine +
+            # get_historical_features PIT)로 피처를 조립한다(Autoresearch#359에서
+            # --videos-source/--events-source/--topic-similarity-source/--personas-path
+            # DuckDB 재계산 인자 제거). videos/topic_similarity/personas는 모두 이미
+            # feast_offline_store에 적재돼 있어 별도 소스 지정이 필요 없다.
             "--events-start-date",
             EVENTS_START_DATE_TEMPLATE,
             "--events-end-date",
@@ -83,24 +77,28 @@ with DAG(
         plain_env={
             "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
-            "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
+            # feast offline PIT 조회에 필요한 GCS 경로(앱이 필수로 읽음 —
+            # 없으면 build-features가 KeyError로 즉시 실패). feast_materialize
+            # DAG과 같은 registry·staging을 공유한다. raw(data_lake_*)는 더
+            # 이상 읽지 않으므로 CTR_TRAINING_BQ_RAW_DATASET은 제거했다.
+            "GCS_REGISTRY_PATH": GCS_REGISTRY_PATH,
+            "GCS_STAGING_LOCATION": GCS_STAGING_LOCATION,
         },
         # 학습 Pod는 operator 기본값 batch-spot 노드풀에서 실행한다
         # (node_selector/tolerations 미지정 → operator가 batch-spot 기본값을 채움).
-        # #271 OOM 회피용으로 전용 ctr-model-retrain(n2) 노드풀 + memory_limit
-        # 20Gi로 override했던 것을 원복한다(#128) — Autoresearch 쪽에서 #271이
-        # 코드로 해결됐고(#285 daily 집계 / #290 COPY 스트리밍 / #292 DuckDB
-        # memory_limit / #294 정렬 제거 / #298 트렌딩 스냅샷 중복 제거), 정식 DAG
-        # 재실측(run remeasure_298_v13, 2026-07-24) success 완주 + 피크 메모리
-        # 1.6GB로 확인돼 batch-spot(e2-standard-2=5.88Gi)에 충분히 들어간다.
-        # 전용 노드풀 자체 teardown은 Autoresearch-infra(Terraform).
+        # Feast offline PIT 전환(Autoresearch#359 C1) 재실측으로 피크 메모리가
+        # DuckDB 재계산 경로(1.6GB)보다 크다 — 1.77M 이벤트 기준 4.36GB
+        # (get_historical_features가 spine×피처를 한 번에 메모리에 올림).
+        # batch-spot(e2-standard-2=5.88Gi allocatable)에는 들어가지만 여유가
+        # ~69%로 타이트하므로, request를 피크에 맞춰 5Gi로 잡아 같은 노드에
+        # 다른 Pod가 함께 스케줄돼 노드 OOM이 나는 것을 막는다. 데이터가 더
+        # 커지면 spine chunking(Autoresearch docs/plans C1-2)이 다음 레버다.
         retries=1,
         execution_timeout=timedelta(hours=2),
         cpu_request="1",
-        memory_request="2Gi",
+        memory_request="5Gi",
         cpu_limit="4",
-        # memory_limit은 #126/#127 override 이전 batch-spot 값(8Gi)으로 원복한다.
-        # 재실측 피크 1.6GB라 여유가 크다. request는 네임스페이스 쿼터
-        # (requests.memory) 안에 두고 limit만 노드 용량 범위에서 잡는다.
+        # memory_limit은 batch-spot 노드 용량(e2-standard-2=8Gi machine) 상한.
+        # feast 피크 4.36GB는 노드 allocatable(5.88Gi) 안이라 이 limit에 닿지 않는다.
         memory_limit="8Gi",
     )
