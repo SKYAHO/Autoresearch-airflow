@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T10:30:48Z",
+  "generated_at": "2026-07-29T10:31:40Z",
   "reports": [
+    {
+      "number": 191,
+      "title": "chore: Slack 알림 Airflow 이미지를 승격합니다",
+      "author": "Noah-JuYong",
+      "merged_at": "2026-07-29T10:30:33Z",
+      "summary_ko": [
+        "Airflow 스케줄러 및 웹서버의 런타임 Docker 이미지 태그를 Slack 알림 지원 버전으로 승격했습니다.",
+        "Slack 알림 연동 기능(apache-airflow-providers-slack 등)이 포함된 최신 이미지를 적용했습니다.",
+        "Helm 배포 값(values.yaml)을 업데이트하여 dev GKE 환경 배포에 즉시 반영되도록 구성했습니다."
+      ],
+      "report_url": "pr/191/"
+    },
     {
       "number": 190,
       "title": "fix: Airflow 이미지 게시 WIF 변수를 정렬합니다",
