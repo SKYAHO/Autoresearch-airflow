@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 IMAGE_REGISTRY = (
-    "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker"
+    "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker"
 )
 DEFAULT_IMAGE_NAME = "autoresearch-batch"
 DEFAULT_VARIABLE_NAME = "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE"

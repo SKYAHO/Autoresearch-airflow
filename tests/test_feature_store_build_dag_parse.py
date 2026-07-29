@@ -48,9 +48,9 @@ def test_feature_build_is_triggered_by_both_raw_table_datasets(monkeypatch) -> N
     # 과거 파티션을 수동 재적재해도 검증 성공 즉시 다시 돈다.
     assert dag.kwargs["schedule"] == [
         FakeDataset(
-            "bigquery://ar-infra-501607/data_lake_raw/data_lake_youtube_trending_kr"
+            "bigquery://autoresearch-503903/data_lake_raw/data_lake_youtube_trending_kr"
         ),
-        FakeDataset("bigquery://ar-infra-501607/data_lake_raw/data_lake_action_log"),
+        FakeDataset("bigquery://autoresearch-503903/data_lake_raw/data_lake_action_log"),
     ]
     assert list(dag.task_dict) == ["build_offline_features"]
     # 과거 날짜 재적재 진입점. 비우면 data_interval_end의 KST 날짜를 쓴다.
@@ -64,10 +64,10 @@ def test_feature_build_publishes_offline_store_dataset(monkeypatch) -> None:
     # 배치 대상 테이블별 Dataset을 outlet으로 선언한다.
     assert task.kwargs["outlets"] == [
         FakeDataset(
-            "bigquery://ar-infra-501607/feast_offline_store/user_dynamic_feature"
+            "bigquery://autoresearch-503903/feast_offline_store/user_dynamic_feature"
         ),
         FakeDataset(
-            "bigquery://ar-infra-501607/feast_offline_store/video_feature"
+            "bigquery://autoresearch-503903/feast_offline_store/video_feature"
         ),
     ]
     # outlet 테이블 목록은 batch CLI --tables 인자와 일치해야 한다.
@@ -99,7 +99,7 @@ def test_feature_build_uses_public_batch_contract(monkeypatch) -> None:
         "-m",
         "autoresearch.jobs.feature_store_build",
         "--project",
-        "ar-infra-501607",
+        "autoresearch-503903",
         "--dataset",
         "feast_offline_store",
         "--raw-dataset",
@@ -136,7 +136,7 @@ def test_feature_build_reads_raw_layer_and_writes_feature_layer(monkeypatch) -> 
     environment = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
 
     assert environment == {
-        "CTR_TRAINING_BQ_PROJECT": "ar-infra-501607",
+        "CTR_TRAINING_BQ_PROJECT": "autoresearch-503903",
         "CTR_TRAINING_BQ_DATASET": "feast_offline_store",
         "CTR_TRAINING_BQ_RAW_DATASET": "data_lake_raw",
         "CTR_TRAINING_BQ_LOCATION": "asia-northeast3",

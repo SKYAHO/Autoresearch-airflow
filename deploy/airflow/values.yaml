@@ -1,16 +1,16 @@
 # Autoresearch Airflow umbrella chart의 실제 dev 배포 values입니다.
-# Target cluster: ar-infra-501607 / autoresearch-dev-gke.
+# Target cluster: autoresearch-503903 / autoresearch-dev-gke.
 
 airflow:
   airflowVersion: "2.10.5"
   executor: LocalExecutor
 
-  defaultAirflowRepository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+  defaultAirflowRepository: asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-airflow
   defaultAirflowTag: "action-log-shard-6db0728-20260710T0452Z"
 
   images:
     airflow:
-      repository: asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-airflow
+      repository: asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-airflow
       tag: "action-log-shard-6db0728-20260710T0452Z"
       pullPolicy: IfNotPresent
 
@@ -36,7 +36,7 @@ airflow:
       # 기존재(Autoresearch-infra airflow.tf). 인증은 WI(ADC) —
       # remote_log_conn_id는 미정의 conn이면 ADC 폴백이 기본 동작.
       remote_logging: "True"
-      remote_base_log_folder: gs://ar-infra-501607-autoresearch-dev-airflow-logs/task-logs
+      remote_base_log_folder: gs://autoresearch-503903-autoresearch-dev-airflow-logs/task-logs
       # 참고(#147 계획 정정): 원안의 [logging] json_format은 Airflow에
       # 존재하지 않는 설정(실측 — json_format은 Elasticsearch 태스크 핸들러
       # 전용이고 GCS 핸들러와 배타). scheduler stdout JSON화는 내장 토글이
@@ -129,17 +129,17 @@ airflow:
     - name: AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT
       value: "google-cloud-platform://"
     - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
-      value: "ar-infra-501607-autoresearch-dev-raw-data"
+      value: "autoresearch-503903-autoresearch-dev-raw-data"
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
-      value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:b84284eeb9d7c154c5bfb88404f0a8945570d268440e1b4fa4b6ba1bc4dc537a"
+      value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-batch@sha256:b84284eeb9d7c154c5bfb88404f0a8945570d268440e1b4fa4b6ba1bc4dc537a"
     - name: AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE
-      value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-training@sha256:6954377ebea36a5a4e04f524b280c31d343a0fbfa6ade338a21082c5de673566"
+      value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-training@sha256:6954377ebea36a5a4e04f524b280c31d343a0fbfa6ade338a21082c5de673566"
     - name: AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE
-      value: "asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-feast@sha256:b739cf5e967faa8f0929d8334d162f6c43b244a77c0abc497508c4b7c67d8440"
+      value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-feast@sha256:b739cf5e967faa8f0929d8334d162f6c43b244a77c0abc497508c4b7c67d8440"
     - name: AIRFLOW_VAR_FEAST_CODE_ARTIFACTS_BUCKET
-      value: "ar-infra-501607-code-artifacts"
+      value: "autoresearch-503903-code-artifacts"
     - name: AIRFLOW_VAR_FEAST_GCP_PROJECT_ID
-      value: "ar-infra-501607"
+      value: "autoresearch-503903"
     # feast_offline_store는 Feast feature 테이블 4종 전용 dataset이다.
     # raw 테이블(data_lake_*)은 아래 LAKE_TO_BQ_DATASET /
     # CTR_TRAINING_BQ_RAW_DATASET가 가리키는 data_lake_raw로 분리됐다.
@@ -148,9 +148,9 @@ airflow:
     - name: AIRFLOW_VAR_FEAST_BQ_LOCATION
       value: "asia-northeast3"
     - name: AIRFLOW_VAR_FEAST_GCS_REGISTRY_PATH
-      value: "gs://ar-infra-501607-feast-registry/registry.db"
+      value: "gs://autoresearch-503903-feast-registry/registry.db"
     - name: AIRFLOW_VAR_FEAST_GCS_STAGING_LOCATION
-      value: "gs://ar-infra-501607-feast-staging/"
+      value: "gs://autoresearch-503903-feast-staging/"
     - name: AIRFLOW_VAR_FEAST_REDIS_HOST
       value: "10.10.16.3"
     - name: AIRFLOW_VAR_FEAST_REDIS_PORT
@@ -164,9 +164,9 @@ airflow:
     - name: AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME
       value: "autoresearch-airflow-env"
     - name: AIRFLOW_VAR_YOUTUBE_TRENDING_BASE_PATH
-      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
+      value: "gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
     - name: AIRFLOW_VAR_YOUTUBE_BACKFILL_OUTPUT_BASE_PATH
-      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
+      value: "gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
     - name: AIRFLOW_VAR_YOUTUBE_TRENDING_REGION_CODE
       value: "KR"
     - name: AIRFLOW_VAR_YOUTUBE_TRENDING_MAX_RESULTS
@@ -176,13 +176,13 @@ airflow:
     - name: AIRFLOW_VAR_ACTION_LOG_MODEL_NAME
       value: "mistralai/mistral-nemo"
     - name: AIRFLOW_VAR_ACTION_LOG_YOUTUBE_BASE_PATH
-      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
+      value: "gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/youtube_trending_kr"
     - name: AIRFLOW_VAR_ACTION_LOG_VIRTUAL_USERS_PATH
-      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet"
+      value: "gs://autoresearch-503903-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet"
     - name: AIRFLOW_VAR_ACTION_LOG_OUTPUT_DIR
-      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log"
+      value: "gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/action_log"
     - name: AIRFLOW_VAR_ACTION_LOG_QUARANTINE_DIR
-      value: "gs://ar-infra-501607-autoresearch-dev-raw-data/data_lake/action_log_quarantine"
+      value: "gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/action_log_quarantine"
     - name: AIRFLOW_VAR_ACTION_LOG_CANDIDATES_PER_USER
       value: "24"
     # #135: single 모드(rerank-api) 전환 이후 fail-closed 필수값 — 기본값이
@@ -294,7 +294,7 @@ airflow:
     # 권한을 관리하므로, Helm 소유 KSA에는 GSA annotation만 선언한다.
     serviceAccount:
       annotations:
-        iam.gke.io/gcp-service-account: autoresearch-dev-airflow@ar-infra-501607.iam.gserviceaccount.com
+        iam.gke.io/gcp-service-account: autoresearch-dev-airflow@autoresearch-503903.iam.gserviceaccount.com
     nodeSelector:
       cloud.google.com/gke-nodepool: airflow-dev
     logGroomerSidecar:

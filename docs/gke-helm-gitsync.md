@@ -46,8 +46,8 @@ release하고, 이 저장소는 검증된 immutable digest를 참조합니다. h
 Airflow image를 다시 빌드하지 않습니다.
 
 ```bash
-PRODUCTION_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<verified-digest>
-ROLLBACK_IMAGE=asia-northeast3-docker.pkg.dev/ar-infra-501607/autoresearch-dev-docker/autoresearch-batch@sha256:<previous-digest>
+PRODUCTION_IMAGE=asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-batch@sha256:<verified-digest>
+ROLLBACK_IMAGE=asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-batch@sha256:<previous-digest>
 ```
 
 application digest 승격과 dev 배포의 기본 순서는 다음과 같습니다.
@@ -220,7 +220,7 @@ kubectl exec -n airflow airflow-scheduler-0 -c scheduler -- airflow dags list-im
 ## task 로그 (#147)
 
 task 로그의 내구 저장은 **GCS 원격 로깅**이다: task 종료 시
-`gs://ar-infra-501607-autoresearch-dev-airflow-logs/task-logs/`로 업로드되고
+`gs://autoresearch-503903-autoresearch-dev-airflow-logs/task-logs/`로 업로드되고
 웹서버 UI가 GCS에서 읽어 **파드 재시작 후에도 소급 조회**된다
 (로컬 `/tmp/airflow/logs`는 실행 중 버퍼일 뿐 비영속). 인증은 WI(ADC),
 버킷·IAM은 인프라 저장소(`Autoresearch-infra` `airflow.tf`) 소유.
@@ -523,7 +523,7 @@ Airflow chart 1.16.0은 `webserver.service.externalTrafficPolicy` 값을 직접
 ```powershell
 gcloud compute ssh autoresearch-dev-bastion `
   --zone asia-northeast3-a `
-  --project ar-infra-501607 `
+  --project autoresearch-503903 `
   --tunnel-through-iap `
   -- -N -L 8080:airflow.dev.autoresearch.internal:8080
 ```
@@ -550,7 +550,7 @@ URL은 없으며, Bastion IAP 터널을 거쳐 `localhost:8080`으로만 접속�
    PowerShell, cmd, bash에서 모두 한 줄로 동작합니다.
 
    ```text
-   gcloud compute ssh autoresearch-dev-bastion --zone asia-northeast3-a --project ar-infra-501607 --tunnel-through-iap -- -N -L 8080:airflow.dev.autoresearch.internal:8080
+   gcloud compute ssh autoresearch-dev-bastion --zone asia-northeast3-a --project autoresearch-503903 --tunnel-through-iap -- -N -L 8080:airflow.dev.autoresearch.internal:8080
    ```
 
 2. 브라우저에서 `http://localhost:8080/login/`으로 접속합니다. 반드시
@@ -632,7 +632,7 @@ Bastion 포트 포워딩으로 OAuth 로그인을 검증합니다.
 ```powershell
 gcloud compute ssh autoresearch-dev-bastion `
   --zone asia-northeast3-a `
-  --project ar-infra-501607 `
+  --project autoresearch-503903 `
   --tunnel-through-iap `
   -- -N -L 8080:airflow.dev.autoresearch.internal:8080
 ```

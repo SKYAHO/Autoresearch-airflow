@@ -10,7 +10,7 @@ on:
 
 env:
   REGION: asia-northeast3
-  PROJECT_ID: ar-infra-501607
+  PROJECT_ID: autoresearch-503903
   REPOSITORY: autoresearch-dev-docker
 
 jobs:

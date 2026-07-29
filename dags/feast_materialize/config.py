@@ -14,17 +14,17 @@ def _airflow_env(name: str, default: str) -> str:
 FEAST_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
 
 CODE_ARTIFACTS_BUCKET = _airflow_env(
-    "FEAST_CODE_ARTIFACTS_BUCKET", "ar-infra-501607-code-artifacts"
+    "FEAST_CODE_ARTIFACTS_BUCKET", "autoresearch-503903-code-artifacts"
 )
-GCP_PROJECT_ID = _airflow_env("FEAST_GCP_PROJECT_ID", "ar-infra-501607")
+GCP_PROJECT_ID = _airflow_env("FEAST_GCP_PROJECT_ID", "autoresearch-503903")
 BQ_DATASET = _airflow_env("FEAST_BQ_DATASET", "feast_offline_store")
 BQ_LOCATION = _airflow_env("FEAST_BQ_LOCATION", "asia-northeast3")
 GCS_REGISTRY_PATH = _airflow_env(
     "FEAST_GCS_REGISTRY_PATH",
-    "gs://ar-infra-501607-feast-registry/registry.db",
+    "gs://autoresearch-503903-feast-registry/registry.db",
 )
 GCS_STAGING_LOCATION = _airflow_env(
-    "FEAST_GCS_STAGING_LOCATION", "gs://ar-infra-501607-feast-staging/"
+    "FEAST_GCS_STAGING_LOCATION", "gs://autoresearch-503903-feast-staging/"
 )
 REDIS_HOST = _airflow_env("FEAST_REDIS_HOST", "10.10.16.3")
 REDIS_PORT = _airflow_env("FEAST_REDIS_PORT", "6379")
