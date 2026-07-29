@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29T02:24:10Z",
+  "generated_at": "2026-07-29T02:52:57Z",
   "reports": [
+    {
+      "number": 180,
+      "title": "chore: feast image digest 승격 (704e91dfd173)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-29T02:52:48Z",
+      "summary_ko": [
+        "Feast 오프라인-온라인 동기화 파이프라인의 실행 이미지를 최신 검증 다이제스트(c3031a49...)로 승격하였습니다.",
+        "Autoresearch 저장소의 feast 릴리스 워크플로우에서 검증 완료된 불변 이미지를 dev 환경 Helm 설정에 반영하였습니다.",
+        "PR 머지 시 GitOps 배포 파이프라인을 거쳐 GKE 개발 환경의 Airflow 설정에 신규 Feast 이미지가 자동 적용됩니다."
+      ],
+      "report_url": "pr/180/"
+    },
     {
       "number": 176,
       "title": "feat: yamllint key-duplicates 검사 — YAML 중복 키 무음 무효화 차단 (#175)",
