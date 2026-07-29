@@ -14,11 +14,10 @@ Registry의 "최근 미승격 버전"을 그때그때 조회한다 — promote-m
 하다(평가할 신규 후보가 없으면 no-op으로 종료), 그래서 학습이 아직 안 끝난
 시점에 겹쳐 돌아도 안전하다.
 
-주의: promote-model은 게이트 거부(GateRejectedError)와 실행 오류를 모두
-exit code 1로 반환한다(SKYAHO/Autoresearch#343 리뷰에서 확인된 의도적
-동작). 즉 "새 후보가 champion보다 지표가 낮아 거부됨"도 이 DAG의 실패
-알림을 울린다 — 실제 장애가 아니라 정상적인 게이트 동작이니, 실패 알림
-수신 시 태스크 로그의 `[게이트 미달]`/`[에러]` 접두어로 구분한다.
+`model-promotion-result-v1` opt-in으로 promoted/rejected/no_candidate를 정상
+결과로 구분해 XCom으로 운반한다. promoted/rejected만 후속 Python task가
+모델 이벤트 Slack 채널로 보내며 no_candidate는 로그만 남긴다. 판정 또는
+실행 error만 KPO 실패로 남아 DagRun 실패 알림 경로를 사용한다.
 """
 
 from __future__ import annotations
@@ -27,8 +26,13 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from airflow import DAG
+from airflow.operators.python import PythonOperator
 from common.batch_pod_operator import AutoresearchBatchPodOperator
-from common.email_notifications import notify_dag_failure, notify_dag_success
+from common.slack_notifications import (
+    notify_dag_failure,
+    notify_dag_success,
+    notify_model_promotion,
+)
 
 from ctr_model_promote.config import (
     CALIBRATION_MODEL_NAME,
@@ -69,6 +73,10 @@ with DAG(
             CHAMPION_ALIAS,
             "--calibration-model-name",
             CALIBRATION_MODEL_NAME,
+            "--result-contract",
+            "model-promotion-result-v1",
+            "--result-path",
+            "/airflow/xcom/return.json",
         ],
         pipeline="ctr-promote",
         plain_env={
@@ -85,4 +93,14 @@ with DAG(
         memory_request="512Mi",
         cpu_limit="1",
         memory_limit="2Gi",
+        do_xcom_push=True,
     )
+
+    notify_model_promotion_event = PythonOperator(
+        task_id="notify_model_promotion_event",
+        python_callable=notify_model_promotion,
+        op_kwargs={"source_task_id": "promote_ctr_model"},
+        retries=0,
+    )
+
+    promote_ctr_model >> notify_model_promotion_event

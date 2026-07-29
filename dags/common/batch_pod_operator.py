@@ -96,6 +96,7 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
         trigger_rule: str = "all_success",
         pool: str | None = None,
         pool_slots: int = 1,
+        do_xcom_push: bool = False,
         **kwargs,
     ) -> None:
         # Airflow가 DAG 컨텍스트에서 default_args/params 등을 apply_defaults로
@@ -130,7 +131,7 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
             in_cluster=True,
             get_logs=True,
             is_delete_operator_pod=True,
-            do_xcom_push=False,
+            do_xcom_push=do_xcom_push,
             retries=retries,
             retry_delay=retry_delay,
             trigger_rule=trigger_rule,

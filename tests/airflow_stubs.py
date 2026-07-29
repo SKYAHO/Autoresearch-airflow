@@ -68,6 +68,10 @@ class FakeKubernetesPodOperator:
         return self
 
 
+class FakePythonOperator(FakeKubernetesPodOperator):
+    """PythonOperator의 parse-time task/dependency 표면 대역."""
+
+
 class FakeDataset:
     """airflow.datasets.Dataset 대역 — URI 동일성만 비교한다."""
 
@@ -90,6 +94,9 @@ def install_airflow_stubs(monkeypatch) -> None:
     airflow_datasets = ModuleType("airflow.datasets")
     airflow_datasets.Dataset = FakeDataset
     airflow_models = ModuleType("airflow.models")
+    airflow_core_operators = ModuleType("airflow.operators")
+    airflow_python_operator = ModuleType("airflow.operators.python")
+    airflow_python_operator.PythonOperator = FakePythonOperator
     airflow_utils = ModuleType("airflow.utils")
     airflow_email = ModuleType("airflow.utils.email")
 
@@ -107,6 +114,20 @@ def install_airflow_stubs(monkeypatch) -> None:
 
     airflow_models.Variable = Variable
     airflow_providers = ModuleType("airflow.providers")
+    airflow_slack = ModuleType("airflow.providers.slack")
+    airflow_slack_hooks = ModuleType("airflow.providers.slack.hooks")
+    airflow_slack_webhook = ModuleType(
+        "airflow.providers.slack.hooks.slack_webhook"
+    )
+
+    class SlackWebhookHook:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def send(self, **_kwargs) -> None:
+            return None
+
+    airflow_slack_webhook.SlackWebhookHook = SlackWebhookHook
     airflow_cncf = ModuleType("airflow.providers.cncf")
     airflow_kubernetes = ModuleType("airflow.providers.cncf.kubernetes")
     airflow_operators = ModuleType("airflow.providers.cncf.kubernetes.operators")
@@ -129,10 +150,15 @@ def install_airflow_stubs(monkeypatch) -> None:
         "airflow": airflow,
         "airflow.datasets": airflow_datasets,
         "airflow.models": airflow_models,
+        "airflow.operators": airflow_core_operators,
+        "airflow.operators.python": airflow_python_operator,
         "airflow.utils": airflow_utils,
         "airflow.utils.email": airflow_email,
         "airflow.utils.task_group": airflow_task_group,
         "airflow.providers": airflow_providers,
+        "airflow.providers.slack": airflow_slack,
+        "airflow.providers.slack.hooks": airflow_slack_hooks,
+        "airflow.providers.slack.hooks.slack_webhook": airflow_slack_webhook,
         "airflow.providers.cncf": airflow_cncf,
         "airflow.providers.cncf.kubernetes": airflow_kubernetes,
         "airflow.providers.cncf.kubernetes.operators": airflow_operators,
@@ -160,6 +186,8 @@ def forget_pipeline_packages() -> None:
         "common.batch_pod_operator",
         "common.datasets",
         "common.email_notifications",
+        "common.notification_safety",
+        "common.slack_notifications",
         "youtube_backfill",
         "youtube_backfill.config",
         "youtube_gcs_action_log",

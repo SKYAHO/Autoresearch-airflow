@@ -2,7 +2,7 @@
 # Target cluster: autoresearch-503903 / autoresearch-dev-gke.
 
 airflow:
-  airflowVersion: "2.10.5"
+  airflowVersion: "2.11.2"
   executor: LocalExecutor
 
   defaultAirflowRepository: asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-airflow
@@ -241,6 +241,24 @@ airflow:
     env:
       - name: AUTORESEARCH_AIRFLOW_ENVIRONMENT
         value: "dev"
+      - name: AIRFLOW_CONN_SLACK_PIPELINE_STATUS
+        valueFrom:
+          secretKeyRef:
+            name: airflow-slack-webhooks
+            key: pipeline-status-connection
+            optional: false
+      - name: AIRFLOW_CONN_SLACK_ALERTS_AIRFLOW
+        valueFrom:
+          secretKeyRef:
+            name: airflow-slack-webhooks
+            key: alerts-airflow-connection
+            optional: false
+      - name: AIRFLOW_CONN_SLACK_MODEL_EVENTS
+        valueFrom:
+          secretKeyRef:
+            name: airflow-slack-webhooks
+            key: model-events-connection
+            optional: false
       - name: AIRFLOW__SMTP__SMTP_HOST
         valueFrom:
           secretKeyRef:

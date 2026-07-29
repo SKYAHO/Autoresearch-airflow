@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
-from common.email_notifications import notify_dag_failure, notify_dag_success
+from common.slack_notifications import notify_dag_failure, notify_dag_success
 from feast_materialize.config import (
     BQ_DATASET,
     BQ_LOCATION,

@@ -101,3 +101,33 @@ def test_batch_operator_overrides_node_selector_and_tolerations_when_given(
     # operator가 이후에 변형하지 않도록 — node_selector와 동일한 방어).
     assert task.kwargs["tolerations"] is not override_tolerations
     assert task.kwargs["tolerations"][0] is not override_tolerations[0]
+
+
+def test_batch_operator_keeps_xcom_opt_in(monkeypatch) -> None:
+    install_airflow_stubs(monkeypatch)
+    spec = importlib.util.spec_from_file_location("_batch_operator_xcom", KPO_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    common = {
+        "image": "example:latest",
+        "module": "example.job",
+        "arguments": [],
+        "pipeline": "example",
+        "execution_timeout": timedelta(minutes=1),
+        "cpu_request": "250m",
+        "memory_request": "512Mi",
+        "cpu_limit": "1",
+        "memory_limit": "2Gi",
+    }
+    with FakeDAG() as dag:
+        module.AutoresearchBatchPodOperator(task_id="default_task", **common)
+        module.AutoresearchBatchPodOperator(
+            task_id="xcom_task",
+            do_xcom_push=True,
+            **common,
+        )
+
+    assert dag.task_dict["default_task"].kwargs["do_xcom_push"] is False
+    assert dag.task_dict["xcom_task"].kwargs["do_xcom_push"] is True

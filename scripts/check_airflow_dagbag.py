@@ -26,6 +26,7 @@ _EXPECTED_TASK_COUNTS = {
     "youtube_backfill_kr": 1,
     "lake_to_bigquery_incremental": 6,
     "ctr_model_training": 1,
+    "ctr_model_promote": 2,
     "feast_offline_feature_build": 1,
     "feast_online_store_materialize": 1,
 }
@@ -45,7 +46,7 @@ def main() -> int:
         include_examples=False,
         safe_mode=False,
     )
-    from common.email_notifications import notify_dag_failure, notify_dag_success
+    from common.slack_notifications import notify_dag_failure, notify_dag_success
 
     if dagbag.import_errors:
         for path, error in sorted(dagbag.import_errors.items()):

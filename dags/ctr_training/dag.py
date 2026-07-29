@@ -33,7 +33,7 @@ from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
 from common.datasets import RAW_ACTION_LOG, RAW_YOUTUBE_TRENDING
-from common.email_notifications import notify_dag_failure, notify_dag_success
+from common.slack_notifications import notify_dag_failure, notify_dag_success
 from ctr_training.config import (
     CODE_ARTIFACTS_BUCKET,
     EVENTS_END_DATE_TEMPLATE,

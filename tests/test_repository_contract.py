@@ -23,6 +23,11 @@ EMAIL_SECRET_ENV = {
     "AIRFLOW__SMTP__SMTP_MAIL_FROM": "smtp-mail-from",
     "AUTORESEARCH_AIRFLOW_ALERT_RECIPIENTS": "alert-recipients",
 }
+SLACK_SECRET_ENV = {
+    "AIRFLOW_CONN_SLACK_PIPELINE_STATUS": "pipeline-status-connection",
+    "AIRFLOW_CONN_SLACK_ALERTS_AIRFLOW": "alerts-airflow-connection",
+    "AIRFLOW_CONN_SLACK_MODEL_EVENTS": "model-events-connection",
+}
 
 
 def _split_scheduler_values(values: str) -> tuple[str, str]:
@@ -84,7 +89,7 @@ def test_dag_defines_kubernetes_pod_operator_task() -> None:
     assert "get_logs=True" in source
     assert "pool=_OPENROUTER_POOL" in source
     assert "pool_slots=1" in source
-    assert "do_xcom_push=False" in source
+    assert "do_xcom_push: bool=False" in source
     assert "trigger_rule='all_success'" in source
     assert (
         "collect_youtube_trending_partition >> ensure_action_log_partition >> validate_action_log_partition"
@@ -144,10 +149,15 @@ def test_legacy_batch_build_and_wrapper_sources_are_removed() -> None:
 def test_astro_airflow_image_has_required_build_context_files() -> None:
     context = ROOT / "docker" / "airflow"
 
-    for filename in ("packages.txt", "requirements.txt"):
-        lines = (context / filename).read_text(encoding="utf-8").splitlines()
-        assert lines
-        assert all(not line.strip() or line.lstrip().startswith("#") for line in lines)
+    package_lines = (context / "packages.txt").read_text(encoding="utf-8").splitlines()
+    assert package_lines
+    assert all(
+        not line.strip() or line.lstrip().startswith("#") for line in package_lines
+    )
+    requirement_lines = (
+        context / "requirements.txt"
+    ).read_text(encoding="utf-8").splitlines()
+    assert "apache-airflow-providers-slack==9.10.2" in requirement_lines
 
     assert not (ROOT / "packages.txt").exists()
     assert not (ROOT / "requirements.txt").exists()
@@ -187,25 +197,113 @@ def test_helm_values_inject_email_secret_only_into_scheduler() -> None:
         assert "@example.com" not in values
 
 
-def test_readme_documents_dag_email_notification_operations_contract() -> None:
+def test_all_dag_callbacks_use_slack_notifications() -> None:
+    callback_files = []
+    for path in (ROOT / "dags").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if "on_success_callback=" not in source:
+            continue
+        callback_files.append(path)
+        assert "common.email_notifications" not in source
+        imports = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "common.slack_notifications"
+        ]
+        imported_names = {
+            alias.name for node in imports for alias in node.names
+        }
+        assert {"notify_dag_failure", "notify_dag_success"} <= imported_names
+        assert "on_success_callback=notify_dag_success" in source
+        assert "on_failure_callback=notify_dag_failure" in source
+
+    assert callback_files
+
+
+def test_slack_provider_runtime_and_scheduler_connections_are_pinned() -> None:
+    requirements = (
+        ROOT / "docker" / "airflow" / "requirements.txt"
+    ).read_text(encoding="utf-8")
+    assert "apache-airflow-providers-slack==9.10.2" in requirements.splitlines()
+
+    actual_values = (
+        ROOT / "deploy" / "airflow" / "values.yaml"
+    ).read_text(encoding="utf-8")
+    assert 'airflowVersion: "2.11.2"' in actual_values
+
+    for relative_path in (
+        "deploy/airflow/values.example.yaml",
+        "deploy/airflow/values.yaml",
+    ):
+        values = (ROOT / relative_path).read_text(encoding="utf-8")
+        scheduler, outside_scheduler = _split_scheduler_values(values)
+        for env_name, key in SLACK_SECRET_ENV.items():
+            pattern = (
+                rf"- name: {env_name}\s+valueFrom:\s+secretKeyRef:\s+"
+                rf"name: airflow-slack-webhooks\s+key: {key}\s+optional: false"
+            )
+            assert re.search(pattern, scheduler)
+            assert env_name not in outside_scheduler
+
+
+def test_readme_limits_email_notification_contract_to_rollback() -> None:
     readme = " ".join(README_PATH.read_text(encoding="utf-8").split())
 
     for contract in (
         "### DAG 실행 결과 메일 알림",
-        "scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때",
-        "task retry 중간, UI/CLI 상태 변경, callback 수동 재호출은 한 통 보장 범위가 아닙니다",
-        "실패 task ID와 제한·마스킹된 진단 요약",
-        "scheduler가 제공하는 실패 reason",
-        "task의 원본 exception이나 traceback은 보장되지 않습니다",
-        "전체 log와 traceback은 포함하지 않습니다",
+        "Slack 전환 실패 시 되돌릴 rollback 계약",
+        "현재 운영 DAG는",
+        "Slack 공통 callback을 사용",
+        "rollback 시에만 email callback으로 복원",
         "`AUTORESEARCH_AIRFLOW_ENVIRONMENT`",
         "`airflow-email-alerts` Secret으로 scheduler에만 주입",
         "Secret payload와 실제 수신자 주소는 Git 밖에서 관리",
         "Google OAuth 로그인 설정은 SMTP 인증과 무관",
-        "callback 전송 실패는 DagRun 상태를 바꾸지 않습니다",
-        "`DAG email notification failed`",
     ):
         assert contract in readme
+
+
+def test_readme_documents_slack_channel_and_delivery_contract() -> None:
+    readme = " ".join(README_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "### Slack 실시간 알림",
+        "`#pipeline-status`",
+        "`#alerts-airflow`",
+        "`#model-events`",
+        "scheduled 또는 asset-triggered DagRun의 최종 성공",
+        "`<!here>`를 정확히 한 번",
+        "`promoted`와 `rejected`",
+        "`no_candidate`는 로그만",
+        "알림 전송 실패는 원래 task 또는 DagRun 상태를 바꾸지 않습니다",
+        "live smoke 전 rollback 경로",
+    ):
+        assert contract in readme
+
+
+def test_gke_guide_documents_safe_slack_secret_smoke_and_rollback() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "`airflow-slack-webhooks`",
+        "`pipeline-status-connection`",
+        "`alerts-airflow-connection`",
+        "`model-events-connection`",
+        "mode 0600",
+        "trailing CR/LF",
+        "payload를 출력하지",
+        "kubectl create secret generic airflow-slack-webhooks",
+        "--dry-run=client -o yaml",
+        "`#pipeline-status`에는 멘션이 없는 카드 한 건",
+        "`#alerts-airflow`에는 `@here`가 정확히 한 번",
+        "`#model-events`에는 `promoted`와 `rejected`",
+        "`no_candidate`는 무전송",
+        "최소 한 번의 실제 scheduled 성공",
+        "이전 git-sync commit",
+        "`airflow-email-alerts`",
+    ):
+        assert contract in guide
 
 
 def test_gke_guide_documents_safe_email_notification_smoke_and_rollback() -> None:
@@ -533,6 +631,9 @@ def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
     assert '"youtube_gcs_action_log_pipeline_qa": 3' in check_source
     assert '"youtube_backfill_kr": 1' in check_source
     assert '"ctr_model_training": 1' in check_source
+    assert '"ctr_model_promote": 2' in check_source
+    assert "from common.slack_notifications import" in check_source
+    assert "from common.email_notifications import" not in check_source
     assert "dag.on_success_callback is not notify_dag_success" in check_source
     assert "dag.on_failure_callback is not notify_dag_failure" in check_source
     assert "for dag_id, dag in sorted(dagbag.dags.items())" in check_source
@@ -685,6 +786,29 @@ def test_gke_deploy_preflights_email_secret_before_pausing_dag() -> None:
     assert 'value.endswith((b"\\n", b"\\r"))' in preflight
     assert "print(value" not in preflight
     assert "decode()" not in preflight
+
+
+def test_gke_deploy_preflights_slack_secret_before_pausing_dag() -> None:
+    workflow = GKE_DEV_DEPLOY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    step_name = "Preflight Slack alert Secret"
+    preflight = _workflow_step(workflow, step_name)
+
+    assert workflow.index(step_name) < workflow.index("Pause production DAG")
+    assert (
+        'kubectl get secret airflow-slack-webhooks -n "$AIRFLOW_NAMESPACE" -o json'
+        in preflight
+    )
+    keys_match = re.search(r"expected = \{(?P<keys>[^}]+)\}", preflight)
+    assert keys_match is not None
+    assert {
+        "pipeline-status-connection",
+        "alerts-airflow-connection",
+        "model-events-connection",
+    } == set(re.findall(r'"([a-z-]+)"', keys_match.group("keys")))
+    assert "base64.b64decode(data[key], validate=True)" in preflight
+    assert 'value.startswith(b"slackwebhook://")' in preflight
+    assert 'value.endswith((b"\\n", b"\\r"))' in preflight
+    assert "print(value" not in preflight
 
 
 def test_helm_values_use_external_cloud_sql_metadata_db() -> None:

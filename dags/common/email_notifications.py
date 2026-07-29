@@ -1,4 +1,13 @@
-"""DAG run 최종 상태를 안전한 운영 메일로 전송한다."""
+"""DAG run 최종 상태를 rollback용 운영 메일로 전송한다.
+
+[파이프라인] DagRun 종료 callback에서 공통 안전 처리 결과를 SMTP adapter로
+전달한다.
+
+[기능] 수신자 검증, HTML 렌더링과 Airflow send_email 호출을 제공한다.
+
+[비책임] credential 정리와 실패 task 판정은 notification_safety가 담당하며,
+Slack 메시지와 채널 선택은 담당하지 않는다.
+"""
 
 from __future__ import annotations
 
@@ -10,38 +19,16 @@ from collections.abc import Mapping
 from typing import Any
 
 from airflow.utils.email import send_email
+from common.notification_safety import (
+    failed_task_ids as _failed_task_ids,
+    format_value as _format_value,
+    safe_task_log_url as _task_log_url,
+    sanitize_text as _sanitize_text,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
 _RECIPIENT_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_NAMED_SECRET_PATTERN = re.compile(
-    r"(?<![a-z0-9])(password|token|api_key|client_secret|access_token|secret_key|"
-    r"aws_secret_access_key)(\s*[=:]\s*)([^\s,;]+)",
-    re.IGNORECASE,
-)
-_QUOTED_NAMED_SECRET_PATTERN = re.compile(
-    r"(?P<prefix>(?:(?P<key_quote>[\"'])_*(?:[a-z0-9]+_+)*"
-    r"(?:password|token|api_key|client_secret|access_token|secret_key|"
-    r"aws_secret_access_key)(?P=key_quote)|"
-    r"(?<![a-z0-9])(?:password|token|api_key|client_secret|access_token|secret_key|"
-    r"aws_secret_access_key))\s*[=:]\s*"
-    r"(?P<value_quote>[\"']))"
-    r"(?P<value>(?:\\[^\r\n]|(?!(?P=value_quote))[^\\\r\n])*)"
-    r"(?P=value_quote)",
-    re.IGNORECASE,
-)
-_BEARER_PATTERN = re.compile(r"\b(Bearer)(\s+)([^\s,;]+)", re.IGNORECASE)
-_URI_USERINFO_PATTERN = re.compile(
-    r"(\b[a-z][a-z0-9+.-]*://[^/@\s:]+:)([^@/?#\s]+)(@)", re.IGNORECASE
-)
-_URI_TOKEN_USERINFO_PATTERN = re.compile(
-    r"(\b[a-z][a-z0-9+.-]*://)([a-z0-9._~!$&'()*+,;=%-]+)"
-    r"(@(?=(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::\d+)?(?:[/?#\s]|$)))",
-    re.IGNORECASE,
-)
-_MAX_EXCEPTION_LENGTH = 2_000
-
-
 class NotificationConfigurationError(ValueError):
     """알림을 안전하게 보낼 수 없는 외부 설정을 나타낸다."""
 
@@ -61,44 +48,6 @@ def _required_environment() -> str:
     if not environment:
         raise NotificationConfigurationError("Airflow environment is missing")
     return environment
-
-
-def _format_value(value: Any) -> str:
-    if value is None:
-        return "unknown"
-    isoformat = getattr(value, "isoformat", None)
-    return isoformat() if callable(isoformat) else str(value)
-
-
-def _sanitize_text(value: Any) -> str:
-    message = _URI_USERINFO_PATTERN.sub(r"\1[REDACTED]\3", str(value))
-    message = _URI_TOKEN_USERINFO_PATTERN.sub(r"\1[REDACTED]\3", message)
-    message = _QUOTED_NAMED_SECRET_PATTERN.sub(
-        r"\g<prefix>[REDACTED]\g<value_quote>", message
-    )
-    message = _NAMED_SECRET_PATTERN.sub(r"\1\2[REDACTED]", message)
-    message = _BEARER_PATTERN.sub(r"\1\2[REDACTED]", message)
-    return message[:_MAX_EXCEPTION_LENGTH]
-
-
-def _failed_task_ids(dag_run: Any) -> list[str]:
-    failed_states = {"failed", "upstream_failed"}
-    task_ids = []
-    for task_instance in dag_run.get_task_instances():
-        state = getattr(task_instance.state, "value", task_instance.state)
-        if state in failed_states:
-            task_ids.append(task_instance.task_id)
-    return sorted(task_ids)
-
-
-def _task_log_url(context: Mapping[str, Any]) -> str | None:
-    task_instance = context.get("task_instance") or context.get("ti")
-    if task_instance is None:
-        return None
-    try:
-        return getattr(task_instance, "log_url", None) or None
-    except Exception:
-        return None
 
 
 def _render_rows(rows: list[tuple[str, Any]]) -> str:

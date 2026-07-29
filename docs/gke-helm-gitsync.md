@@ -93,6 +93,82 @@ kubectl create secret generic autoresearch-airflow-env \
   --from-literal=YOUTUBE_LAKE_BUCKET='<gcs-bucket>'
 ```
 
+### Slack Incoming Webhook Connection Secret
+
+Slack App 설치 후 `#pipeline-status`, `#alerts-airflow`, `#model-events` 각각에
+channel-bound Incoming Webhook을 하나씩 생성합니다. URL은 서로 바꿔 쓰지
+않으며 다음 Airflow Connection Secret key와 대응합니다.
+
+| 채널 | Airflow Connection ID | Secret key |
+| --- | --- | --- |
+| `#pipeline-status` | `slack_pipeline_status` | `pipeline-status-connection` |
+| `#alerts-airflow` | `slack_alerts_airflow` | `alerts-airflow-connection` |
+| `#model-events` | `slack_model_events` | `model-events-connection` |
+
+각 파일에는 신뢰된 Airflow 도구로 만든 `slackwebhook` Connection URI 하나만
+저장합니다. URI와 webhook URL을 shell argument, history, Git, PR 본문에
+입력하지 않습니다. 저장소 밖 임시 디렉터리를 mode 0700, 세 파일을 mode 0600으로
+만들고, 빈 값·trailing CR/LF·예상하지 않은 key를 payload를 출력하지 않고
+검증합니다.
+
+```bash
+umask 077
+SLACK_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/airflow-slack-secret.XXXXXX")"
+trap 'rm -f -- "$SLACK_SECRET_DIR/pipeline-status-connection" "$SLACK_SECRET_DIR/alerts-airflow-connection" "$SLACK_SECRET_DIR/model-events-connection"; rmdir -- "$SLACK_SECRET_DIR"' EXIT
+for key in pipeline-status-connection alerts-airflow-connection model-events-connection; do
+  install -m 600 /dev/null "$SLACK_SECRET_DIR/$key"
+  IFS= read -r -s -p "$key Connection URI: " value
+  printf '\n'
+  printf '%s' "$value" >"$SLACK_SECRET_DIR/$key"
+  unset value
+done
+
+SLACK_SECRET_DIR="$SLACK_SECRET_DIR" python - <<'PY'
+import os
+from pathlib import Path
+
+root = Path(os.environ["SLACK_SECRET_DIR"])
+expected = {
+    "pipeline-status-connection",
+    "alerts-airflow-connection",
+    "model-events-connection",
+}
+actual = {path.name for path in root.iterdir() if path.is_file()}
+if actual != expected:
+    raise SystemExit("Slack Secret file key mismatch")
+for key in sorted(expected):
+    path = root / key
+    value = path.read_bytes()
+    if not value or value.endswith((b"\n", b"\r")):
+        raise SystemExit(f"Invalid Slack Secret file: key={key}")
+    if path.stat().st_mode & 0o077:
+        raise SystemExit(f"Slack Secret file is not mode 0600: key={key}")
+    if not value.startswith(b"slackwebhook://"):
+        raise SystemExit(f"Unexpected Airflow Connection type: key={key}")
+print("Slack Secret files validated without displaying payloads.")
+PY
+```
+
+검증 후 create-or-replace합니다. `--dry-run=client -o yaml`의 출력은 terminal에
+표시하지 않고 곧바로 API server로 전달합니다.
+
+```bash
+kubectl create secret generic airflow-slack-webhooks \
+  --namespace airflow \
+  --from-file=pipeline-status-connection="$SLACK_SECRET_DIR/pipeline-status-connection" \
+  --from-file=alerts-airflow-connection="$SLACK_SECRET_DIR/alerts-airflow-connection" \
+  --from-file=model-events-connection="$SLACK_SECRET_DIR/model-events-connection" \
+  --dry-run=client -o yaml \
+  | kubectl apply -f -
+
+kubectl describe secret airflow-slack-webhooks --namespace airflow
+```
+
+`kubectl describe secret`에서는 세 key 이름과 byte 수만 확인하고 payload를
+출력하지 않습니다. Secret은 scheduler에만
+`AIRFLOW_CONN_SLACK_PIPELINE_STATUS`, `AIRFLOW_CONN_SLACK_ALERTS_AIRFLOW`,
+`AIRFLOW_CONN_SLACK_MODEL_EVENTS`로 주입됩니다.
+
 메일 알림 배포 전 운영 담당자는 SMTP provider와 발신 계정, 수신자 목록을 확정하고
 `airflow-email-alerts` Secret을 생성합니다. 각 값은 접근 제한된 로컬 파일에서 읽고
 그 파일은 저장소 밖에서 관리합니다. `--from-file`에 사용하는 8개 파일은 빈 값이 아니고
@@ -233,10 +309,204 @@ DAG 단위 필터가 가능하다. GCS task 로그는 ELK 인제스트 대상이
 메트릭은 statsd-exporter(9102, #146)가 노출하고 수집·대시보드는 인프라
 저장소(Grafana) 소관이다.
 
-메일 알림을 배포할 때는 Secret 생성, Helm rollout, scheduler Ready,
+### Slack live smoke와 rollback gate
+
+이 절은 Slack App/Webhook과 `airflow-slack-webhooks` Secret을 실제로 바꾸는
+운영 절차이므로 별도 승인 뒤에만 실행합니다. 배포 후 scheduler Ready,
+`airflow.providers.slack` import, `airflow dags list-import-errors` 0건을 먼저
+확인합니다.
+
+smoke는 다음 순서로 진행합니다.
+
+1. 운영 DAG를 실행하지 않는 합성 scheduled success context로 success callback을
+   한 번 호출합니다.
+2. credential이 없는 의도적 합성 failure context로 failure callback을 한 번
+   호출합니다.
+3. `ctr_model_promote`의 `model-promotion-result-v1` promoted/rejected/
+   no_candidate fixture를 XCom 소비 함수에 전달합니다.
+4. 마지막으로 최소 한 번의 실제 scheduled 성공을 관찰합니다.
+
+PASS 조건은 다음과 같습니다.
+
+- `#pipeline-status`에는 멘션이 없는 카드 한 건
+- `#alerts-airflow`에는 `@here`가 정확히 한 번 있는 실패 카드 한 건
+- `#model-events`에는 `promoted`와 `rejected` 카드, `no_candidate`는 무전송
+- scheduler log와 메시지에 webhook URL·Connection URI·원본 traceback이 없음
+- webhook 오류를 합성해도 원래 task와 DagRun state가 변하지 않음
+
+다음 smoke는 운영 DAG를 실행하지 않고 scheduler 컨테이너에서 실제 세
+Connection을 사용합니다. 출력은 owner-only 임시 파일로만 캡처하고 callback
+payload나 Secret 환경변수는 출력하지 않습니다.
+
+```bash
+(
+umask 077
+SMOKE_LOG="$(mktemp "${TMPDIR:-/tmp}/airflow-slack-smoke.XXXXXX")"
+trap 'rm -f -- "$SMOKE_LOG"' EXIT
+scheduler_pod="$(
+  kubectl get pod -n airflow -l component=scheduler \
+    -o jsonpath='{.items[0].metadata.name}'
+)"
+
+kubectl exec -i -n airflow "$scheduler_pod" -c scheduler -- python - \
+  <<'PY' >"$SMOKE_LOG" 2>&1
+import logging
+import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+from airflow.configuration import conf
+
+sys.path.insert(0, conf.get("core", "dags_folder"))
+import common.slack_notifications as slack_notifications
+from common.slack_notifications import (
+    notify_dag_failure,
+    notify_dag_success,
+    notify_model_promotion,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
+
+
+class SyntheticDagRun:
+    dag_id = "slack_notification_smoke"
+    run_id = "scheduled__slack_notification_smoke"
+    run_type = "scheduled"
+    logical_date = datetime.now(timezone.utc)
+    start_date = logical_date
+    end_date = logical_date
+
+    def get_task_instances(self):
+        return [SimpleNamespace(task_id="synthetic_task", state="failed")]
+
+    def get_dagrun_url(self):
+        return "http://localhost:8080/dags/slack_notification_smoke/grid"
+
+
+class SyntheticXComTI:
+    def __init__(self):
+        self.result = None
+
+    def xcom_pull(self, *, task_ids):
+        if task_ids != "promote_ctr_model":
+            raise RuntimeError("unexpected source task")
+        return self.result
+
+
+dag_run = SyntheticDagRun()
+task_instance = SimpleNamespace(
+    task_id="synthetic_task",
+    state="success",
+    log_url=(
+        "http://localhost:8080/dags/slack_notification_smoke/"
+        "grid?task_id=synthetic_task"
+    ),
+)
+notify_dag_success({"dag_run": dag_run, "task_instance": task_instance})
+task_instance.state = "failed"
+notify_dag_failure(
+    {
+        "dag_run": dag_run,
+        "task_instance": task_instance,
+        "reason": "task_failure client_secret=synthetic-smoke-secret",
+    }
+)
+
+ti = SyntheticXComTI()
+base = {
+    "event": "model_promotion_result",
+    "contract_version": "model-promotion-result-v1",
+    "model_name": "ctr-model",
+    "champion_alias": "champion",
+    "candidate_version": "13",
+    "champion_version": "12",
+    "metric_name": "val_roc_auc",
+    "candidate_metric": 0.81,
+    "champion_metric": 0.80,
+}
+for outcome, reason_code in (
+    ("promoted", "metric_not_degraded"),
+    ("rejected", "metric_below_champion"),
+    ("no_candidate", "already_champion"),
+):
+    ti.result = {**base, "outcome": outcome, "reason_code": reason_code}
+    notify_model_promotion(
+        source_task_id="promote_ctr_model",
+        dag_run=dag_run,
+        ti=ti,
+        task_instance=task_instance,
+    )
+
+
+class SyntheticWebhookFailure(RuntimeError):
+    pass
+
+
+original_send = slack_notifications._send_message
+dag_run.state = "failed"
+task_instance.state = "failed"
+state_before_failure = (dag_run.state, task_instance.state)
+try:
+    def fail_send(*args, **kwargs):
+        raise SyntheticWebhookFailure("synthetic value must not be logged")
+
+    slack_notifications._send_message = fail_send
+    notify_dag_failure(
+        {
+            "dag_run": dag_run,
+            "task_instance": task_instance,
+            "reason": "task_failure",
+        }
+    )
+finally:
+    slack_notifications._send_message = original_send
+
+if (dag_run.state, task_instance.state) != state_before_failure:
+    raise RuntimeError("notification callback changed synthetic Airflow state")
+print("Synthetic webhook isolation: state-unchanged")
+PY
+KUBECTL_STATUS=$?
+
+if [ "$KUBECTL_STATUS" -eq 0 ] \
+  && [ "$(grep -Fc 'Sent DAG Slack notification: dag_id=slack_notification_smoke run_id=scheduled__slack_notification_smoke state=success connection_id=slack_pipeline_status' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'Sent DAG Slack notification: dag_id=slack_notification_smoke run_id=scheduled__slack_notification_smoke state=failed connection_id=slack_alerts_airflow' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'Sent model Slack notification: outcome=promoted connection_id=slack_model_events' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'Sent model Slack notification: outcome=rejected connection_id=slack_model_events' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'Skipped model Slack notification: outcome=no_candidate' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'DAG Slack notification failed:' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'DAG Slack notification failed: dag_id=slack_notification_smoke run_id=scheduled__slack_notification_smoke state=failed error_type=SyntheticWebhookFailure' "$SMOKE_LOG")" -eq 1 ] \
+  && [ "$(grep -Fc 'Synthetic webhook isolation: state-unchanged' "$SMOKE_LOG")" -eq 1 ] \
+  && ! grep -Fq 'synthetic value must not be logged' "$SMOKE_LOG" \
+  && ! grep -Fq 'synthetic-smoke-secret' "$SMOKE_LOG"; then
+  printf '%s\n' 'Slack smoke validation: CALLBACK PASS'
+else
+  printf '%s\n' 'Slack smoke validation: FAIL - inspect protected log securely' >&2
+  printf '%s\n' 'Press Enter after secure inspection' >&2
+  IFS= read -r _
+  exit 1
+fi
+)
+```
+
+`CALLBACK PASS` 뒤 Slack UI에서 정확히 success 1건, failure 1건,
+promoted/rejected 각 1건과 no_candidate 0건을 확인합니다. failure 본문에는
+`task_failure client_secret=[REDACTED]`가 있고 원문
+`synthetic-smoke-secret`은 없어야 합니다. 이 UI 판정까지 통과해야 smoke
+완료이며, 고정 로그 판정만으로 payload redaction을 증명했다고 보지 않습니다.
+
+하나라도 실패하면 SMTP 제거를 진행하지 않습니다. callback 코드를 이전
+git-sync commit으로 되돌리고 scheduler가 그 SHA를 동기화했는지 확인한 뒤,
+기존 `airflow-email-alerts` Secret을 사용하는 메일 callback으로 복원합니다.
+세 채널 smoke와 최소 한 번의 실제 scheduled 성공을 모두 확인한 뒤에만 별도
+PR에서 SMTP module, scheduler SMTP env와 `airflow-email-alerts` 참조를
+제거합니다.
+
+#### SMTP rollback smoke (legacy)
+
+메일 rollback 경로를 검증할 때는 Secret 생성, Helm rollout, scheduler Ready,
 `airflow dags list-import-errors` 0건을 차례로 확인한 다음 운영 DAG를 실행하지 않고
 scheduler pod의 합성 context로 실제 callback 경로를 검증합니다.
-Airflow 2.10.5의 표준 DagRun 실패 callback은 scheduler가 제공하는 `reason`을 가지지만
+Airflow 2.11.2의 표준 DagRun 실패 callback은 scheduler가 제공하는 `reason`을 가지지만
 task 원본 exception이나 traceback은 보장되지 않습니다. 따라서 합성 실패 context도
 실제 scheduler 형태의 `reason`을 사용합니다.
 `kubectl exec ... python -`는 scheduler와 별도 프로세스이므로 scheduler container

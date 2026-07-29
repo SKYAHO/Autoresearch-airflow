@@ -126,7 +126,7 @@ def _load_dag_module(monkeypatch):
 def test_dag_builds_sensor_load_validate_chain_per_dataset(monkeypatch) -> None:
     module = _load_dag_module(monkeypatch)
     dag = module.dag
-    from common.email_notifications import notify_dag_failure, notify_dag_success
+    from common.slack_notifications import notify_dag_failure, notify_dag_success
 
     assert dag.kwargs["on_success_callback"] is notify_dag_success
     assert dag.kwargs["on_failure_callback"] is notify_dag_failure

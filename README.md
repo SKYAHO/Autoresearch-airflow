@@ -352,14 +352,36 @@ Helm values에서는 Airflow Variable을 `AIRFLOW_VAR_<이름>` 환경변수로 
 반영하지 않고 production DAG를 unpause하면 action-log task가 렌더링 단계에서
 실패합니다.
 
+### Slack 실시간 알림
+
+Slack App 하나의 channel-bound Incoming Webhook 세 개를 Airflow Connection으로
+분리합니다.
+
+- `#pipeline-status`: scheduled 또는 asset-triggered DagRun의 최종 성공을
+  멘션 없이 보냅니다. manual·backfill 성공과 task 성공/retry 중간 상태는
+  보내지 않습니다.
+- `#alerts-airflow`: 모든 실제 DagRun 최종 실패를 보내며 `<!here>`를 정확히
+  한 번 포함합니다.
+- `#model-events`: `model-promotion-result-v1`의 `promoted`와 `rejected`만
+  초록/노랑 카드로 보냅니다. `no_candidate`는 로그만 남기며, `error`는
+  DagRun 실패 경로로 알립니다.
+
+메시지는 fallback text와 Balanced Block Kit을 함께 사용합니다. credential,
+원본 traceback과 URI userinfo는 payload에 넣지 않습니다. 알림 전송 실패는
+원래 task 또는 DagRun 상태를 바꾸지 않습니다. 연결 이름과 scheduler Secret
+key, payload 비노출 생성·smoke·rollback 절차는
+[`docs/gke-helm-gitsync.md`](docs/gke-helm-gitsync.md)를 따릅니다.
+
 ### DAG 실행 결과 메일 알림
 
-모든 DAG는 scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때 공통
-callback으로 메일을 한 통 보냅니다. task retry 중간, UI/CLI 상태 변경, callback
-수동 재호출은 한 통 보장 범위가 아닙니다. 실패 메일에는 실패 task ID와 제한·마스킹된
-진단 요약만 포함합니다. 표준 DagRun callback은 scheduler가 제공하는 실패 reason을
-전달하며 task의 원본 exception이나 traceback은 보장되지 않습니다. 실제 exception이
-있는 context에서만 타입과 메시지를 표시하고, 전체 log와 traceback은 포함하지 않습니다.
+SMTP callback은 Slack live smoke 전 rollback 경로로만 유지합니다. 현재 DAG
+callback은 Slack 모듈을 사용하며, 세 채널 smoke와 최소 한 번의 예약 성공을
+확인한 뒤 별도 변경으로 SMTP 코드와 Secret 참조를 제거합니다.
+
+이 절의 메일 동작은 Slack 전환 실패 시 되돌릴 rollback 계약입니다. 현재 운영
+DAG는 scheduler가 DagRun을 최종 `success` 또는 `failed`로 전이할 때 Slack 공통
+callback을 사용합니다. rollback 시에만 email callback으로 복원하며, task retry
+중간과 UI/CLI 상태 변경은 알림 한 건 보장 범위가 아닙니다.
 
 비밀값이 아닌 환경명은 `AUTORESEARCH_AIRFLOW_ENVIRONMENT`로, SMTP 설정과 수신자는
 `airflow-email-alerts` Secret으로 scheduler에만 주입합니다. Secret payload와 실제
@@ -412,7 +434,7 @@ DAG와 helper가 같은 git revision으로 배포되므로 DAG 변경만으로�
 
 현재 dev 설정의 주요 특성은 다음과 같습니다.
 
-- Airflow 2.10.5, `LocalExecutor`
+- Airflow 2.11.2, `LocalExecutor`
 - scheduler 1개, webserver 2개, worker 0개
 - metadata DB는 관리형 Cloud SQL(private IP) 사용 — 연결 Secret 절차는 `docs/cloud-sql-metadata.md` 참고
 - DAG persistence 비활성화, `git-sync` 활성화
@@ -561,9 +583,11 @@ Runtime 이미지를 빌드해 Airflow DagBag import 및 DAG별 task 수를 검�
 
 ## 운영과 롤백
 
-- 모든 KPO task는 `get_logs=True`, `do_xcom_push=False`를 사용합니다.
+- 모든 KPO task는 `get_logs=True`를 사용합니다. `do_xcom_push`는 기본
+  `False`이며 모델 승격 결과 운반 task만 명시적으로 `True`입니다.
 - 애플리케이션 로그는 pod stdout을 통해 Airflow task log에서 확인합니다.
 - callback 전송 실패는 DagRun 상태를 바꾸지 않습니다. scheduler log에서
+  `DAG Slack notification failed` 또는 rollback 중
   `DAG email notification failed`를 확인합니다.
 - 현재 dev values는 remote logging과 log persistence를 사용하지 않습니다.
 - 애플리케이션 롤백은 이전 불변 batch image digest로 수행합니다.
