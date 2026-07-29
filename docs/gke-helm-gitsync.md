@@ -93,6 +93,82 @@ kubectl create secret generic autoresearch-airflow-env \
   --from-literal=YOUTUBE_LAKE_BUCKET='<gcs-bucket>'
 ```
 
+### Slack Incoming Webhook Connection Secret
+
+Slack App 설치 후 `#pipeline-status`, `#alerts-airflow`, `#model-events` 각각에
+channel-bound Incoming Webhook을 하나씩 생성합니다. URL은 서로 바꿔 쓰지
+않으며 다음 Airflow Connection Secret key와 대응합니다.
+
+| 채널 | Airflow Connection ID | Secret key |
+| --- | --- | --- |
+| `#pipeline-status` | `slack_pipeline_status` | `pipeline-status-connection` |
+| `#alerts-airflow` | `slack_alerts_airflow` | `alerts-airflow-connection` |
+| `#model-events` | `slack_model_events` | `model-events-connection` |
+
+각 파일에는 신뢰된 Airflow 도구로 만든 `slackwebhook` Connection URI 하나만
+저장합니다. URI와 webhook URL을 shell argument, history, Git, PR 본문에
+입력하지 않습니다. 저장소 밖 임시 디렉터리를 mode 0700, 세 파일을 mode 0600으로
+만들고, 빈 값·trailing CR/LF·예상하지 않은 key를 payload를 출력하지 않고
+검증합니다.
+
+```bash
+umask 077
+SLACK_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/airflow-slack-secret.XXXXXX")"
+trap 'rm -f -- "$SLACK_SECRET_DIR/pipeline-status-connection" "$SLACK_SECRET_DIR/alerts-airflow-connection" "$SLACK_SECRET_DIR/model-events-connection"; rmdir -- "$SLACK_SECRET_DIR"' EXIT
+for key in pipeline-status-connection alerts-airflow-connection model-events-connection; do
+  install -m 600 /dev/null "$SLACK_SECRET_DIR/$key"
+  IFS= read -r -s -p "$key Connection URI: " value
+  printf '\n'
+  printf '%s' "$value" >"$SLACK_SECRET_DIR/$key"
+  unset value
+done
+
+SLACK_SECRET_DIR="$SLACK_SECRET_DIR" python - <<'PY'
+import os
+from pathlib import Path
+
+root = Path(os.environ["SLACK_SECRET_DIR"])
+expected = {
+    "pipeline-status-connection",
+    "alerts-airflow-connection",
+    "model-events-connection",
+}
+actual = {path.name for path in root.iterdir() if path.is_file()}
+if actual != expected:
+    raise SystemExit("Slack Secret file key mismatch")
+for key in sorted(expected):
+    path = root / key
+    value = path.read_bytes()
+    if not value or value.endswith((b"\n", b"\r")):
+        raise SystemExit(f"Invalid Slack Secret file: key={key}")
+    if path.stat().st_mode & 0o077:
+        raise SystemExit(f"Slack Secret file is not mode 0600: key={key}")
+    if not value.startswith(b"slackwebhook://"):
+        raise SystemExit(f"Unexpected Airflow Connection type: key={key}")
+print("Slack Secret files validated without displaying payloads.")
+PY
+```
+
+검증 후 create-or-replace합니다. `--dry-run=client -o yaml`의 출력은 terminal에
+표시하지 않고 곧바로 API server로 전달합니다.
+
+```bash
+kubectl create secret generic airflow-slack-webhooks \
+  --namespace airflow \
+  --from-file=pipeline-status-connection="$SLACK_SECRET_DIR/pipeline-status-connection" \
+  --from-file=alerts-airflow-connection="$SLACK_SECRET_DIR/alerts-airflow-connection" \
+  --from-file=model-events-connection="$SLACK_SECRET_DIR/model-events-connection" \
+  --dry-run=client -o yaml \
+  | kubectl apply -f -
+
+kubectl describe secret airflow-slack-webhooks --namespace airflow
+```
+
+`kubectl describe secret`에서는 세 key 이름과 byte 수만 확인하고 payload를
+출력하지 않습니다. Secret은 scheduler에만
+`AIRFLOW_CONN_SLACK_PIPELINE_STATUS`, `AIRFLOW_CONN_SLACK_ALERTS_AIRFLOW`,
+`AIRFLOW_CONN_SLACK_MODEL_EVENTS`로 주입됩니다.
+
 메일 알림 배포 전 운영 담당자는 SMTP provider와 발신 계정, 수신자 목록을 확정하고
 `airflow-email-alerts` Secret을 생성합니다. 각 값은 접근 제한된 로컬 파일에서 읽고
 그 파일은 저장소 밖에서 관리합니다. `--from-file`에 사용하는 8개 파일은 빈 값이 아니고
@@ -232,6 +308,38 @@ DAG 단위 필터가 가능하다. GCS task 로그는 ELK 인제스트 대상이
 
 메트릭은 statsd-exporter(9102, #146)가 노출하고 수집·대시보드는 인프라
 저장소(Grafana) 소관이다.
+
+### Slack live smoke와 rollback gate
+
+이 절은 Slack App/Webhook과 `airflow-slack-webhooks` Secret을 실제로 바꾸는
+운영 절차이므로 별도 승인 뒤에만 실행합니다. 배포 후 scheduler Ready,
+`airflow.providers.slack` import, `airflow dags list-import-errors` 0건을 먼저
+확인합니다.
+
+smoke는 다음 순서로 진행합니다.
+
+1. 운영 DAG를 실행하지 않는 합성 scheduled success context로 success callback을
+   한 번 호출합니다.
+2. credential이 없는 의도적 합성 failure context로 failure callback을 한 번
+   호출합니다.
+3. `ctr_model_promote`의 `model-promotion-result-v1` promoted/rejected/
+   no_candidate fixture를 XCom 소비 함수에 전달합니다.
+4. 마지막으로 최소 한 번의 실제 scheduled 성공을 관찰합니다.
+
+PASS 조건은 다음과 같습니다.
+
+- `#pipeline-status`에는 멘션이 없는 카드 한 건
+- `#alerts-airflow`에는 `@here`가 정확히 한 번 있는 실패 카드 한 건
+- `#model-events`에는 `promoted`와 `rejected` 카드, `no_candidate`는 무전송
+- scheduler log와 메시지에 webhook URL·Connection URI·원본 traceback이 없음
+- webhook 오류를 합성해도 원래 task와 DagRun state가 변하지 않음
+
+하나라도 실패하면 SMTP 제거를 진행하지 않습니다. callback 코드를 이전
+git-sync commit으로 되돌리고 scheduler가 그 SHA를 동기화했는지 확인한 뒤,
+기존 `airflow-email-alerts` Secret을 사용하는 메일 callback으로 복원합니다.
+세 채널 smoke와 최소 한 번의 실제 scheduled 성공을 모두 확인한 뒤에만 별도
+PR에서 SMTP module, scheduler SMTP env와 `airflow-email-alerts` 참조를
+제거합니다.
 
 메일 알림을 배포할 때는 Secret 생성, Helm rollout, scheduler Ready,
 `airflow dags list-import-errors` 0건을 차례로 확인한 다음 운영 DAG를 실행하지 않고

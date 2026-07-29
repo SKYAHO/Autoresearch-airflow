@@ -268,6 +268,48 @@ def test_readme_documents_dag_email_notification_operations_contract() -> None:
         assert contract in readme
 
 
+def test_readme_documents_slack_channel_and_delivery_contract() -> None:
+    readme = " ".join(README_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "### Slack 실시간 알림",
+        "`#pipeline-status`",
+        "`#alerts-airflow`",
+        "`#model-events`",
+        "scheduled 또는 asset-triggered DagRun의 최종 성공",
+        "`<!here>`를 정확히 한 번",
+        "`promoted`와 `rejected`",
+        "`no_candidate`는 로그만",
+        "알림 전송 실패는 원래 task 또는 DagRun 상태를 바꾸지 않습니다",
+        "live smoke 전 rollback 경로",
+    ):
+        assert contract in readme
+
+
+def test_gke_guide_documents_safe_slack_secret_smoke_and_rollback() -> None:
+    guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
+
+    for contract in (
+        "`airflow-slack-webhooks`",
+        "`pipeline-status-connection`",
+        "`alerts-airflow-connection`",
+        "`model-events-connection`",
+        "mode 0600",
+        "trailing CR/LF",
+        "payload를 출력하지",
+        "kubectl create secret generic airflow-slack-webhooks",
+        "--dry-run=client -o yaml",
+        "`#pipeline-status`에는 멘션이 없는 카드 한 건",
+        "`#alerts-airflow`에는 `@here`가 정확히 한 번",
+        "`#model-events`에는 `promoted`와 `rejected`",
+        "`no_candidate`는 무전송",
+        "최소 한 번의 실제 scheduled 성공",
+        "이전 git-sync commit",
+        "`airflow-email-alerts`",
+    ):
+        assert contract in guide
+
+
 def test_gke_guide_documents_safe_email_notification_smoke_and_rollback() -> None:
     guide = " ".join(GKE_HELM_GUIDE_PATH.read_text(encoding="utf-8").split())
     secret_command = "kubectl create secret generic airflow-email-alerts"

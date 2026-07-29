@@ -1,6 +1,6 @@
 # Airflow Slack 알림 전환 설계
 
-- **상태**: Proposed
+- **상태**: Implemented locally, live smoke pending
 - **날짜**: 2026-07-29
 - **이슈**: #184
 - **선행 계약**:
