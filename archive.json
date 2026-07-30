@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30T02:52:04Z",
+  "generated_at": "2026-07-30T02:52:44Z",
   "reports": [
+    {
+      "number": 193,
+      "title": "fix: webserver ILB를 새 프로젝트 예약 IP로 교체 (#192)",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-07-30T02:51:44Z",
+      "summary_ko": [
+        "Airflow webserver LoadBalancer Service의 예약 IP를 구 프로젝트 IP(10.10.0.12)에서 신규 프로젝트 예약 IP(10.10.0.3)로 변경하였습니다.",
+        "GCP 프로젝트 이전 후 private DNS와 ILB IP 불일치로 발생하던 웹 UI 접속 타임아웃 문제를 해결하였습니다.",
+        "설정 파일 내 하드코딩된 예약 IP에 변경 이력 및 인프라 연동에 대한 설명 주석을 추가하였습니다."
+      ],
+      "report_url": "pr/193/"
+    },
     {
       "number": 191,
       "title": "chore: Slack 알림 Airflow 이미지를 승격합니다",
