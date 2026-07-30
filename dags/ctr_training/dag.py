@@ -1,8 +1,19 @@
-"""CTR LightGBM 모델을 검증된 BigQuery raw Dataset 갱신 후 자동 학습하고
+"""CTR LightGBM 모델을 검증된 feature Dataset 갱신 후 자동 학습하고
 MLflow에 기록하는 KPO DAG.
 
-RAW_YOUTUBE_TRENDING과 RAW_ACTION_LOG가 모두 갱신되면 실행하며,
-action-log 생성 DAG의 내부 topology에는 의존하지 않는다.
+``feast_offline_feature_build``가 갱신하는 feature 테이블 Dataset 세 개
+(``user_dynamic_feature``, ``video_feature``, ``training_entity``)가 **모두**
+갱신되면 실행한다. upstream DAG의 내부 topology에는 의존하지 않는다.
+
+이전에는 raw Dataset(``RAW_YOUTUBE_TRENDING``/``RAW_ACTION_LOG``)을 직접 구독해
+``feast_offline_feature_build``와 **형제로 동시에** 트리거됐다(#197). 그래서
+학습이 그날 feature·spine 빌드를 기다리지 않고 시작할 수 있었고, 실행 순서가
+두 DAG의 상대 속도에 달려 있어 어떤 날은 전날 데이터로 학습했다. feature
+Dataset을 구독하면 빌드 완료가 학습의 선행 조건이 된다.
+
+이 배선은 **fail-closed**다: feature 빌드가 실패하면 학습은 아예 돌지 않는다.
+낡은 spine으로 조용히 학습하는 것보다 안 도는 편이 안전하다는 판단이며, 세
+테이블 중 하나만 실패해도 학습이 막힌다는 뜻이기도 하다(#197).
 
 SKYAHO/Autoresearch 저장소의 Dockerfile.feast 이미지(feast 런타임 포함,
 src.cli run-pipeline)를 KubernetesPodOperator로 실행한다. build-features와
@@ -32,7 +43,7 @@ from zoneinfo import ZoneInfo
 from airflow import DAG
 
 from common.batch_pod_operator import AutoresearchBatchPodOperator
-from common.datasets import RAW_ACTION_LOG, RAW_YOUTUBE_TRENDING
+from common.datasets import FEAST_OFFLINE_FEATURES, FEAST_TRAINING_ENTITY
 from common.slack_notifications import notify_dag_failure, notify_dag_success
 from ctr_training.config import (
     CODE_ARTIFACTS_BUCKET,
@@ -47,7 +58,10 @@ from ctr_training.config import (
 
 with DAG(
     dag_id="ctr_model_training",
-    schedule=[RAW_YOUTUBE_TRENDING, RAW_ACTION_LOG],
+    # feature 테이블 Dataset 전부가 갱신돼야(AND) 실행한다 — feast_offline_feature_build의
+    # 두 태스크가 이 셋을 outlet으로 선언한다. spine(training_entity)을 빠뜨리면 학습이
+    # 다시 spine 없이 시작할 수 있으므로 셋을 함께 건다(#197).
+    schedule=[*FEAST_OFFLINE_FEATURES, FEAST_TRAINING_ENTITY],
     start_date=datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Seoul")),
     catchup=False,
     max_active_runs=1,
