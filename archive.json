@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30T05:21:46Z",
+  "generated_at": "2026-07-30T05:33:21Z",
   "reports": [
+    {
+      "number": 195,
+      "title": "fix: 일일 feature build에 training_entity spine 태스크 추가 (#194)",
+      "author": "waieiches",
+      "merged_at": "2026-07-30T05:33:04Z",
+      "summary_ko": [
+        "피처 빌드 파이프라인에서 학습 데이터의 핵심 축(training_entity) 적재가 누락되어 발생하던 모델 학습 오류를 해결하였습니다.",
+        "자정 전후 클릭 반응 귀속 특성을 고려하여 training_entity는 하루 전 날짜(D-1)를 빌드하도록 별도 태스크로 분리하였습니다.",
+        "피처 테이블 전체 누락 방지 및 태스크 분리 동작을 검증하는 단동 테스트 7건을 추가하였습니다."
+      ],
+      "report_url": "pr/195/"
+    },
     {
       "number": 193,
       "title": "fix: webserver ILB를 새 프로젝트 예약 IP로 교체 (#192)",
