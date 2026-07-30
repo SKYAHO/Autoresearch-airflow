@@ -117,6 +117,15 @@ jobs:
               --filter "^${AIRFLOW_RELEASE}$" \
               --output json | jq -r '.[0].revision // ""'
           )"
+          # 신선 클러스터(릴리스 부재) 첫 설치 경로(#196): 캡처 대상이 없으므로
+          # 빈 출력으로 종료 — 이후 upgrade(--install)가 설치를 수행하고,
+          # 롤백은 대상 부재 오류, DAG 상태 복원은 was_paused='' 가드로 skip된다.
+          if [[ -z "$previous_revision" ]]; then
+            echo "No existing release '${AIRFLOW_RELEASE}' — first-install path, skipping state capture"
+            echo "previous_revision=" >> "$GITHUB_OUTPUT"
+            echo "was_paused=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           scheduler_pod="$(
             kubectl get pod -n "$AIRFLOW_NAMESPACE" \
               -l component=scheduler \
