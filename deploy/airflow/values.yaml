@@ -357,7 +357,10 @@ airflow:
         maxUnavailable: 1
     service:
       type: LoadBalancer
-      loadBalancerIP: "10.10.0.12"
+      # 인프라 예약 IP(terraform output airflow_ilb_ip). 리터럴로 두면 프로젝트·subnet
+      # 변경을 따라오지 못한다 — #404 프로젝트 이전에서 구 IP가 남아 private DNS와
+      # 갈렸다(#192, infra#425). 예약 IP 재생성 시 output 값으로 다시 맞춘다.
+      loadBalancerIP: "10.10.0.3"
       annotations:
         networking.gke.io/load-balancer-type: "Internal"
       ports:
