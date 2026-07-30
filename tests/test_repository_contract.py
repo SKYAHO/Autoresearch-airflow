@@ -650,7 +650,9 @@ def test_ci_builds_the_runtime_and_checks_the_real_dagbag() -> None:
     assert "dag.on_success_callback is not notify_dag_success" in check_source
     assert "dag.on_failure_callback is not notify_dag_failure" in check_source
     assert "for dag_id, dag in sorted(dagbag.dags.items())" in check_source
-    assert '"feast_offline_feature_build": 1' in check_source
+    # 스냅샷 2종(build_offline_features)과 spine(build_training_entity)은 대상
+    # 날짜가 갈려 태스크가 둘이다(#194).
+    assert '"feast_offline_feature_build": 2' in check_source
     assert '"feast_online_store_materialize": 1' in check_source
 
 
