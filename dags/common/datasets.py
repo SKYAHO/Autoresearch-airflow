@@ -52,10 +52,10 @@ RAW_DATASETS_BY_KEY = {
 # 테이블 목록은 feature_store_build/config.py의 FEATURE_TABLES와 일치해야
 # 한다(parse 테스트가 검증).
 #
-# 현재 이 Dataset을 schedule로 소비하는 DAG는 없다 —
-# feast_online_store_materialize는 KST 00:00 cron으로 되돌렸다. outlet은 Airflow
-# Datasets 화면의 lineage 표시와, 이후 Dataset 트리거로 되돌릴 때의 접점으로
-# 유지한다.
+# #197부터 ctr_model_training이 이 Dataset들(+ FEAST_TRAINING_ENTITY)을 schedule로
+# 소비한다. 따라서 여기서 테이블을 빼면 학습의 선행 조건이 조용히 느슨해진다.
+# feast_online_store_materialize는 여전히 KST 00:00 cron이라 이 Dataset을 구독하지
+# 않는다.
 FEAST_FEATURE_TABLE_NAMES = (
     "user_dynamic_feature",
     "video_feature",

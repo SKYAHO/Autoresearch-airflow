@@ -25,15 +25,27 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     spec.loader.exec_module(module)
 
     dag = module.dag
+    # #197: raw Dataset이 아니라 feature Dataset을 구독한다. raw를 구독하면
+    # feast_offline_feature_build와 형제로 동시에 트리거돼, 학습이 그날 feature·
+    # spine 빌드를 기다리지 않고 시작한다(어떤 날은 전날 데이터로 학습).
+    # Dataset schedule은 AND이므로 셋이 모두 갱신돼야 실행된다.
     assert dag.kwargs["schedule"] == [
         FakeDataset(
-            "bigquery://autoresearch-503903/data_lake_raw/"
-            "data_lake_youtube_trending_kr"
+            "bigquery://autoresearch-503903/feast_offline_store/user_dynamic_feature"
         ),
         FakeDataset(
-            "bigquery://autoresearch-503903/data_lake_raw/data_lake_action_log"
+            "bigquery://autoresearch-503903/feast_offline_store/video_feature"
+        ),
+        FakeDataset(
+            "bigquery://autoresearch-503903/feast_offline_store/training_entity"
         ),
     ]
+    # spine이 빠지면 학습이 다시 spine 없이 시작할 수 있다.
+    assert any(
+        d.uri.endswith("/training_entity") for d in dag.kwargs["schedule"]
+    )
+    # raw Dataset을 직접 구독하면 병렬 트리거가 재발한다.
+    assert not any("data_lake_raw" in d.uri for d in dag.kwargs["schedule"])
     assert dag.kwargs["max_active_runs"] == 1
     assert list(dag.task_dict) == ["train_ctr_model"]
 
@@ -136,3 +148,41 @@ def test_ctr_training_dag_feast_registry_env_respects_variable_override(
         env_by_name["GCS_REGISTRY_PATH"]
         == "gs://autoresearch-503903-feast-registry-qa/registry.db"
     )
+
+
+def test_training_schedule_matches_feature_build_outlets(monkeypatch) -> None:
+    """#197: 학습의 선행 조건이 feature build가 실제로 갱신하는 Dataset과 일치해야 한다.
+
+    둘이 어긋나면 조용히 깨진다. schedule에만 있고 아무도 갱신하지 않는 Dataset이
+    있으면 학습이 영영 트리거되지 않고, 반대로 build가 갱신하는데 schedule에 없는
+    테이블이 있으면 그 테이블이 아직 갱신되지 않은 채로 학습이 시작된다
+    (#194에서 training_entity가 후자였다).
+    """
+    import sys
+
+    install_airflow_stubs(monkeypatch)
+    monkeypatch.syspath_prepend(str(DAGS_ROOT))
+
+    def _load(path: Path, name: str):
+        forget_pipeline_packages()
+        for mod in ("feature_store_build", "feature_store_build.config", "ctr_training"):
+            sys.modules.pop(mod, None)
+        spec = importlib.util.spec_from_file_location(name, path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.dag
+
+    training_dag = _load(CTR_TRAINING_DAG_PATH, "_ctr_training_wiring")
+    build_dag = _load(
+        DAGS_ROOT / "feature_store_build" / "dag.py", "_feature_build_wiring"
+    )
+
+    produced = {
+        dataset.uri
+        for task in build_dag.task_dict.values()
+        for dataset in task.kwargs["outlets"]
+    }
+    required = {dataset.uri for dataset in training_dag.kwargs["schedule"]}
+
+    assert required == produced
