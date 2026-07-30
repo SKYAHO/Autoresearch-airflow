@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30T16:12:58Z",
+  "generated_at": "2026-07-30T17:39:01Z",
   "reports": [
+    {
+      "number": 203,
+      "title": "chore: batch image digest 승격 (de20a6bae1f1)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-07-30T17:38:46Z",
+      "summary_ko": [
+        "애플리케이션 릴리스에서 검증된 최신 배치 이미지 디제스트로 Airflow 주입 환경변수를 승격하였습니다.",
+        "dev Airflow 환경에서 실행되는 일일 파이프라인 및 작업들이 신규 배치 이미지를 사용하도록 변경됩니다.",
+        "본 PR 병합 시 GitOps 배포 워크플로우를 통해 GKE 환경에 최신 배치 이미지가 자동 반영됩니다."
+      ],
+      "report_url": "pr/203/"
+    },
     {
       "number": 199,
       "title": "fix: deploy-gke-dev 첫 설치 경로 — 릴리스 부재 시 상태 캡처 skip (#196)",
