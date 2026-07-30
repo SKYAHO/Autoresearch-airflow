@@ -19,6 +19,18 @@
 ``DELETE``한 뒤 ``INSERT INTO``하고 검증 query를 실행한다. 다른 날짜 행은 건드리지
 않으므로 같은 날짜로 재실행해도 결과가 같고, 대상 테이블 스키마는 Terraform 소유
 그대로 남는다.
+
+task는 **대상 날짜가 갈리므로** 둘이다(#194).
+
+- ``build_offline_features`` — 스냅샷 2종(``user_dynamic_feature``,
+  ``video_feature``). 읽는 범위와 쓰는 범위가 대상 날짜 ``D`` 하나로 일치한다.
+- ``build_training_entity`` — 학습 spine(``training_entity``). impression 30분 뒤까지의
+  click이 KST 자정을 넘겨 다음 날 파티션에 실릴 수 있어 ``D`` 빌드에 ``D+1`` raw가
+  필요하다. 이 DAG는 raw ``dt=D`` 적재 성공으로 트리거되므로 대상 날짜는 ``D-1``이다.
+
+이 DAG가 소유하지 않는 인접 책임: raw 적재·검증은 ``lake_to_bigquery_incremental``,
+online store 반영은 ``feast_online_store_materialize``, 테이블 스키마는
+Autoresearch-infra, SQL과 파티션 계약은 Autoresearch의 batch CLI가 소유한다.
 """
 
 from __future__ import annotations
@@ -31,6 +43,7 @@ from airflow import DAG
 from common.batch_pod_operator import AutoresearchBatchPodOperator
 from common.datasets import (
     FEAST_OFFLINE_FEATURES,
+    FEAST_TRAINING_ENTITY,
     RAW_ACTION_LOG,
     RAW_YOUTUBE_TRENDING,
 )
@@ -43,11 +56,20 @@ from feature_store_build.config import (
     BQ_RAW_DATASET,
     GCP_PROJECT_ID,
     PARTITION_DATE_CONF_KEY,
+    TRAINING_ENTITY_PARTITION_DATE_TEMPLATE,
+    TRAINING_ENTITY_TABLES,
     build_arguments,
 )
 
 
 _KST = ZoneInfo("Asia/Seoul")
+
+_BATCH_ENV = {
+    "CTR_TRAINING_BQ_PROJECT": GCP_PROJECT_ID,
+    "CTR_TRAINING_BQ_DATASET": BQ_DATASET,
+    "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
+    "CTR_TRAINING_BQ_LOCATION": BQ_LOCATION,
+}
 
 
 with DAG(
@@ -74,18 +96,34 @@ with DAG(
         module=BATCH_MODULE,
         arguments=build_arguments(),
         pipeline="feature-store-build",
-        plain_env={
-            "CTR_TRAINING_BQ_PROJECT": GCP_PROJECT_ID,
-            "CTR_TRAINING_BQ_DATASET": BQ_DATASET,
-            "CTR_TRAINING_BQ_RAW_DATASET": BQ_RAW_DATASET,
-            "CTR_TRAINING_BQ_LOCATION": BQ_LOCATION,
-        },
+        plain_env=dict(_BATCH_ENV),
         # batch CLI가 테이블별로 적재 직후 검증 query까지 실행하므로, 이 task가
         # 성공하면 feature 테이블이 검증된 상태다. outlet이
         # feast_online_store_materialize를 트리거한다.
         outlets=list(FEAST_OFFLINE_FEATURES),
         # 쿼리는 BigQuery가 실행하므로 pod은 job 제출·대기만 한다. 하루치만
         # 계산하므로 전체 재구축 시절의 2시간 여유는 필요 없다.
+        retries=1,
+        execution_timeout=timedelta(minutes=30),
+        cpu_request="500m",
+        memory_request="1Gi",
+        cpu_limit="1",
+        memory_limit="2Gi",
+    )
+
+    # spine은 대상 날짜가 하루 이르므로 같은 --partition-date로 묶을 수 없다.
+    # 스냅샷 task와 대상 테이블이 겹치지 않아(같은 행을 두 번 DELETE+INSERT하지
+    # 않는다) 순서 의존이 없고, 한쪽이 실패해도 다른 쪽은 독립적으로 완료된다.
+    build_training_entity = AutoresearchBatchPodOperator(
+        task_id="build_training_entity",
+        image=BATCH_IMAGE_TEMPLATE,
+        module=BATCH_MODULE,
+        arguments=build_arguments(
+            TRAINING_ENTITY_TABLES, TRAINING_ENTITY_PARTITION_DATE_TEMPLATE
+        ),
+        pipeline="feature-store-build",
+        plain_env=dict(_BATCH_ENV),
+        outlets=[FEAST_TRAINING_ENTITY],
         retries=1,
         execution_timeout=timedelta(minutes=30),
         cpu_request="500m",
