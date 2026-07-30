@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30T06:06:35Z",
+  "generated_at": "2026-07-30T06:07:31Z",
   "reports": [
+    {
+      "number": 198,
+      "title": "fix: 학습을 feature build 완료 뒤로 배선 (#197)",
+      "author": "waieiches",
+      "merged_at": "2026-07-30T06:07:19Z",
+      "summary_ko": [
+        "CTR 학습 파이프라인의 트리거 조건을 원천 데이터 적재에서 피처 빌드 완료 Dataset으로 변경하였습니다.",
+        "피처 빌드와 학습 DAG 간의 동시 실행 경합을 제거하여 피처가 완전히 작성된 후 학습이 수행되도록 개선하였습니다.",
+        "피처 생성이 실패할 경우 학습이 실행되지 않도록 fail-closed 안전 구조를 구축하고 교차 검증 테스트를 추가하였습니다."
+      ],
+      "report_url": "pr/198/"
+    },
     {
       "number": 195,
       "title": "fix: 일일 feature build에 training_entity spine 태스크 추가 (#194)",
