@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30T06:07:31Z",
+  "generated_at": "2026-07-30T06:14:27Z",
   "reports": [
+    {
+      "number": 199,
+      "title": "fix: deploy-gke-dev 첫 설치 경로 — 릴리스 부재 시 상태 캡처 skip (#196)",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-07-30T06:14:06Z",
+      "summary_ko": [
+        "신규 GKE 클러스터 배포 시 기존 Helm 릴리스가 없어 배포 워크플로우가 실패하던 결함을 수정하였습니다.",
+        "릴리스 부재 시 이전 리비전 및 DAG 상태 캡처 스텝을 안전하게 건너뛰도록 분기를 추가하였습니다.",
+        "수동 Helm 명령어 실행 우회 없이 CI/CD 워크플로우만으로 최초 배포 완주가 가능해졌습니다."
+      ],
+      "report_url": "pr/199/"
+    },
     {
       "number": 198,
       "title": "fix: 학습을 feature build 완료 뒤로 배선 (#197)",
