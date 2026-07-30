@@ -27,7 +27,8 @@ _EXPECTED_TASK_COUNTS = {
     "lake_to_bigquery_incremental": 6,
     "ctr_model_training": 1,
     "ctr_model_promote": 2,
-    "feast_offline_feature_build": 1,
+    # 스냅샷 2종과 spine은 대상 날짜가 갈려 태스크가 둘이다(#194).
+    "feast_offline_feature_build": 2,
     "feast_online_store_materialize": 1,
 }
 

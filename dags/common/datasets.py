@@ -64,3 +64,11 @@ FEAST_OFFLINE_FEATURES = tuple(
     bigquery_table_dataset(_FEATURE_DATASET, table)
     for table in FEAST_FEATURE_TABLE_NAMES
 )
+
+# 학습 데이터셋 spine(#194). 위 두 스냅샷 테이블과 같은 batch CLI가 빌드하지만
+# 대상 날짜가 하루 이르므로 별도 태스크·별도 Dataset이다. 두 목록을 합친 것이
+# batch CLI가 소유하는 날짜 기반 테이블 전체와 같아야 한다.
+FEAST_TRAINING_ENTITY_TABLE_NAME = "training_entity"
+FEAST_TRAINING_ENTITY = bigquery_table_dataset(
+    _FEATURE_DATASET, FEAST_TRAINING_ENTITY_TABLE_NAME
+)
