@@ -76,7 +76,7 @@ def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -
         "BQ_LOCATION": "asia-northeast3",
         "GCS_REGISTRY_PATH": "gs://autoresearch-503903-feast-registry/registry.db",
         "GCS_STAGING_LOCATION": "gs://autoresearch-503903-feast-staging/",
-        "REDIS_HOST": "10.10.16.3",
+        "REDIS_HOST": "10.10.16.2",
         "REDIS_PORT": "6379",
         "REDIS_CA_SECRET_ID": "autoresearch-dev-redis-server-ca",
     }

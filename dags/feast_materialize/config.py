@@ -26,7 +26,7 @@ GCS_REGISTRY_PATH = _airflow_env(
 GCS_STAGING_LOCATION = _airflow_env(
     "FEAST_GCS_STAGING_LOCATION", "gs://autoresearch-503903-feast-staging/"
 )
-REDIS_HOST = _airflow_env("FEAST_REDIS_HOST", "10.10.16.3")
+REDIS_HOST = _airflow_env("FEAST_REDIS_HOST", "10.10.16.2")
 REDIS_PORT = _airflow_env("FEAST_REDIS_PORT", "6379")
 REDIS_CA_SECRET_ID = _airflow_env(
     "FEAST_REDIS_CA_SECRET_ID", "autoresearch-dev-redis-server-ca"

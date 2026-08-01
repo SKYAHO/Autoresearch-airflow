@@ -682,6 +682,11 @@ def test_helm_values_define_feast_materialize_runtime_settings() -> None:
         assert f"AIRFLOW_VAR_{variable_name}" in production_values
         assert f"AIRFLOW_VAR_{variable_name}" in example_values
 
+    assert re.search(
+        r'name: AIRFLOW_VAR_FEAST_REDIS_HOST\n\s+value: "10\.10\.16\.2"',
+        production_values,
+    )
+
 
 def test_helm_values_point_raw_tables_at_the_separated_dataset() -> None:
     """raw 테이블 dataset 분리 의도가 배포 설정에 명시되어 있는지 확인합니다."""
