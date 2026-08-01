@@ -152,7 +152,7 @@ airflow:
     - name: AIRFLOW_VAR_FEAST_GCS_STAGING_LOCATION
       value: "gs://autoresearch-503903-feast-staging/"
     - name: AIRFLOW_VAR_FEAST_REDIS_HOST
-      value: "10.10.16.3"
+      value: "10.10.16.2"
     - name: AIRFLOW_VAR_FEAST_REDIS_PORT
       value: "6379"
     - name: AIRFLOW_VAR_FEAST_REDIS_CA_SECRET_ID
