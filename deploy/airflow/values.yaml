@@ -394,8 +394,15 @@ airflow:
             name: airflow-web-oauth
             key: GOOGLE_OAUTH_CLIENT_SECRET
             optional: false
+      - name: GOOGLE_ALLOWED_EMAILS
+        valueFrom:
+          secretKeyRef:
+            name: airflow-web-oauth
+            key: GOOGLE_ALLOWED_EMAILS
+            optional: false
     webserverConfig: |
       import os
+      import re
 
       from airflow import configuration as conf
       from airflow.providers.fab.auth_manager.security_manager.override import (
@@ -414,13 +421,18 @@ airflow:
           "Admin": ["Admin"],
       }
 
-      _GOOGLE_ALLOWED_EMAILS = {
-          "pjy154444@gmail.com",     # 박주용
-          "shc7657@gmail.com",       # 성효창
-          "youngjun3108@gmail.com",  # 이영준
-          "toastome@gmail.com",      # 유현서
-          "hyeongyu.data@gmail.com", # 최현규
-      }
+      _EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+      def _load_google_allowed_emails():
+          raw = os.environ.get("GOOGLE_ALLOWED_EMAILS", "")
+          emails = {email.strip().lower() for email in raw.split(",") if email.strip()}
+          if not emails:
+              raise RuntimeError("GOOGLE_ALLOWED_EMAILS must not be empty")
+          if any(not _EMAIL_PATTERN.fullmatch(email) for email in emails):
+              raise RuntimeError("GOOGLE_ALLOWED_EMAILS contains an invalid email")
+          return emails
+
+      _GOOGLE_ALLOWED_EMAILS = _load_google_allowed_emails()
 
       OAUTH_PROVIDERS = [
           {

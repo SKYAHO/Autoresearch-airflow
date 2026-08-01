@@ -871,15 +871,21 @@ http://localhost:8080/oauth-authorized/google
 이슈로 추가되기 전까지 OAuth 검증은 Bastion 포트 포워딩의 localhost URI로
 진행합니다.
 
-OAuth client id와 secret은 Kubernetes Secret으로만 주입합니다. 값은 파일,
-Helm values, Git, PR 본문에 저장하지 않습니다.
+OAuth client id/secret과 Google 로그인 allowlist는 Kubernetes Secret으로만
+주입합니다. 값은 파일, Helm values, Git, PR 본문에 저장하지 않습니다.
 
 ```powershell
 kubectl create secret generic airflow-web-oauth -n airflow `
   --from-literal=GOOGLE_OAUTH_CLIENT_ID="<client-id>" `
   --from-literal=GOOGLE_OAUTH_CLIENT_SECRET="<client-secret>" `
+  --from-literal=GOOGLE_ALLOWED_EMAILS="<comma-separated-email-list>" `
   --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+`GOOGLE_ALLOWED_EMAILS`는 쉼표로 구분한 이메일 목록이며, webserver 시작 시
+빈 목록과 잘못된 이메일 형식을 거부합니다. 목록 변경 후에는 Secret을 갱신하고
+webserver rollout을 재시작합니다. Secret 값 자체는 명령 기록이나 PR에 남기지
+않으며, 운영자가 관리하는 비공개 입력 경로에서만 읽습니다.
 
 Secret 생성 후 렌더링을 확인하고 dev release를 업그레이드합니다.
 
@@ -921,8 +927,8 @@ kubectl exec -n airflow deploy/airflow-webserver -- airflow users delete --usern
 lockout 또는 OAuth 오류가 발생하면 `admin` 계정을 삭제하지 말고 먼저 다음 순서로
 복구합니다.
 
-1. `kubectl get secret airflow-web-oauth -n airflow`로 Secret 존재 여부를
-   확인합니다.
+1. `kubectl get secret airflow-web-oauth -n airflow`로 Secret 존재 여부와
+   `GOOGLE_ALLOWED_EMAILS` key 포함 여부만 확인합니다. 값은 출력하지 않습니다.
 2. Google OAuth client의 Authorized redirect URI가 현재 접속 URL과 일치하는지
    확인합니다.
 3. webserver pod 로그에서 OAuth import 오류 또는 Secret env 누락 오류를
