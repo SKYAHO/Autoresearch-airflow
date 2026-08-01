@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-01T06:59:18Z",
+  "generated_at": "2026-08-01T07:00:08Z",
   "reports": [
+    {
+      "number": 208,
+      "title": "feat: Google OAuth allowlist Secret 주입 전환",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-08-01T06:59:07Z",
+      "summary_ko": [
+        "Airflow 웹서버의 Google OAuth 허용 이메일 목록을 Helm values 하드코딩에서 Kubernetes Secret 주입 방식으로 전환하였습니다.",
+        "웹서버 기동 시 환경변수 목록의 비어있음 및 이메일 형식을 검증하여 설정 오류를 즉시 감지하도록 로직을 추가하였습니다.",
+        "Git 코드 및 Helm 설정에서 실제 개인 이메일 주소를 완전히 제거하고 관련 운영 가이드문서를 보완하였습니다."
+      ],
+      "report_url": "pr/208/"
+    },
     {
       "number": 203,
       "title": "chore: batch image digest 승격 (de20a6bae1f1)",
