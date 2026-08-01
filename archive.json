@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-01T18:28:16Z",
+  "generated_at": "2026-08-01T18:29:07Z",
   "reports": [
+    {
+      "number": 211,
+      "title": "[Bug] Feast materialize Redis endpoint 정합화",
+      "author": "bbungjun",
+      "merged_at": "2026-08-01T18:28:03Z",
+      "summary_ko": [
+        "Feast 온라인 피처 동기화 작업의 Redis 클러스터 접속 엔드포인트를 실제 GCP 주소로 변경하였습니다.",
+        "Helm 배포 환경변수 및 DAG 내 기본값 주소를 10.10.16.2로 동일하게 정합화하였습니다.",
+        "엔드포인트 설정 불일치 회귀를 방지하기 위해 DAG 파싱 및 Helm 계약 테스트를 갱신하고 추가하였습니다."
+      ],
+      "report_url": "pr/211/"
+    },
     {
       "number": 208,
       "title": "feat: Google OAuth allowlist Secret 주입 전환",
