@@ -9,7 +9,6 @@ on:
         default: ''
 
 env:
-  REGION: asia-northeast3
   REPOSITORY: autoresearch-dev-docker
 
 jobs:
@@ -25,6 +24,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: dev 환경 좌표 확인
+        id: environment
+        uses: ./.github/actions/resolve-dev-environment
+        with:
+          configured_project_id: ${{ vars.GCP_PROJECT_ID }}
+          configured_region: ${{ vars.GCP_REGION }}
+
       - name: Resolve variables
         id: vars
         run: |
@@ -38,7 +44,7 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
+          project_id: ${{ steps.environment.outputs.project_id }}
           workload_identity_provider: ${{ vars.WIF_PROVIDER_ID }}
           service_account: ${{ secrets.GAR_PUSHER_SA }}
 
@@ -46,20 +52,23 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Configure Docker for GAR
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+        run: gcloud auth configure-docker ${{ steps.environment.outputs.region }}-docker.pkg.dev
 
       - name: Build airflow image
         run: |
           docker build \
             -f docker/airflow/Dockerfile \
-            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }} \
+            -t ${{ steps.environment.outputs.region }}-docker.pkg.dev/${{ steps.environment.outputs.project_id }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }} \
             docker/airflow
 
       - name: Push airflow image
-        run: docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }}
+        run: docker push ${{ steps.environment.outputs.region }}-docker.pkg.dev/${{ steps.environment.outputs.project_id }}/${{ env.REPOSITORY }}/autoresearch-airflow:${{ steps.vars.outputs.tag }}
 
       - name: Summary
+        shell: bash
         run: |
-          echo "## Airflow image pushed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- \`autoresearch-airflow:${{ steps.vars.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          {
+            printf '%s\n' '## Airflow image pushed'
+            printf '\n'
+            printf '%s\n' "- \`autoresearch-airflow:${{ steps.vars.outputs.tag }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
