@@ -99,6 +99,7 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert env_by_name == {
         "MLFLOW_TRACKING_URI": "http://mlflow.mlflow:5000",
         "CODE_ARTIFACTS_BUCKET": "autoresearch-503903-code-artifacts",
+        "CTR_TRAINING_BQ_PROJECT": "autoresearch-503903",
         "GCS_REGISTRY_PATH": "gs://autoresearch-503903-feast-registry/registry.db",
         "GCS_STAGING_LOCATION": "gs://autoresearch-503903-feast-staging/",
     }
@@ -148,6 +149,28 @@ def test_ctr_training_dag_feast_registry_env_respects_variable_override(
         env_by_name["GCS_REGISTRY_PATH"]
         == "gs://autoresearch-503903-feast-registry-qa/registry.db"
     )
+
+
+def test_ctr_training_dag_bigquery_project_respects_variable_override(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "AIRFLOW_VAR_CTR_TRAINING_BQ_PROJECT",
+        "autoresearch-qa",
+    )
+    install_airflow_stubs(monkeypatch)
+    monkeypatch.syspath_prepend(str(DAGS_ROOT))
+    forget_pipeline_packages()
+    spec = importlib.util.spec_from_file_location(
+        "_ctr_training_dag_under_test_bigquery_project", CTR_TRAINING_DAG_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    task = module.dag.task_dict["train_ctr_model"]
+    env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
+    assert env_by_name["CTR_TRAINING_BQ_PROJECT"] == "autoresearch-qa"
 
 
 def test_training_schedule_matches_feature_build_outlets(monkeypatch) -> None:

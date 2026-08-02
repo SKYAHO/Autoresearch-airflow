@@ -77,6 +77,8 @@ airflow:
       value: "gs://<feast-registry-bucket>/registry.db"
     - name: AIRFLOW_VAR_FEAST_GCS_STAGING_LOCATION
       value: "gs://<feast-staging-bucket>/"
+    - name: AIRFLOW_VAR_CTR_TRAINING_BQ_PROJECT
+      value: "<gcp-project>"
     - name: AIRFLOW_VAR_FEAST_REDIS_HOST
       value: "<redis-cluster-discovery-endpoint>"
     - name: AIRFLOW_VAR_FEAST_REDIS_PORT

@@ -342,7 +342,7 @@ Helm values에서는 Airflow Variable을 `AIRFLOW_VAR_<이름>` 환경변수로 
 | `ACTION_LOG_MAX_CONCURRENCY` | action-log pod 내부 요청 동시성 |
 | `LAKE_TO_BQ_PROJECT` | BigQuery 적재 대상 프로젝트, 기본값 `autoresearch-503903` |
 | `LAKE_TO_BQ_DATASET` | BigQuery raw 테이블 적재 대상 데이터셋, 기본값 `data_lake_raw` |
-| `CTR_TRAINING_BQ_RAW_DATASET` | CTR 학습 Pod에 주입되어 앱이 raw 테이블을 읽을 데이터셋, 기본값 `data_lake_raw` |
+| `CTR_TRAINING_BQ_PROJECT` | CTR 학습 Pod가 `training_entity` spine을 조회할 BigQuery 프로젝트, 기본값 `autoresearch-503903` |
 | `LAKE_TO_BQ_YOUTUBE_TABLE` | youtube trending 대상 테이블, 기본값 `data_lake_youtube_trending_kr` |
 | `LAKE_TO_BQ_ACTION_LOG_TABLE` | action-log 대상 테이블, 기본값 `data_lake_action_log` |
 | `LAKE_TO_BQ_LOCATION` | BigQuery job location, 기본값 `asia-northeast3` (parse 시점에 환경변수로 읽음) |

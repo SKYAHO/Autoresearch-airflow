@@ -47,6 +47,7 @@ from common.datasets import FEAST_OFFLINE_FEATURES, FEAST_TRAINING_ENTITY
 from common.slack_notifications import notify_dag_failure, notify_dag_success
 from ctr_training.config import (
     CODE_ARTIFACTS_BUCKET,
+    CTR_TRAINING_BQ_PROJECT,
     EVENTS_END_DATE_TEMPLATE,
     EVENTS_START_DATE_TEMPLATE,
     GCS_REGISTRY_PATH,
@@ -91,6 +92,9 @@ with DAG(
         plain_env={
             "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
+            # training_entity spine 조회 프로젝트를 명시한다. 앱은 ADC의 암묵적
+            # 프로젝트 fallback을 허용하지 않아 누락 시 즉시 실패한다(#217).
+            "CTR_TRAINING_BQ_PROJECT": CTR_TRAINING_BQ_PROJECT,
             # feast offline PIT 조회에 필요한 GCS 경로(앱이 필수로 읽음 —
             # 없으면 build-features가 KeyError로 즉시 실패). feast_materialize
             # DAG과 같은 registry·staging을 공유한다. raw(data_lake_*)는 더
