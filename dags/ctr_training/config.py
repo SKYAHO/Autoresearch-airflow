@@ -48,6 +48,13 @@ GCS_STAGING_LOCATION = _airflow_env(
     "FEAST_GCS_STAGING_LOCATION", "gs://autoresearch-503903-feast-staging/"
 )
 
+# build-features가 training_entity spine을 BigQuery에서 직접 읽을 때 앱의
+# fail-closed 프로젝트 계약(CTR_TRAINING_BQ_PROJECT)을 만족시킨다. ADC의 암묵적
+# 기본 프로젝트에 의존하지 않으며 환경별 override는 Airflow Variable로 받는다.
+CTR_TRAINING_BQ_PROJECT = _airflow_env(
+    "CTR_TRAINING_BQ_PROJECT", "autoresearch-503903"
+)
+
 # 검증된 두 raw Dataset이 모두 갱신되면 자동 실행한다. 기간은 dag_run.conf
 # 오버라이드가 있으면 그 값을 쓰고, 없으면 Dataset-triggered run의
 # data_interval_end 기준 최근 7개 KST 캘린더 날짜(D-6~D)를 사용한다.
