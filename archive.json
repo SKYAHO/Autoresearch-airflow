@@ -1,7 +1,31 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T02:44:05Z",
+  "generated_at": "2026-08-02T02:44:37Z",
   "reports": [
+    {
+      "number": 216,
+      "title": "chore: feast image digest 승격 (a9954d6dbfc6)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-08-02T02:44:23Z",
+      "summary_ko": [
+        "Feast 온라인 동기화 파이프라인에서 사용하는 Docker 이미지 digest를 최신 버전으로 승격했습니다.",
+        "deploy/airflow/values.yaml에 선언된 AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE 환경 변수 값을 변경했습니다.",
+        "PR 머지 후 GKE 배포 워크플로우를 통해 dev 환경의 Airflow 배포에 즉시 반영됩니다."
+      ],
+      "report_url": "pr/216/"
+    },
+    {
+      "number": 214,
+      "title": "chore: training image digest 승격 (a9954d6dbfc6)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-08-02T02:44:19Z",
+      "summary_ko": [
+        "CTR 모델 학습에 사용되는 Docker 이미지 다이제스트를 신규 검증 버전으로 승격합니다.",
+        "dev 환경 Airflow 배포 설정(values.yaml)의 환경 변수 값을 변경합니다.",
+        "PR 병합 후 CD 워크플로우를 통해 최신 학습 이미지가 Airflow 클러스터에 적용됩니다."
+      ],
+      "report_url": "pr/214/"
+    },
     {
       "number": 211,
       "title": "[Bug] Feast materialize Redis endpoint 정합화",
