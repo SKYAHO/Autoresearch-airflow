@@ -1,7 +1,31 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-04T07:23:30Z",
+  "generated_at": "2026-08-04T07:33:29Z",
   "reports": [
+    {
+      "number": 235,
+      "title": "chore: feast image digest 승격 (0d2cd640241c)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-08-04T07:33:19Z",
+      "summary_ko": [
+        "Feast 동기화 작업에서 사용되는 컨테이너 이미지를 최신 검증 다이제스트로 승격합니다.",
+        "Airflow 배포 설정 파일(values.yaml)의 AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE 환경변수 값을 갱신합니다.",
+        "PR 병합 시 GKE 배포 워크플로우를 통해 개발 환경 파이프라인에 최신 Feast 이미지가 적용됩니다."
+      ],
+      "report_url": "pr/235/"
+    },
+    {
+      "number": 233,
+      "title": "chore: training image digest 승격 (0d2cd640241c)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-08-04T07:33:14Z",
+      "summary_ko": [
+        "CTR 모델 학습에 사용되는 컨테이너 이미지를 검증 완료된 최신 다이제스트로 승격하였습니다.",
+        "dev 환경의 Airflow Helm 배포 설정(values.yaml) 내 학습 이미지 다이제스트 환경변수를 업데이트하였습니다.",
+        "PR이 병합되면 GKE 배포 워크플로우가 실행되어 이후 실행되는 CTR 학습 파이프라인에 최신 학습 환경이 적용됩니다."
+      ],
+      "report_url": "pr/233/"
+    },
     {
       "number": 232,
       "title": "fix: 적재 source URI를 정규 산출물로 제한합니다 (#231)",
