@@ -133,7 +133,7 @@ airflow:
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
       value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-batch@sha256:00f5a81abdd0e42a3df48f90e2f90eb2954b5402323bc16d0778f0ad7133d587"
     - name: AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE
-      value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-training@sha256:3d77b3178e121d03fcb592bb4ed34b02547e26e2dd388a4409a31dadc5b61983"
+      value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-training@sha256:0ed861deaad970787b73f0c64239f220e8ce57e62910af8324571e97406382b1"
     - name: AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE
       value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-feast@sha256:3830cedb04cb448fd6c3c94818a2578a033ad30a129b396083dc932b1b965da5"
     - name: AIRFLOW_VAR_FEAST_CODE_ARTIFACTS_BUCKET
