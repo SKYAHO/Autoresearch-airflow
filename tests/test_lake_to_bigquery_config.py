@@ -1,3 +1,5 @@
+from fnmatch import fnmatch
+
 import pytest
 
 from lake_to_bigquery.config import (
@@ -78,7 +80,7 @@ def test_load_job_truncates_single_partition_with_hive_dt_injection() -> None:
     assert load["sourceUris"] == [
         "{{ var.value.get('ACTION_LOG_OUTPUT_DIR', '') }}/dt="
         + PARTITION_DATE_TEMPLATE
-        + "/*"
+        + "/part-*.parquet"
     ]
     assert load["destinationTable"] == {
         "projectId": BQ_PROJECT_TEMPLATE,
@@ -100,6 +102,66 @@ def test_load_job_truncates_single_partition_with_hive_dt_injection() -> None:
     }
     assert "autodetect" not in load
     assert "schemaUpdateOptions" not in load
+
+
+_ACTION_LOG_BASE_PATH = "gs://raw-bucket/data_lake/action_log"
+_PARTITION_DATE = "2026-08-04"
+
+
+def _render_action_log(template: str) -> str:
+    """Airflow가 템플릿을 렌더한 뒤의 실제 URI를 재현합니다."""
+
+    return template.replace(
+        "{{ var.value.get('ACTION_LOG_OUTPUT_DIR', '') }}", _ACTION_LOG_BASE_PATH
+    ).replace(PARTITION_DATE_TEMPLATE, _PARTITION_DATE)
+
+
+# BigQuery의 GCS 와일드카드는 `/`를 넘어 매칭되므로 fnmatch(`*` → `.*`)가
+# 같은 의미를 갖습니다.
+def _matched(pattern: str, object_uris: list[str]) -> list[str]:
+    return [uri for uri in object_uris if fnmatch(uri, pattern)]
+
+
+@pytest.mark.parametrize(
+    "build_configuration, extract_source_uri",
+    [
+        (
+            build_load_job_configuration,
+            lambda config: config["load"]["sourceUris"][0],
+        ),
+        (
+            build_validation_job_configuration,
+            lambda config: config["query"]["tableDefinitions"]["source_files"][
+                "sourceUris"
+            ][0],
+        ),
+    ],
+    ids=["load", "validate"],
+)
+def test_source_uri_reads_canonical_parquet_only(
+    build_configuration, extract_source_uri
+) -> None:
+    """#231: 파티션에 남은 publish 임시 객체를 적재/검증이 읽으면 안 됩니다.
+
+    적재와 검증이 같은 패턴을 공유하므로 둘 다 고정합니다. 한쪽만 제한하면
+    BigQuery 행 수와 소스 행 수가 어긋나 row count 검사가 실패합니다.
+    """
+
+    pattern = _render_action_log(
+        extract_source_uri(build_configuration(ACTION_LOG_SETTINGS))
+    )
+    partition_prefix = f"{_ACTION_LOG_BASE_PATH}/dt={_PARTITION_DATE}"
+    canonical = f"{partition_prefix}/part-0.parquet"
+
+    assert _matched(
+        pattern,
+        [
+            canonical,
+            # GCS 삭제 권한 누락으로 파티션에 남았던 임시 객체(내용은 canonical과
+            # 동일). 이것까지 읽혀 모든 행이 2번 적재됐습니다.
+            f"{partition_prefix}/part-0.parquet.staging-0f6a43ed",
+        ],
+    ) == [canonical]
 
 
 def test_split_gcs_path_returns_bucket_and_prefix() -> None:
@@ -185,7 +247,7 @@ def test_validation_job_reads_source_rows_from_external_definition() -> None:
             "sourceUris": [
                 "{{ var.value.get('ACTION_LOG_OUTPUT_DIR', '') }}/dt="
                 + PARTITION_DATE_TEMPLATE
-                + "/*"
+                + "/part-*.parquet"
             ],
             "sourceFormat": "PARQUET",
             "hivePartitioningOptions": {

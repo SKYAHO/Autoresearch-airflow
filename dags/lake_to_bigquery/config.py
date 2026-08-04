@@ -97,8 +97,27 @@ def _table_template(settings: LakeDatasetSettings) -> str:
 
 
 def _source_uri_template(settings: LakeDatasetSettings) -> str:
+    """파티션의 정규 산출물(`part-*.parquet`)만 읽는 source URI를 만듭니다.
+
+    예전에는 `dt=<날짜>/*`로 파티션 전체를 읽었는데, publish 임시 객체
+    (`part-0.parquet.staging-<uuid>`)가 삭제되지 못하고 남으면 내용이 같은
+    파일을 두 번 적재해 `event_id` 전역 고유 계약이 깨졌습니다(#231).
+    업스트림도 임시 객체를 파티션 밖으로 옮겼지만(`Autoresearch#517`),
+    적재 쪽에서도 예상한 파일만 읽도록 방어선을 둡니다.
+
+    이 패턴은 shard 레이아웃(`dt=<날짜>/shard=NNN/part-0.parquet`)을 읽지
+    않습니다. BigQuery는 URI당 와일드카드를 1개만 허용하고 `*`가 `/`를 넘어
+    매칭되기 때문입니다. 센서도 `dt=<날짜>/part-0.parquet`을 고정으로
+    기다리므로(`gcs_partition_object`) single 레이아웃 가정은 이미 DAG 전체에
+    깔려 있습니다. shard 모드를 되살린다면 센서와 이 패턴을 함께 고쳐야
+    합니다.
+    """
+
     return (
-        _source_base_path_template(settings) + "/dt=" + PARTITION_DATE_TEMPLATE + "/*"
+        _source_base_path_template(settings)
+        + "/dt="
+        + PARTITION_DATE_TEMPLATE
+        + "/part-*.parquet"
     )
 
 
