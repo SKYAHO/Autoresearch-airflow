@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-04T06:46:55Z",
+  "generated_at": "2026-08-04T06:47:57Z",
   "reports": [
+    {
+      "number": 232,
+      "title": "fix: 적재 source URI를 정규 산출물로 제한합니다 (#231)",
+      "author": "bbungjun",
+      "merged_at": "2026-08-04T06:47:34Z",
+      "summary_ko": [
+        "BigQuery 적재 및 검증 시 GCS 파티션 폴더 전체(/*) 대신 정규 산출물(/part-*.parquet)만 읽도록 소스 URI 패턴을 제한하였습니다.",
+        "업스트림 임시 객체(.staging-*)가 파티션에 남아 있어도 적재 대상에서 제외되도록 하여 데이터 중복 발생을 방지했습니다.",
+        "적재 및 검증 모듈이 소스 URI 템플릿을 공유하도록 설정하여 행 수 및 중복 키 검증의 일관성을 유지하도록 개선하였습니다."
+      ],
+      "report_url": "pr/232/"
+    },
     {
       "number": 222,
       "title": "chore: feast image digest 승격 (7d1a46c25bc5)",
