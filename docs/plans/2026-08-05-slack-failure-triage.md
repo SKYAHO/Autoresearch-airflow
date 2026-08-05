@@ -51,7 +51,10 @@ Task prefix mapping, 안전한 기본 진단이다. 이는 로그 분석 결과�
 
 선행 Slack spec은 확장 spec을 실패 카드의 영향·담당·조치와 Task 기반 진단의
 정본으로 연결한다. 전체 로그와 원본 traceback이 Slack으로 전송되지 않는 계약을
-명시한다.
+명시한다. 최종 리뷰에서는 병렬·후행 task의 side effect를 단정하지 않는 영향
+문구, QA 공유 운영 경로 영향 확인, 완성된 Block Kit 문자열 길이 상한을 회귀
+테스트로 보강한다. 실제 DAG source에서 task ID와 동적 prefix를 추출해 진단
+registry coverage도 교차 검증한다.
 
 ## 검증 체크리스트
 
@@ -61,14 +64,14 @@ Task prefix mapping, 안전한 기본 진단이다. 이는 로그 분석 결과�
 python -m pytest tests/test_notification_safety.py tests/test_slack_notifications.py -v
 python -m pytest
 python -m pytest tests/test_repository_contract.py -v
-ruff check dags/common/slack_notifications.py tests/test_slack_notifications.py
+ruff check dags/common/slack_notifications.py tests/test_slack_notifications.py \
+  tests/test_repository_contract.py tests/test_lake_to_bigquery_dag_parse.py
 git diff --check
 rg -n 'TaskLogReader|FailureLogExcerpt|_normalize_log_excerpt|_read_failure_log_excerpt|최근 실패 로그' \
   dags/common/slack_notifications.py tests/test_slack_notifications.py
 ```
 
-마지막 명령은 match 없음(exit 1)을 확인한다. 코드·테스트 변경은 이 Task에서
-수행하지 않는다.
+마지막 명령은 match 없음(exit 1)을 확인한다.
 
 ## 배포와 롤백
 

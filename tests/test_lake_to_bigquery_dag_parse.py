@@ -154,6 +154,23 @@ def test_dag_builds_sensor_load_validate_chain_per_dataset(monkeypatch) -> None:
         assert validate.downstream_task_ids == set()
 
 
+def test_generated_lake_tasks_are_covered_by_failure_diagnosis_prefixes(
+    monkeypatch,
+) -> None:
+    module = _load_dag_module(monkeypatch)
+    from common import slack_notifications
+
+    dag_id = module.dag.kwargs["dag_id"]
+    actual_task_ids = set(module.dag.task_dict)
+
+    assert actual_task_ids
+    for task_id in actual_task_ids:
+        assert (
+            slack_notifications._failure_diagnosis(dag_id, task_id)
+            != slack_notifications._DEFAULT_FAILURE_DIAGNOSIS
+        ), task_id
+
+
 def test_sensor_waits_for_partition_file_in_reschedule_mode(monkeypatch) -> None:
     module = _load_dag_module(monkeypatch)
     dag = module.dag

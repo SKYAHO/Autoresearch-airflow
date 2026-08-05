@@ -128,15 +128,117 @@ def test_failure_message_has_one_here_and_safe_balanced_fields(monkeypatch) -> N
 
 
 @pytest.mark.parametrize(
+    ("dag_id", "task_id", "impact"),
+    [
+        (
+            "youtube_gcs_action_log_pipeline",
+            "validate_action_log_partition",
+            "생성·게시·검증 완료 여부를 확인",
+        ),
+        (
+            "feast_offline_feature_build",
+            "build_offline_features",
+            "일부 또는 전체가 갱신되지 않았을 수",
+        ),
+        (
+            "feast_offline_feature_build",
+            "build_training_entity",
+            "일부 또는 전체가 갱신되지 않았을 수",
+        ),
+        (
+            "ctr_model_promote",
+            "notify_model_promotion_event",
+            "승격 결과를 확인",
+        ),
+    ],
+)
+def test_failure_message_does_not_assume_parallel_or_prior_side_effects(
+    monkeypatch, dag_id, task_id, impact
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context(dag_id=dag_id)
+    context["dag_run"] = _DagRun(
+        dag_id=dag_id,
+        task_instances=[_TaskInstance(task_id, "failed")],
+    )
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert impact in serialized
+
+
+def test_qa_failure_message_requires_shared_path_impact_check(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+
+    message = module.build_dag_failure_message(
+        _context(dag_id="youtube_gcs_action_log_pipeline_qa")
+    )
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    for expected in (
+        "운영 영향: 확인 필요",
+        "path",
+        "partition",
+        "overwrite",
+        "공유 운영 경로",
+    ):
+        assert expected in serialized
+    assert "운영 cron에는 직접 영향 없음" not in serialized
+
+
+def test_failure_message_limits_completed_block_kit_text(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    long_value = "가" * 4_000
+    context = _context(dag_id=long_value)
+    dag_run = _DagRun(
+        dag_id=long_value,
+        task_instances=[
+            _TaskInstance(f"failed_{index}_{long_value}", "failed")
+            for index in range(6)
+        ],
+    )
+    dag_run.run_id = long_value
+    dag_run.logical_date = long_value
+    dag_run.start_date = long_value
+    dag_run.end_date = long_value
+    context.update(
+        dag_run=dag_run,
+        reason=f"password=synthetic-secret {long_value}",
+        exception=RuntimeError(f"Bearer synthetic-token {long_value}"),
+    )
+
+    message = module.build_dag_failure_message(context)
+
+    for block in message.blocks:
+        if block["type"] == "section":
+            for field in block.get("fields", []):
+                assert len(field["text"]) <= 2_000
+            if "text" in block:
+                assert len(block["text"]["text"]) <= 3_000
+        if block["type"] == "context":
+            for element in block["elements"]:
+                if element["type"] == "mrkdwn":
+                    assert len(element["text"]) <= 3_000
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+    assert serialized.count("<!here>") == 1
+    assert "synthetic-secret" not in serialized
+    assert "synthetic-token" not in serialized
+
+
+@pytest.mark.parametrize(
     ("dag_id", "level", "impact", "owner", "action"),
     [
         ("youtube_gcs_action_log_pipeline", "높음", "action log", "데이터 수집 파이프라인", "대상 날짜"),
         ("lake_to_bigquery_incremental", "높음", "연쇄 지연", "데이터 적재 파이프라인", "GCS 파티션"),
         ("feast_offline_feature_build", "높음", "training entity", "Feature Store 오프라인", "SQL build"),
         ("ctr_model_training", "높음", "기존 Champion", "모델 학습 파이프라인", "MLflow 등록"),
-        ("ctr_model_promote", "중간", "기존 Champion", "모델 운영 파이프라인", "registry"),
+        ("ctr_model_promote", "중간", "승격 결과", "모델 운영 파이프라인", "registry"),
         ("feast_online_store_materialize", "높음", "온라인 feature 최신성", "Feature Store 온라인", "Redis 연결"),
-        ("youtube_gcs_action_log_pipeline_qa", "낮음", "운영 cron에는 직접 영향 없음", "데이터 수집 QA", "QA 입력"),
+        ("youtube_gcs_action_log_pipeline_qa", "확인 필요", "공유 운영 경로", "데이터 수집 QA", "overwrite"),
         ("youtube_backfill_kr", "중간", "과거 구간 복구", "데이터 백필", "대상 날짜 범위"),
     ],
 )
@@ -162,6 +264,7 @@ def test_failure_message_uses_default_playbook(monkeypatch) -> None:
 
     assert "운영 영향: 확인 필요" in serialized
     assert "DAG 소유 영역" in serialized
+    assert "Airflow에서 실패 Task 로그를 확인합니다" in serialized
     assert "upstream 입력" in serialized
     assert serialized.count("<!here>") == 1
 

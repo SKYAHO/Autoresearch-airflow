@@ -53,13 +53,13 @@ DagRun의 task instance 중 실제 state가 `failed`인 task만 primary 후보�
 
 | DAG | 영향 수준 | 영향 | 담당 역할 | 즉시 조치의 초점 |
 | --- | --- | --- | --- | --- |
-| `youtube_gcs_action_log_pipeline` | 높음 | 당일 action log가 생성되지 않아 raw 적재와 후속 학습 데이터가 지연될 수 있음 | 데이터 수집 파이프라인 | 수집·가상 사용자·GCS 출력 단계와 대상 날짜 확인 |
+| `youtube_gcs_action_log_pipeline` | 높음 | 당일 action log 생성·게시·검증 완료 여부를 확인해야 하며, 미완료 단계에 따라 raw 적재와 후속 학습 데이터가 지연될 수 있음 | 데이터 수집 파이프라인 | 수집·가상 사용자·GCS 출력 단계와 대상 날짜 확인 |
 | `lake_to_bigquery_incremental` | 높음 | raw 테이블 검증과 Dataset 갱신이 멈춰 feature build·학습이 연쇄 지연됨 | 데이터 적재 파이프라인 | GCS 파티션 존재, source URI, BigQuery load/검증 실패 확인 |
-| `feast_offline_feature_build` | 높음 | 학습용 feature와 training entity가 갱신되지 않아 신규 학습이 지연됨 | Feature Store 오프라인 | 입력 파티션, SQL build, 검증 실패 확인 |
+| `feast_offline_feature_build` | 높음 | 병렬 task 특성상 학습용 feature와 training entity의 일부 또는 전체가 갱신되지 않았을 수 있어 신규 학습이 지연될 수 있음 | Feature Store 오프라인 | 입력 파티션, SQL build, 검증 실패 확인 |
 | `ctr_model_training` | 높음 | 신규 candidate가 생성되지 않지만 기존 Champion 서빙은 유지됨 | 모델 학습 파이프라인 | 입력 Dataset, 학습 Pod, MLflow 등록 단계 확인 |
-| `ctr_model_promote` | 중간 | Champion이 갱신되지 않지만 기존 Champion 서빙은 유지됨 | 모델 운영 파이프라인 | candidate·registry·평가/승격 단계 확인 |
+| `ctr_model_promote` | 중간 | 후행 알림 task 실패만으로 승격 여부를 단정할 수 없으므로 Champion 승격 결과 확인이 필요함 | 모델 운영 파이프라인 | candidate·registry·평가/승격 단계 확인 |
 | `feast_online_store_materialize` | 높음 | 온라인 feature 최신성이 낮아져 추천 입력이 오래될 수 있음 | Feature Store 온라인 | offline feature 시점, Redis 연결, materialize 단계 확인 |
-| `youtube_gcs_action_log_pipeline_qa` | 낮음 | 반복 QA 검증만 중단되며 운영 cron에는 직접 영향 없음 | 데이터 수집 QA | QA 입력·제한값과 실패 단계 확인 |
+| `youtube_gcs_action_log_pipeline_qa` | 확인 필요 | QA override 부재 시 공유 설정을 사용할 수 있으므로 대상 path·partition·overwrite 범위와 공유 운영 경로 영향 확인이 필요함 | 데이터 수집 QA | 대상 path·partition·overwrite 설정과 공유 운영 경로의 생성·덮어쓰기 여부 확인 |
 | `youtube_backfill_kr` | 중간 | 요청한 과거 구간 복구가 중단되며 당일 운영 cron에는 직접 영향 없음 | 데이터 백필 | 대상 날짜 범위, 기존 객체, 재개 지점 확인 |
 
 각 플레이북은 자동 재실행을 지시하지 않는다. 입력과 실패 지점을 확인하고 원인을
@@ -93,7 +93,9 @@ credential 형식만 가리는 sanitizer로는 원문 로그를 외부 채널에
 
 renderer와 callback은 원격 로그 reader, GCS 조회 또는 로그 정규화 adapter를
 호출하지 않는다. `dags/common/notification_safety.py`의 기존 공개 함수 계약도
-변경하지 않는다.
+변경하지 않는다. renderer는 sanitize·escape된 입력을 조합한 뒤 완성된 Block Kit
+문자열을 section field 2,000자, section text와 context mrkdwn text 3,000자 이내로
+제한한다.
 
 ## 오류 격리와 관측성
 
@@ -109,16 +111,18 @@ DagRun 상태를 바꾸지 않는다. static diagnosis는 실패 원인을 확�
 python -m pytest tests/test_notification_safety.py tests/test_slack_notifications.py -v
 python -m pytest
 python -m pytest tests/test_repository_contract.py -v
-ruff check dags/common/slack_notifications.py tests/test_slack_notifications.py
+ruff check dags/common/slack_notifications.py tests/test_slack_notifications.py \
+  tests/test_repository_contract.py tests/test_lake_to_bigquery_dag_parse.py
 git diff --check
 rg -n 'TaskLogReader|FailureLogExcerpt|_normalize_log_excerpt|_read_failure_log_excerpt|최근 실패 로그' \
   dags/common/slack_notifications.py tests/test_slack_notifications.py
 ```
 
 마지막 `rg`는 match 없음(exit 1)이 기대 결과다. 테스트는 8개 DAG 플레이북,
-primary failed Task 선택과 `upstream_failed` 제외, exact/prefix/default diagnosis,
-기존 failure reason·sanitize·buttons·`<!here>` 회귀를 포함한다. 실제 Slack,
-GCS, 운영 Task 로그, 네트워크는 사용하지 않는다.
+primary failed Task 선택과 `upstream_failed` 제외, 실제 DAG/task 정의에서 추출한
+ID와 exact/prefix diagnosis registry의 교차 검증, 완성된 Block Kit 문자열 상한,
+기존 failure reason·sanitize·buttons·`<!here>` 회귀를 포함한다. 실제 Slack, GCS,
+운영 Task 로그, 네트워크는 사용하지 않는다.
 
 ## 배포와 롤백
 

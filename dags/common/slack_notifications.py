@@ -53,6 +53,9 @@ _MODEL_OUTCOME_REASONS = {
         "serving_calibration_not_ready",
     },
 }
+_SECTION_FIELD_TEXT_LIMIT = 2_000
+_SECTION_TEXT_LIMIT = 3_000
+_CONTEXT_TEXT_LIMIT = 3_000
 
 
 @dataclass(frozen=True)
@@ -86,7 +89,7 @@ _DEFAULT_FAILURE_PLAYBOOK = FailurePlaybook(
     impacts=("등록되지 않은 DAG이므로 후속 영향을 확인해야 합니다.",),
     owner_role="DAG 소유 영역",
     actions=(
-        "아래 실패 로그와 실패 task를 확인합니다.",
+        "Airflow에서 실패 Task 로그를 확인합니다.",
         "upstream 입력과 외부 의존성을 확인합니다.",
         "원인을 수정한 뒤 재실행 여부를 판단합니다.",
     ),
@@ -207,7 +210,11 @@ _LAKE_TASK_PREFIX_DIAGNOSES = {
 _FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
     "youtube_gcs_action_log_pipeline": FailurePlaybook(
         impact_level="높음",
-        impacts=("당일 action log가 생성되지 않아 raw 적재와 후속 학습 데이터가 지연될 수 있습니다.",),
+        impacts=(
+            "당일 action log의 생성·게시·검증 완료 여부를 확인해야 하며, "
+            "완료되지 않은 단계에 따라 raw 적재와 후속 학습 데이터가 "
+            "지연될 수 있습니다.",
+        ),
         owner_role="데이터 수집 파이프라인",
         actions=(
             "수집·가상 사용자·GCS 출력 단계를 확인합니다.",
@@ -227,7 +234,10 @@ _FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
     ),
     "feast_offline_feature_build": FailurePlaybook(
         impact_level="높음",
-        impacts=("학습용 feature와 training entity가 갱신되지 않아 신규 학습이 지연됩니다.",),
+        impacts=(
+            "학습용 feature와 training entity의 일부 또는 전체가 갱신되지 "
+            "않았을 수 있어 신규 학습이 지연될 수 있습니다.",
+        ),
         owner_role="Feature Store 오프라인",
         actions=(
             "입력 파티션을 확인합니다.",
@@ -247,7 +257,10 @@ _FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
     ),
     "ctr_model_promote": FailurePlaybook(
         impact_level="중간",
-        impacts=("Champion이 갱신되지 않지만 기존 Champion 서빙은 유지됩니다.",),
+        impacts=(
+            "Champion 승격 결과를 확인해야 하며, 모델 운영 상태 판단이 "
+            "지연될 수 있습니다.",
+        ),
         owner_role="모델 운영 파이프라인",
         actions=(
             "candidate와 registry 상태를 확인합니다.",
@@ -266,12 +279,15 @@ _FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
         ),
     ),
     "youtube_gcs_action_log_pipeline_qa": FailurePlaybook(
-        impact_level="낮음",
-        impacts=("반복 QA 검증만 중단되며 운영 cron에는 직접 영향 없음",),
+        impact_level="확인 필요",
+        impacts=(
+            "QA 실행의 대상 path·partition·overwrite 범위와 공유 운영 경로에 "
+            "미친 영향은 확인이 필요합니다.",
+        ),
         owner_role="데이터 수집 QA",
         actions=(
-            "QA 입력과 제한값을 확인합니다.",
-            "실패 단계를 확인합니다.",
+            "QA 입력의 대상 path·partition·overwrite 설정을 확인합니다.",
+            "공유 운영 경로에 데이터가 생성·덮어쓰기 되었는지 확인합니다.",
             "원인을 수정한 뒤 재실행 여부를 판단합니다.",
         ),
     ),
@@ -338,6 +354,11 @@ def _mrkdwn(value: object) -> str:
     )
 
 
+def _limit_block_text(text: str, *, max_length: int) -> str:
+    """완성된 Block Kit 문자열을 Slack 요소별 상한 안으로 제한한다."""
+    return text[:max_length]
+
+
 def _dag_run(context: Mapping[str, object]) -> object:
     dag_run = context.get("dag_run")
     if dag_run is None:
@@ -358,21 +379,33 @@ def _success_fields(
     return [
         {
             "type": "mrkdwn",
-            "text": f"*Environment*\n{environment}",
+            "text": _limit_block_text(
+                f"*Environment*\n{environment}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
         },
         {
             "type": "mrkdwn",
-            "text": f"*DAG*\n{_mrkdwn(getattr(dag_run, 'dag_id', None))}",
+            "text": _limit_block_text(
+                f"*DAG*\n{_mrkdwn(getattr(dag_run, 'dag_id', None))}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
         },
         {
             "type": "mrkdwn",
-            "text": f"*Run type*\n{_mrkdwn(_run_type(dag_run))}",
+            "text": _limit_block_text(
+                f"*Run type*\n{_mrkdwn(_run_type(dag_run))}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
         },
         {
             "type": "mrkdwn",
-            "text": (
-                "*Logical date*\n"
-                f"{_mrkdwn(format_value(getattr(dag_run, 'logical_date', None)))}"
+            "text": _limit_block_text(
+                (
+                    "*Logical date*\n"
+                    f"{_mrkdwn(format_value(getattr(dag_run, 'logical_date', None)))}"
+                ),
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
             ),
         },
     ]
@@ -450,7 +483,14 @@ def _time_context(dag_run: object, *, include_run_id: bool) -> dict[str, object]
     )
     return {
         "type": "context",
-        "elements": [{"type": "mrkdwn", "text": " | ".join(parts)}],
+        "elements": [
+            {
+                "type": "mrkdwn",
+                "text": _limit_block_text(
+                    " | ".join(parts), max_length=_CONTEXT_TEXT_LIMIT
+                ),
+            }
+        ],
     }
 
 
@@ -502,7 +542,10 @@ def build_dag_success_message(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*{dag_id}* 정기 실행이 성공했습니다.",
+                "text": _limit_block_text(
+                    f"*{dag_id}* 정기 실행이 성공했습니다.",
+                    max_length=_SECTION_TEXT_LIMIT,
+                ),
             },
         },
         {
@@ -540,10 +583,33 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
     failure = context.get("exception")
     reason = _mrkdwn(context.get("reason") or "unknown")
     fields = [
-        {"type": "mrkdwn", "text": f"*Environment*\n{environment}"},
-        {"type": "mrkdwn", "text": f"*DAG*\n{dag_id}"},
-        {"type": "mrkdwn", "text": f"*Run type*\n{_mrkdwn(_run_type(dag_run))}"},
-        {"type": "mrkdwn", "text": f"*Failed tasks*\n{_mrkdwn(failed_tasks)}"},
+        {
+            "type": "mrkdwn",
+            "text": _limit_block_text(
+                f"*Environment*\n{environment}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
+        },
+        {
+            "type": "mrkdwn",
+            "text": _limit_block_text(
+                f"*DAG*\n{dag_id}", max_length=_SECTION_FIELD_TEXT_LIMIT
+            ),
+        },
+        {
+            "type": "mrkdwn",
+            "text": _limit_block_text(
+                f"*Run type*\n{_mrkdwn(_run_type(dag_run))}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
+        },
+        {
+            "type": "mrkdwn",
+            "text": _limit_block_text(
+                f"*Failed tasks*\n{_mrkdwn(failed_tasks)}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
+        },
     ]
     diagnostic = f"*Failure reason*\n`{reason}`"
     if isinstance(failure, BaseException):
@@ -579,13 +645,40 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"<!here> 운영 영향: {playbook.impact_level}",
+                "text": _limit_block_text(
+                    f"<!here> 운영 영향: {playbook.impact_level}",
+                    max_length=_SECTION_TEXT_LIMIT,
+                ),
             },
         },
         {"type": "section", "fields": fields},
-        {"type": "section", "text": {"type": "mrkdwn", "text": triage}},
-        {"type": "section", "text": {"type": "mrkdwn", "text": diagnosis_text}},
-        {"type": "section", "text": {"type": "mrkdwn", "text": diagnostic}},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _limit_block_text(
+                    triage, max_length=_SECTION_TEXT_LIMIT
+                ),
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _limit_block_text(
+                    diagnosis_text, max_length=_SECTION_TEXT_LIMIT
+                ),
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _limit_block_text(
+                    diagnostic, max_length=_SECTION_TEXT_LIMIT
+                ),
+            },
+        },
     ]
     _with_dag_run_and_log_buttons(blocks, dag_run, context)
     blocks.append(_time_context(dag_run, include_run_id=True))
@@ -664,15 +757,32 @@ def build_model_event_message(
         f"champion={_mrkdwn(champion_metric) if champion_metric is not None else '없음'}"
     )
     fields = [
-        {"type": "mrkdwn", "text": f"*Model*\n{model_name}"},
-        {"type": "mrkdwn", "text": f"*Candidate*\nv{candidate_version}"},
         {
             "type": "mrkdwn",
-            "text": f"*Previous champion*\n{previous_champion}",
+            "text": _limit_block_text(
+                f"*Model*\n{model_name}", max_length=_SECTION_FIELD_TEXT_LIMIT
+            ),
         },
         {
             "type": "mrkdwn",
-            "text": f"*val_roc_auc*\n{metric_summary}",
+            "text": _limit_block_text(
+                f"*Candidate*\nv{candidate_version}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
+        },
+        {
+            "type": "mrkdwn",
+            "text": _limit_block_text(
+                f"*Previous champion*\n{previous_champion}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
+        },
+        {
+            "type": "mrkdwn",
+            "text": _limit_block_text(
+                f"*val_roc_auc*\n{metric_summary}",
+                max_length=_SECTION_FIELD_TEXT_LIMIT,
+            ),
         },
     ]
     blocks: list[dict[str, object]] = [
@@ -684,9 +794,12 @@ def build_model_event_message(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": (
-                    f"*{model_name}* 후보 v{candidate_version}: "
-                    f"`{_mrkdwn(outcome)}`"
+                "text": _limit_block_text(
+                    (
+                        f"*{model_name}* 후보 v{candidate_version}: "
+                        f"`{_mrkdwn(outcome)}`"
+                    ),
+                    max_length=_SECTION_TEXT_LIMIT,
                 ),
             },
         },
@@ -695,7 +808,10 @@ def build_model_event_message(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _mrkdwn(_MODEL_REASON_PRESENTATION[reason_code]),
+                "text": _limit_block_text(
+                    _mrkdwn(_MODEL_REASON_PRESENTATION[reason_code]),
+                    max_length=_SECTION_TEXT_LIMIT,
+                ),
             },
         },
     ]
@@ -708,9 +824,12 @@ def build_model_event_message(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": (
-                            f"Environment: {environment} | DagRun: "
-                            f"`{_mrkdwn(getattr(dag_run, 'run_id', None))}`"
+                        "text": _limit_block_text(
+                            (
+                                f"Environment: {environment} | DagRun: "
+                                f"`{_mrkdwn(getattr(dag_run, 'run_id', None))}`"
+                            ),
+                            max_length=_CONTEXT_TEXT_LIMIT,
                         ),
                     }
                 ],
