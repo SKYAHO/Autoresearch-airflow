@@ -37,6 +37,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: dev 환경 좌표 확인
+        id: environment
+        uses: ./.github/actions/resolve-dev-environment
+        with:
+          configured_project_id: ${{ env.GCP_PROJECT_ID }}
+          configured_cluster: ${{ env.GKE_CLUSTER }}
+          configured_location: ${{ env.GKE_LOCATION }}
+
       - name: Validate deployment configuration
         shell: bash
         run: |
@@ -57,16 +65,16 @@ jobs:
       - name: Authenticate to GCP with Workload Identity Federation
         uses: google-github-actions/auth@v3
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          project_id: ${{ steps.environment.outputs.project_id }}
           workload_identity_provider: ${{ env.WIF_PROVIDER_ID }}
           service_account: ${{ env.GKE_DEPLOYER_SA }}
 
       - name: Get GKE credentials through the DNS endpoint
         uses: google-github-actions/get-gke-credentials@v3
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          cluster_name: ${{ env.GKE_CLUSTER }}
-          location: ${{ env.GKE_LOCATION }}
+          project_id: ${{ steps.environment.outputs.project_id }}
+          cluster_name: ${{ steps.environment.outputs.gke_cluster_name }}
+          location: ${{ steps.environment.outputs.zone }}
           namespace: ${{ env.AIRFLOW_NAMESPACE }}
           use_dns_based_endpoint: true
 
@@ -273,20 +281,20 @@ jobs:
           REMOTE_WAIT
 
       - name: Refresh GCP authentication after production wait
-        if: always()
+        if: always() && steps.environment.outcome == 'success'
         uses: google-github-actions/auth@v3
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          project_id: ${{ steps.environment.outputs.project_id }}
           workload_identity_provider: ${{ env.WIF_PROVIDER_ID }}
           service_account: ${{ env.GKE_DEPLOYER_SA }}
 
       - name: Refresh GKE credentials after production wait
-        if: always()
+        if: always() && steps.environment.outcome == 'success'
         uses: google-github-actions/get-gke-credentials@v3
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          cluster_name: ${{ env.GKE_CLUSTER }}
-          location: ${{ env.GKE_LOCATION }}
+          project_id: ${{ steps.environment.outputs.project_id }}
+          cluster_name: ${{ steps.environment.outputs.gke_cluster_name }}
+          location: ${{ steps.environment.outputs.zone }}
           namespace: ${{ env.AIRFLOW_NAMESPACE }}
           use_dns_based_endpoint: true
 

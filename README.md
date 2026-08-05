@@ -492,12 +492,17 @@ digest PR 또는 배포 workflow 변경이 `main`에 merge되면 `Deploy Airflow
    DAG pause 상태를 복원합니다.
 
 workflow는 `dev-gke` environment와 다음 repository variable을 사용합니다.
+프로젝트·리전·존·클러스터의 정본은 `Autoresearch-infra`의
+`config/environments/dev/environment.yaml`입니다. 배포 전 이 카탈로그와 GitHub
+변수를 대조하므로, 프로젝트나 리전을 이전할 때에는 카탈로그와 bootstrap/WIF
+설정을 먼저 갱신한 뒤 GitHub 변수를 같은 값으로 변경해야 합니다.
 
 | Variable | 값 |
 | --- | --- |
-| `GCP_PROJECT_ID` | `autoresearch-503903` |
-| `GKE_CLUSTER` | `autoresearch-dev-gke` |
-| `GKE_LOCATION` | `asia-northeast3-a` |
+| `GCP_PROJECT_ID` | dev 환경 카탈로그의 `gcp.project_id`와 일치 |
+| `GCP_REGION` | 이미지 build 시 dev 환경 카탈로그의 `gcp.region`과 일치 |
+| `GKE_CLUSTER` | dev 환경 카탈로그의 `gke.cluster_name`과 일치 |
+| `GKE_LOCATION` | dev 환경 카탈로그의 `gcp.zone`과 일치 |
 | `GKE_DEPLOYER_SA` | infra output `github_actions_airflow_deployer_service_account_email` |
 | `WIF_PROVIDER_ID` | bootstrap output의 full provider resource ID |
 
