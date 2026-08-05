@@ -90,10 +90,13 @@ outcome 또는 필수 필드 결손은 알림 입력 오류로 기록하고 전�
 1. header: `🚨 Airflow DAG 실패`
 2. section: `<!here>`와 한 줄 요약
 3. 2열 fields: Environment, DAG, Run type, Failed tasks
-4. section: DAG별 영향·담당 역할·즉시 조치와 Task 기반 정적 진단
-5. section: exception type과 sanitize된 원인
-6. actions: `DagRun 보기`, `Task 로그 보기`
-7. context: Run ID, logical date, 시작·종료 시간
+4. section: scheduler reason 기반 `Airflow 실패 사유` 또는 opportunistic
+   context의 `Airflow 예외 정보`
+5. section: DAG별 영향·담당 역할·즉시 조치 운영 플레이북
+6. section: primary failed Task 기반 `실패 영역`, `판단 근거`, `우선 점검`
+7. actions: `DagRun 보기`와, 같은 primary Task의 안전한 URL이 있을 때만
+   `Task 로그 보기`
+8. context: Run ID, logical date, 시작·종료 시간
 
 ### 모델 이벤트 카드
 

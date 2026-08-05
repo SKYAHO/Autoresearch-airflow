@@ -117,10 +117,9 @@ def test_failure_message_has_one_here_and_safe_balanced_fields(monkeypatch) -> N
     assert "failed_task, upstream" in serialized
     assert "synthetic-secret" not in serialized
     assert "synthetic-token" not in serialized
-    assert "RuntimeError" in serialized
-    assert "password=[REDACTED] Bearer [REDACTED]" in serialized
-    assert "*실제 실패 원인*" in serialized
-    assert "*Airflow 실패 사유*" not in serialized
+    assert "RuntimeError" not in serialized
+    assert "*Airflow 실패 사유*" in serialized
+    assert "task_failure" in serialized
     assert "https://airflow.internal/task-log" in serialized
     assert "https://airflow.internal/dag-run" in serialized
     assert "2026-07-29T00:01:00+00:00" in serialized
@@ -150,6 +149,12 @@ def test_failure_message_has_one_here_and_safe_balanced_fields(monkeypatch) -> N
             "ctr_model_promote",
             "notify_model_promotion_event",
             "승격 결과를 확인",
+        ),
+        (
+            "ctr_model_training",
+            "train_ctr_model",
+            "candidate 생성·등록 완료 여부를 확인해야 하며, 이 DAG는 "
+            "Champion alias를 직접 변경하지 않습니다",
         ),
     ],
 )
@@ -236,7 +241,13 @@ def test_failure_message_limits_completed_block_kit_text(monkeypatch) -> None:
         ("youtube_gcs_action_log_pipeline", "높음", "action log", "데이터 수집 파이프라인", "대상 날짜"),
         ("lake_to_bigquery_incremental", "높음", "연쇄 지연", "데이터 적재 파이프라인", "GCS 파티션"),
         ("feast_offline_feature_build", "높음", "training entity", "Feature Store 오프라인", "SQL build"),
-        ("ctr_model_training", "높음", "기존 Champion", "모델 학습 파이프라인", "MLflow 등록"),
+        (
+            "ctr_model_training",
+            "높음",
+            "candidate 생성·등록 완료 여부",
+            "모델 학습 파이프라인",
+            "MLflow 등록",
+        ),
         ("ctr_model_promote", "중간", "승격 결과", "모델 운영 파이프라인", "registry"),
         ("feast_online_store_materialize", "높음", "온라인 feature 최신성", "Feature Store 온라인", "Redis 연결"),
         ("youtube_gcs_action_log_pipeline_qa", "확인 필요", "공유 운영 경로", "데이터 수집 QA", "overwrite"),
@@ -288,10 +299,28 @@ def test_failure_message_uses_scheduler_reason_without_exception(
     assert "*Error type*" not in serialized
 
 
-def test_failure_message_prioritizes_sanitized_exception(monkeypatch) -> None:
+def test_failure_message_prefers_scheduler_reason_over_exception(monkeypatch) -> None:
     module = _load_module(monkeypatch)
     monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
     context = _context()
+    context["reason"] = "dagrun_timeout"
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert "*Airflow 실패 사유*" in serialized
+    assert "dagrun_timeout" in serialized
+    assert "RuntimeError" not in serialized
+    assert "실제 실패 원인" not in serialized
+
+
+def test_failure_message_labels_sanitized_exception_only_as_airflow_info(
+    monkeypatch,
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context()
+    context.pop("reason")
     context["exception"] = RuntimeError(
         "first line\npassword=synthetic-secret Bearer synthetic-token " + "x" * 2_000
     )
@@ -302,11 +331,12 @@ def test_failure_message_prioritizes_sanitized_exception(monkeypatch) -> None:
         block["text"]["text"]
         for block in message.blocks
         if block.get("type") == "section"
-        and block.get("text", {}).get("text", "").startswith("*실제 실패 원인*")
+        and block.get("text", {}).get("text", "").startswith("*Airflow 예외 정보*")
     )
     cause_value = cause_text.split("\n", 1)[1]
 
-    assert "실제 실패 원인" in serialized
+    assert "Airflow 예외 정보" in serialized
+    assert "실제 실패 원인" not in serialized
     assert "RuntimeError: first line password=[REDACTED] Bearer [REDACTED]" in serialized
     assert "\n" not in cause_value
     assert len(cause_value) <= 1_000
@@ -329,7 +359,7 @@ def test_failure_message_defaults_when_failure_context_has_no_cause(monkeypatch)
 
 
 @pytest.mark.parametrize("state", ["failed", SimpleNamespace(value="failed")])
-def test_primary_failed_task_id_is_deterministic_and_excludes_upstream(
+def test_primary_failed_task_is_deterministic_and_excludes_upstream(
     monkeypatch, state
 ) -> None:
     module = _load_module(monkeypatch)
@@ -342,9 +372,39 @@ def test_primary_failed_task_id_is_deterministic_and_excludes_upstream(
         ]
     )
 
-    task_id = module._primary_failed_task_id(dag_run)
+    task_instance = module._primary_failed_task(dag_run)
 
-    assert task_id == "a_failed"
+    assert task_instance.task_id == "a_failed"
+
+
+def test_failure_message_uses_primary_failed_task_for_diagnosis_and_log_button(
+    monkeypatch,
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context(dag_id="ctr_model_training")
+    context["task_instance"] = _TaskInstance(
+        "callback_task",
+        "success",
+        log_url="https://airflow.internal/callback-task-log",
+    )
+    context["dag_run"] = _DagRun(
+        dag_id="ctr_model_training",
+        task_instances=[
+            _TaskInstance(
+                "train_ctr_model",
+                "failed",
+                log_url="https://airflow.internal/primary-task-log",
+            )
+        ],
+    )
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert "Task: `train_ctr_model`" in serialized
+    assert "https://airflow.internal/primary-task-log" in serialized
+    assert "https://airflow.internal/callback-task-log" not in serialized
 
 
 @pytest.mark.parametrize(
@@ -488,6 +548,29 @@ def test_failure_message_uses_safe_default_when_no_task_failed(monkeypatch) -> N
     assert "미등록 Task 단계" in serialized
     assert "Task: `unknown`" in serialized
     assert "상세 원인은 내부 로그 확인이 필요합니다" in serialized
+    assert "Task 로그 보기" not in serialized
+    assert "DagRun 보기" in serialized
+
+
+def test_failure_message_omits_unsafe_primary_task_log_url(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context()
+    context["dag_run"] = _DagRun(
+        task_instances=[
+            _TaskInstance(
+                "failed_task",
+                "failed",
+                log_url="javascript:alert(1)",
+            )
+        ]
+    )
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert "Task 로그 보기" not in serialized
+    assert "DagRun 보기" in serialized
 
 
 def test_failure_message_renders_task_based_diagnosis(monkeypatch) -> None:

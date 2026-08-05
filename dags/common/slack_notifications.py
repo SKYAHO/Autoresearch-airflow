@@ -248,7 +248,10 @@ _FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
     ),
     "ctr_model_training": FailurePlaybook(
         impact_level="높음",
-        impacts=("신규 candidate가 생성되지 않지만 기존 Champion 서빙은 유지됩니다.",),
+        impacts=(
+            "candidate 생성·등록 완료 여부를 확인해야 하며, 이 DAG는 "
+            "Champion alias를 직접 변경하지 않습니다.",
+        ),
         owner_role="모델 학습 파이프라인",
         actions=(
             "입력 Dataset과 학습 Pod 상태를 확인합니다.",
@@ -309,10 +312,10 @@ def _failure_playbook(dag_id: object) -> FailurePlaybook:
     return _FAILURE_PLAYBOOKS.get(str(dag_id), _DEFAULT_FAILURE_PLAYBOOK)
 
 
-def _primary_failed_task_id(dag_run: object) -> str | None:
-    """최종 실패 상태 task 중 task ID가 가장 앞선 값을 반환한다."""
-    task_ids = [
-        str(task_instance.task_id)
+def _primary_failed_task(dag_run: object) -> object | None:
+    """최종 실패 상태 task 중 task ID가 가장 앞선 TaskInstance를 반환한다."""
+    task_instances = [
+        task_instance
         for task_instance in dag_run.get_task_instances()
         if getattr(
             getattr(task_instance, "state", None),
@@ -321,7 +324,9 @@ def _primary_failed_task_id(dag_run: object) -> str | None:
         )
         == "failed"
     ]
-    return min(task_ids) if task_ids else None
+    if not task_instances:
+        return None
+    return min(task_instances, key=lambda task_instance: str(task_instance.task_id))
 
 
 def _failure_diagnosis(dag_id: object, task_id: str | None) -> FailureDiagnosis:
@@ -356,20 +361,20 @@ def _mrkdwn(value: object) -> str:
 
 
 def _failure_summary(context: Mapping[str, object]) -> tuple[str, str]:
-    """Callback context의 실제 실패 원인을 안전한 우선순위로 요약한다."""
-    failure = context.get("exception")
-    if isinstance(failure, BaseException):
-        value = f"{type(failure).__name__}: {failure}"
-        return (
-            "실제 실패 원인",
-            " ".join(_mrkdwn(value).split())[:_FAILURE_SUMMARY_TEXT_LIMIT],
-        )
-
+    """DagRun callback의 Airflow 실패 정보를 안전한 우선순위로 요약한다."""
     reason = context.get("reason")
     if reason is not None and str(reason).strip():
         return (
             "Airflow 실패 사유",
             " ".join(_mrkdwn(reason).split())[:_FAILURE_SUMMARY_TEXT_LIMIT],
+        )
+
+    failure = context.get("exception")
+    if isinstance(failure, BaseException):
+        value = f"{type(failure).__name__}: {failure}"
+        return (
+            "Airflow 예외 정보",
+            " ".join(_mrkdwn(value).split())[:_FAILURE_SUMMARY_TEXT_LIMIT],
         )
 
     return "실패 원인", "상세 원인은 Airflow Task 로그 확인이 필요합니다."
@@ -518,7 +523,7 @@ def _time_context(dag_run: object, *, include_run_id: bool) -> dict[str, object]
 def _with_dag_run_and_log_buttons(
     blocks: list[dict[str, object]],
     dag_run: object,
-    context: Mapping[str, object],
+    primary_task_instance: object | None,
 ) -> list[dict[str, object]]:
     elements: list[dict[str, object]] = []
     dag_run_url = _dag_run_url(dag_run)
@@ -530,7 +535,11 @@ def _with_dag_run_and_log_buttons(
                 "url": dag_run_url,
             }
         )
-    log_url = safe_task_log_url(context)
+    log_url = (
+        safe_task_log_url({"task_instance": primary_task_instance})
+        if primary_task_instance is not None
+        else None
+    )
     if log_url:
         elements.append(
             {
@@ -598,7 +607,12 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
     environment = _environment()
     dag_id = _mrkdwn(getattr(dag_run, "dag_id", None))
     playbook = _failure_playbook(getattr(dag_run, "dag_id", None))
-    primary_task_id = _primary_failed_task_id(dag_run)
+    primary_task_instance = _primary_failed_task(dag_run)
+    primary_task_id = (
+        str(primary_task_instance.task_id)
+        if primary_task_instance is not None
+        else None
+    )
     diagnosis = _failure_diagnosis(getattr(dag_run, "dag_id", None), primary_task_id)
     failed_tasks = ", ".join(failed_task_ids(dag_run)) or "unknown"
     failure_label, failure_value = _failure_summary(context)
@@ -695,7 +709,7 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
             },
         },
     ]
-    _with_dag_run_and_log_buttons(blocks, dag_run, context)
+    _with_dag_run_and_log_buttons(blocks, dag_run, primary_task_instance)
     blocks.append(_time_context(dag_run, include_run_id=True))
     return SlackMessage(
         text=f"[{environment}][Airflow][FAILED] {dag_id}",

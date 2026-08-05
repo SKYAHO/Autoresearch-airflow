@@ -7,7 +7,7 @@
 
 ## 배경
 
-`#alerts-airflow`의 최종 DagRun 실패 카드는 실패 DAG·task·예외와 Airflow
+`#alerts-airflow`의 최종 DagRun 실패 카드는 실패 DAG·task·Airflow 실패 정보와
 링크를 제공한다. 다만 dev Airflow UI는 내부 LoadBalancer에 있으므로, 링크를
 열기 전에도 수신자가 운영 영향과 첫 조치를 판단할 수 있어야 한다. 이 확장은
 Airflow·Kibana를 외부에 공개하거나 팀원의 확인 응답에 의존하지 않는다.
@@ -21,40 +21,48 @@ reason, sanitize된 exception type/message, Airflow 버튼을 유지하면서 �
 1. DAG별 운영 영향 수준과 후속 영향
 2. 사람 이름이 아닌 담당 역할
 3. 원인 확인과 재실행 판단을 위한 즉시 조치
-4. Airflow callback이 전달한 실제 exception 또는 scheduler failure reason
+4. Airflow DAG callback이 전달한 scheduler failure reason 또는 예외 정보
 5. `실패 영역`, `판단 근거`, `우선 점검`으로 이루어진 Task 기반 정적 진단
 
 따라서 수신자는 버튼을 누르기 전에 카드 안에서 우선 판단할 수 있다. 정적 진단은
-확정된 장애 원인이 아니라, 확인해야 할 원인 범주와 점검 방향이다. 실제 exception과
-정적 진단은 각각 `실제 실패 원인`과 `우선 점검`으로 구분한다. 반복 알림, ACK
+확정된 장애 원인이 아니라, 확인해야 할 원인 범주와 점검 방향이다. Airflow 실패
+정보와 정적 진단은 각각 `Airflow 실패 사유`/`Airflow 예외 정보`와 `우선 점검`으로
+구분한다. 반복 알림, ACK
 버튼, 자동 재실행은 추가하지 않는다.
 
-## 실제 실패 원인 표시
+## Airflow 실패 정보 표시
 
 원문 Task 로그를 조회하지 않고 callback context에 이미 전달된 값만 사용한다.
 failure renderer는 작은 `_failure_summary` helper로 다음 우선순위에 따라 표시값을
 결정한다.
 
-1. `context["exception"]`이 `BaseException`이면 `실제 실패 원인`으로
-   `<ExceptionType>: <message>`를 표시한다.
-2. exception이 없고 `context["reason"]`을 문자열로 바꿔 trim한 값이 비어 있지
-   않으면 `Airflow 실패 사유`로 scheduler reason을 표시한다.
+1. `context["reason"]`을 문자열로 바꿔 trim한 값이 비어 있지 않으면
+   `Airflow 실패 사유`로 scheduler reason을 표시한다.
+2. reason이 없고 `context["exception"]`이 `BaseException`이면 비표준 또는
+   opportunistic context의 `Airflow 예외 정보`로 `<ExceptionType>: <message>`를
+   표시한다. 이를 실제 실패 Task의 원인이라고 단정하지 않는다.
 3. 둘 다 없으면 `실패 원인`으로 `상세 원인은 Airflow Task 로그 확인이 필요합니다.`를
    표시한다.
 
-helper는 `(표시 label, 표시 value)`를 반환한다. exception message와 reason은 기존
-`sanitize_text` 및 Slack mrkdwn escape를 거친 후 모든 공백을 단일 공백으로
-정규화하고 표시값을 1,000자로 제한한다. 완성된 section text에도 기존 3,000자 상한을
-적용한다. 원인 section은 기본 실행 정보 바로 다음에 두어 링크를 열기 전에 먼저 읽을
-수 있게 하며, 현재 카드 마지막의 영문 `Failure reason` section은 제거해 중복
-표시하지 않는다. 여러 줄 traceback이나 Task 로그를 새로 수집하거나 전송하지 않는다.
+운영 DAG는 task-level callback이 아니라 DagRun-level `on_failure_callback`을
+사용하므로 scheduler reason은 주로 전달되지만 Task 실행 당시 exception은 안정적으로
+보장되지 않는다. helper는 `(표시 label, 표시 value)`를 반환한다. exception message와
+reason은 기존 `sanitize_text` 및 Slack mrkdwn escape를 거친 후 모든 공백을 단일
+공백으로 정규화하고 표시값을 1,000자로 제한한다. 완성된 section text에도 기존
+3,000자 상한을 적용한다. 원인 section은 기본 실행 정보 바로 다음에 두어 링크를 열기
+전에 먼저 읽을 수 있게 하며, 현재 카드 마지막의 영문 `Failure reason` section은
+제거해 중복 표시하지 않는다. 여러 줄 traceback이나 Task 로그를 새로 수집하거나
+전송하지 않는다.
 
 ## 실패 Task와 정적 진단
 
 DagRun의 task instance 중 실제 state가 `failed`인 task만 primary 후보로 삼는다.
 `upstream_failed`는 상류 실패의 결과이므로 후보에서 제외하고, 후보가 여럿이면
-`task_id` 오름차순의 첫 항목을 고른다. 실제 실패 Task가 없더라도 기본 진단을
-사용해 알림을 계속 전송한다.
+`task_id` 오름차순의 첫 TaskInstance를 고른다. 그 TaskInstance의 ID를 진단에 쓰고
+같은 TaskInstance의 안전한 `log_url`만 Task 로그 버튼에 사용한다. callback context의
+임의 `task_instance` URL은 사용하지 않는다. primary Task가 없거나 해당 URL이
+안전하지 않으면 Task 로그 버튼을 생략하고 DagRun 버튼은 유지한다. 실제 실패 Task가
+없더라도 기본 진단을 사용해 알림을 계속 전송한다.
 
 진단은 다음 순서로 결정한다.
 
@@ -78,7 +86,7 @@ DagRun의 task instance 중 실제 state가 `failed`인 task만 primary 후보�
 | `youtube_gcs_action_log_pipeline` | 높음 | 당일 action log 생성·게시·검증 완료 여부를 확인해야 하며, 미완료 단계에 따라 raw 적재와 후속 학습 데이터가 지연될 수 있음 | 데이터 수집 파이프라인 | 수집·가상 사용자·GCS 출력 단계와 대상 날짜 확인 |
 | `lake_to_bigquery_incremental` | 높음 | raw 테이블 검증과 Dataset 갱신이 멈춰 feature build·학습이 연쇄 지연됨 | 데이터 적재 파이프라인 | GCS 파티션 존재, source URI, BigQuery load/검증 실패 확인 |
 | `feast_offline_feature_build` | 높음 | 병렬 task 특성상 학습용 feature와 training entity의 일부 또는 전체가 갱신되지 않았을 수 있어 신규 학습이 지연될 수 있음 | Feature Store 오프라인 | 입력 파티션, SQL build, 검증 실패 확인 |
-| `ctr_model_training` | 높음 | 신규 candidate가 생성되지 않지만 기존 Champion 서빙은 유지됨 | 모델 학습 파이프라인 | 입력 Dataset, 학습 Pod, MLflow 등록 단계 확인 |
+| `ctr_model_training` | 높음 | candidate 생성·등록 완료 여부를 확인해야 하며, 이 DAG는 Champion alias를 직접 변경하지 않음 | 모델 학습 파이프라인 | 입력 Dataset, 학습 Pod, MLflow 등록 단계 확인 |
 | `ctr_model_promote` | 중간 | 후행 알림 task 실패만으로 승격 여부를 단정할 수 없으므로 Champion 승격 결과 확인이 필요함 | 모델 운영 파이프라인 | candidate·registry·평가/승격 단계 확인 |
 | `feast_online_store_materialize` | 높음 | 온라인 feature 최신성이 낮아져 추천 입력이 오래될 수 있음 | Feature Store 온라인 | offline feature 시점, Redis 연결, materialize 단계 확인 |
 | `youtube_gcs_action_log_pipeline_qa` | 확인 필요 | QA override 부재 시 공유 설정을 사용할 수 있으므로 대상 path·partition·overwrite 범위와 공유 운영 경로 영향 확인이 필요함 | 데이터 수집 QA | 대상 path·partition·overwrite 설정과 공유 운영 경로의 생성·덮어쓰기 여부 확인 |
@@ -94,7 +102,8 @@ DagRun의 task instance 중 실제 state가 `failed`인 task만 primary 후보�
 
 실제 Task 로그, GCS 로그, Pod 환경 변수, Airflow Connection 값은 Slack 카드에
 넣지 않는다. 전체 로그와 원본 traceback도 전송하지 않는다. scheduler failure
-reason과 sanitize된 exception type/message만 기존 계약대로 유지한다.
+reason과 opportunistic context의 sanitize된 exception type/message만 기존 계약대로
+유지하며 어느 쪽도 원문 Task 로그에서 읽지 않는다.
 
 원문 로그 전송 방향은 정적 보안 감사에서 폐기했다. 감사는 모델 승격 경로에 원문
 MLflow 예외가 기록될 수 있고 action-log 경로에 `user_id`가 기록될 수 있음을
@@ -108,8 +117,8 @@ credential 형식만 가리는 sanitizer로는 원문 로그를 외부 채널에
 
 - `FailurePlaybook`: 영향 수준·영향 문구·담당 역할·권장 조치
 - `FailureDiagnosis`: 실패 영역·우선 점검 항목
-- `_failure_summary`: callback exception, scheduler reason, 안전한 기본 문구의 선택
-- 실제 `failed` Task의 결정적 선택
+- `_failure_summary`: scheduler reason, callback exception, 안전한 기본 문구의 선택
+- 실제 `failed` primary TaskInstance의 결정적 선택과 해당 Task 로그 URL 사용
 - exact mapping과 lake Task prefix mapping, 안전한 기본 진단
 - 플레이북·정적 진단을 포함한 failure renderer
 - 기존 webhook sender와 callback 오류 격리
@@ -128,13 +137,13 @@ DagRun 상태를 바꾸지 않는다. static diagnosis는 실패 원인을 확�
 
 ## 검증
 
-2026-08-05 구현 검증에서 다음 계약을 확인했다.
+2026-08-06 최종 리뷰 검증에서 다음 계약을 확인했다.
 
-- exception, scheduler reason, 기본 안내의 우선순위와 sanitize·mrkdwn escape 뒤 한 줄
-  1,000자 상한
-- Task 기반 정적 진단의 `우선 점검` 표현과 실제 실패 원인 section의 분리
+- scheduler reason, exception-only 정보, 기본 안내의 우선순위와 sanitize·mrkdwn
+  escape 뒤 한 줄 1,000자 상한
+- Task 기반 정적 진단의 `우선 점검` 표현과 Airflow 실패 정보 section의 분리
 - `python -m pytest tests/test_notification_safety.py tests/test_slack_notifications.py -v`
-  69건, 전체 `python -m pytest` 247건, repository contract 39건 통과
+  73건, 전체 `python -m pytest` 251건, repository contract 39건 통과
 - 대상 Ruff와 `git diff --check` 통과, 원격 로그 reader/최근 실패 로그 식별자는
   대상 Slack 소스·테스트에서 검색되지 않음
 
@@ -152,10 +161,11 @@ rg -n 'TaskLogReader|FailureLogExcerpt|_normalize_log_excerpt|_read_failure_log_
 ```
 
 마지막 `rg`는 match 없음(exit 1)이 기대 결과다. 테스트는 8개 DAG 플레이북,
-primary failed Task 선택과 `upstream_failed` 제외, 실제 DAG/task 정의에서 추출한
-ID와 exact/prefix diagnosis registry의 교차 검증, exception/reason/default 원인 표시
-우선순위, `실제 실패 원인`과 `우선 점검`의 구분, 완성된 Block Kit 문자열 상한,
-sanitize·buttons·`<!here>` 회귀를 포함한다. 실제 Slack, GCS,
+primary failed TaskInstance 선택과 `upstream_failed` 제외, 동일 Task의 진단·로그
+버튼 사용, 실제 DAG/task 정의에서 추출한 ID와 exact/prefix diagnosis registry의
+교차 검증, reason/exception-only/default 실패 정보 표시 우선순위, Airflow 실패
+정보와 `우선 점검`의 구분, 완성된 Block Kit 문자열 상한, sanitize·buttons·`<!here>`
+회귀를 포함한다. 실제 Slack, GCS,
 운영 Task 로그, 네트워크는 사용하지 않는다.
 
 ## 배포와 롤백
