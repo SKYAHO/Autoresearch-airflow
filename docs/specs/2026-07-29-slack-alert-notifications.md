@@ -52,6 +52,9 @@ run type과 관계없이 DagRun이 최종 실패했을 때 즉시 한 건을 보
 
 callback은 최종 DagRun 기준으로 실패 task ID를 모아 한 카드에 표시한다.
 예외는 type과 sanitize된 짧은 메시지만 표시하고 traceback은 전송하지 않는다.
+실패 카드의 영향·담당 역할·즉시 조치와 Task 기반 정적 진단은
+`docs/specs/2026-08-05-slack-failure-triage.md`의 확장 계약을 따른다. 전체
+Task 로그와 원본 traceback은 여전히 Slack으로 전송하지 않는다.
 
 ### `#model-events`
 
@@ -87,9 +90,10 @@ outcome 또는 필수 필드 결손은 알림 입력 오류로 기록하고 전�
 1. header: `🚨 Airflow DAG 실패`
 2. section: `<!here>`와 한 줄 요약
 3. 2열 fields: Environment, DAG, Run type, Failed tasks
-4. section: exception type과 sanitize된 원인
-5. actions: `DagRun 보기`, `Task 로그 보기`
-6. context: Run ID, logical date, 시작·종료 시간
+4. section: DAG별 영향·담당 역할·즉시 조치와 Task 기반 정적 진단
+5. section: exception type과 sanitize된 원인
+6. actions: `DagRun 보기`, `Task 로그 보기`
+7. context: Run ID, logical date, 시작·종료 시간
 
 ### 모델 이벤트 카드
 
