@@ -1,6 +1,6 @@
 # Slack 실패 알림 현장 진단 패킷 설계
 
-- **상태**: Approved — 실패 원인 표시 개선 구현 대기
+- **상태**: Implemented
 - **날짜**: 2026-08-05
 - **이슈**: #240
 - **선행 설계**: `docs/specs/2026-07-29-slack-alert-notifications.md`
@@ -127,6 +127,16 @@ DagRun 상태를 바꾸지 않는다. static diagnosis는 실패 원인을 확�
 재실행을 수행하지 않는다.
 
 ## 검증
+
+2026-08-05 구현 검증에서 다음 계약을 확인했다.
+
+- exception, scheduler reason, 기본 안내의 우선순위와 sanitize·mrkdwn escape 뒤 한 줄
+  1,000자 상한
+- Task 기반 정적 진단의 `우선 점검` 표현과 실제 실패 원인 section의 분리
+- `python -m pytest tests/test_notification_safety.py tests/test_slack_notifications.py -v`
+  69건, 전체 `python -m pytest` 247건, repository contract 39건 통과
+- 대상 Ruff와 `git diff --check` 통과, 원격 로그 reader/최근 실패 로그 식별자는
+  대상 Slack 소스·테스트에서 검색되지 않음
 
 최종 회귀 검증은 다음 실제 명령으로 수행한다.
 

@@ -119,7 +119,8 @@ def test_failure_message_has_one_here_and_safe_balanced_fields(monkeypatch) -> N
     assert "synthetic-token" not in serialized
     assert "RuntimeError" in serialized
     assert "password=[REDACTED] Bearer [REDACTED]" in serialized
-    assert "task_failure" in serialized
+    assert "*실제 실패 원인*" in serialized
+    assert "*Airflow 실패 사유*" not in serialized
     assert "https://airflow.internal/task-log" in serialized
     assert "https://airflow.internal/dag-run" in serialized
     assert "2026-07-29T00:01:00+00:00" in serialized
@@ -282,8 +283,49 @@ def test_failure_message_uses_scheduler_reason_without_exception(
     message = module.build_dag_failure_message(context)
     serialized = json.dumps(message.blocks, ensure_ascii=False)
 
+    assert "Airflow 실패 사유" in serialized
     assert reason in serialized
     assert "*Error type*" not in serialized
+
+
+def test_failure_message_prioritizes_sanitized_exception(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context()
+    context["exception"] = RuntimeError(
+        "first line\npassword=synthetic-secret Bearer synthetic-token " + "x" * 2_000
+    )
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+    cause_text = next(
+        block["text"]["text"]
+        for block in message.blocks
+        if block.get("type") == "section"
+        and block.get("text", {}).get("text", "").startswith("*실제 실패 원인*")
+    )
+    cause_value = cause_text.split("\n", 1)[1]
+
+    assert "실제 실패 원인" in serialized
+    assert "RuntimeError: first line password=[REDACTED] Bearer [REDACTED]" in serialized
+    assert "\n" not in cause_value
+    assert len(cause_value) <= 1_000
+    assert "synthetic-secret" not in serialized
+    assert "synthetic-token" not in serialized
+
+
+def test_failure_message_defaults_when_failure_context_has_no_cause(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context()
+    context.pop("exception")
+    context.pop("reason")
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert "*실패 원인*" in serialized
+    assert "상세 원인은 Airflow Task 로그 확인이 필요합니다." in serialized
 
 
 @pytest.mark.parametrize("state", ["failed", SimpleNamespace(value="failed")])
@@ -462,7 +504,8 @@ def test_failure_message_renders_task_based_diagnosis(monkeypatch) -> None:
 
     assert "실패 영역" in serialized
     assert "판단 근거" in serialized
-    assert "가능성이 높은 원인" in serialized
+    assert "우선 점검" in serialized
+    assert "가능성이 높은 원인" not in serialized
     assert "train_ctr_model" in serialized
     assert "CTR 모델 학습·등록" in serialized
     assert "<!here>" in serialized

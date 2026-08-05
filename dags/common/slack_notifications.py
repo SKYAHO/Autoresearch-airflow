@@ -3,9 +3,9 @@
 [파이프라인] Airflow DagRun 종료 callback과 모델 승격 XCom 소비 단계에서
 운영 이벤트를 Slack Incoming Webhook으로 전달한다.
 
-[기능] 정기 성공, 실패 playbook·Task 기반 안전 진단을 포함한 최종 실패, 모델
-promoted/rejected 메시지 렌더링과 채널별 Connection 선택, webhook 오류 격리를
-제공한다.
+[기능] 정기 성공, callback 실패 원인·playbook·Task 기반 안전 진단을 포함한 최종
+실패, 모델 promoted/rejected 메시지 렌더링과 채널별 Connection 선택, webhook 오류
+격리를 제공한다.
 
 [비책임] webhook Secret 생성·권한, Alertmanager 인프라 알림, 모델 승격 판정
 자체는 담당하지 않는다.
@@ -56,6 +56,7 @@ _MODEL_OUTCOME_REASONS = {
 _SECTION_FIELD_TEXT_LIMIT = 2_000
 _SECTION_TEXT_LIMIT = 3_000
 _CONTEXT_TEXT_LIMIT = 3_000
+_FAILURE_SUMMARY_TEXT_LIMIT = 1_000
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,7 @@ class FailurePlaybook:
 
 @dataclass(frozen=True)
 class FailureDiagnosis:
-    """실패 task 조합별 정적 점검 영역과 가능성이 높은 원인."""
+    """실패 task 조합별 정적 점검 영역과 우선 점검 항목."""
 
     area: str
     likely_causes: tuple[str, ...]
@@ -354,6 +355,26 @@ def _mrkdwn(value: object) -> str:
     )
 
 
+def _failure_summary(context: Mapping[str, object]) -> tuple[str, str]:
+    """Callback context의 실제 실패 원인을 안전한 우선순위로 요약한다."""
+    failure = context.get("exception")
+    if isinstance(failure, BaseException):
+        value = f"{type(failure).__name__}: {failure}"
+        return (
+            "실제 실패 원인",
+            " ".join(_mrkdwn(value).split())[:_FAILURE_SUMMARY_TEXT_LIMIT],
+        )
+
+    reason = context.get("reason")
+    if reason is not None and str(reason).strip():
+        return (
+            "Airflow 실패 사유",
+            " ".join(_mrkdwn(reason).split())[:_FAILURE_SUMMARY_TEXT_LIMIT],
+        )
+
+    return "실패 원인", "상세 원인은 Airflow Task 로그 확인이 필요합니다."
+
+
 def _limit_block_text(text: str, *, max_length: int) -> str:
     """완성된 Block Kit 문자열을 Slack 요소별 상한 안으로 제한한다."""
     return text[:max_length]
@@ -580,8 +601,7 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
     primary_task_id = _primary_failed_task_id(dag_run)
     diagnosis = _failure_diagnosis(getattr(dag_run, "dag_id", None), primary_task_id)
     failed_tasks = ", ".join(failed_task_ids(dag_run)) or "unknown"
-    failure = context.get("exception")
-    reason = _mrkdwn(context.get("reason") or "unknown")
+    failure_label, failure_value = _failure_summary(context)
     fields = [
         {
             "type": "mrkdwn",
@@ -611,12 +631,6 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
             ),
         },
     ]
-    diagnostic = f"*Failure reason*\n`{reason}`"
-    if isinstance(failure, BaseException):
-        diagnostic += (
-            f"\n*{_mrkdwn(type(failure).__name__)}*: "
-            f"{_mrkdwn(str(failure))}"
-        )
     impact_text = "\n".join(f"• {_mrkdwn(item)}" for item in playbook.impacts)
     action_text = "\n".join(
         f"{index}. {_mrkdwn(item)}"
@@ -634,7 +648,7 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
         f"*실패 영역*\n• {_mrkdwn(diagnosis.area)}\n\n"
         "*판단 근거*\n"
         f"• Task: `{_mrkdwn(primary_task_id or 'unknown')}`\n\n"
-        f"*가능성이 높은 원인*\n{cause_text}"
+        f"*우선 점검*\n{cause_text}"
     )
     blocks: list[dict[str, object]] = [
         {
@@ -657,6 +671,16 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
             "text": {
                 "type": "mrkdwn",
                 "text": _limit_block_text(
+                    f"*{failure_label}*\n{failure_value}",
+                    max_length=_SECTION_TEXT_LIMIT,
+                ),
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _limit_block_text(
                     triage, max_length=_SECTION_TEXT_LIMIT
                 ),
             },
@@ -667,15 +691,6 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
                 "type": "mrkdwn",
                 "text": _limit_block_text(
                     diagnosis_text, max_length=_SECTION_TEXT_LIMIT
-                ),
-            },
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": _limit_block_text(
-                    diagnostic, max_length=_SECTION_TEXT_LIMIT
                 ),
             },
         },

@@ -67,7 +67,7 @@ scheduler reason을 우선순위에 따라 한 줄 요약한다. 원문 Task 로
 
 - `실패 영역`
 - 선택된 Task ID를 보이는 `판단 근거`
-- `가능성이 높은 원인`
+- `우선 점검`
 
 진단 순서는 `(dag_id, task_id)` exact mapping, `lake_to_bigquery_incremental`의
 Task prefix mapping, 안전한 기본 진단이다. 이는 로그 분석 결과가 아니라 원인
@@ -96,7 +96,7 @@ registry coverage도 교차 검증한다.
 - Produces: failure card의 `실제 실패 원인`/`Airflow 실패 사유`/`실패 원인` section과
   정적 `우선 점검` section
 
-- [ ] **Step 1: 원인 source 우선순위와 표현 계약의 실패 테스트 작성**
+- [x] **Step 1: 원인 source 우선순위와 표현 계약의 실패 테스트 작성**
 
 `tests/test_slack_notifications.py`에서 완성된 failure card를 기준으로 다음 사례를
 추가하거나 기존 테스트를 강화한다.
@@ -133,7 +133,7 @@ exception을 제거한 기존 scheduler reason parameter test는 `Airflow 실패
 `상세 원인은 Airflow Task 로그 확인이 필요합니다.`를 검증한다. 등록 Task 렌더링
 테스트는 `우선 점검`이 있고 `가능성이 높은 원인`은 없음을 검증한다.
 
-- [ ] **Step 2: 새 테스트가 기존 영문/정적 표현 때문에 실패하는지 확인**
+- [x] **Step 2: 새 테스트가 기존 영문/정적 표현 때문에 실패하는지 확인**
 
 Run:
 
@@ -145,7 +145,7 @@ python -m pytest tests/test_slack_notifications.py \
 Expected: `실제 실패 원인`, `Airflow 실패 사유`, 기본 안내 또는 `우선 점검` 중
 적어도 하나가 없어 FAIL한다.
 
-- [ ] **Step 3: 최소 원인 요약 helper와 카드 배치 구현**
+- [x] **Step 3: 최소 원인 요약 helper와 카드 배치 구현**
 
 `dags/common/slack_notifications.py`에 다음 형태의 helper를 추가한다.
 
@@ -174,7 +174,7 @@ def _failure_summary(context: Mapping[str, object]) -> tuple[str, str]:
 뒤에 배치한다. 기존 영문 `Failure reason`/exception section은 제거한다. 정적 진단의
 heading은 `가능성이 높은 원인`에서 `우선 점검`으로 변경한다.
 
-- [ ] **Step 4: 실패 원인 집중 테스트를 GREEN으로 확인**
+- [x] **Step 4: 실패 원인 집중 테스트를 GREEN으로 확인**
 
 Run:
 
@@ -184,7 +184,7 @@ python -m pytest tests/test_slack_notifications.py -v
 
 Expected: 모든 Slack 알림 테스트 PASS.
 
-- [ ] **Step 5: 문서 상태와 전체 회귀 검증**
+- [x] **Step 5: 문서 상태와 전체 회귀 검증**
 
 spec의 상태를 `Implemented`로 되돌리고 검증 결과가 exception/reason/default 우선순위,
 한 줄 1,000자 상한과 `우선 점검` 표현을 포함하도록 맞춘다. 다음을 실행한다.
@@ -200,7 +200,7 @@ rg -n 'TaskLogReader|FailureLogExcerpt|_normalize_log_excerpt|_read_failure_log_
 
 Expected: pytest와 Ruff 및 diff check는 exit 0, 마지막 `rg`는 match 없음으로 exit 1.
 
-- [ ] **Step 6: 구현과 계약 문서 커밋**
+- [x] **Step 6: 구현과 계약 문서 커밋**
 
 ```bash
 git add dags/common/slack_notifications.py tests/test_slack_notifications.py \
