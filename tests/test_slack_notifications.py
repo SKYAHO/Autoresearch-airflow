@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,7 +19,7 @@ DAGS_ROOT = Path(__file__).resolve().parents[1] / "dags"
 @dataclass
 class _TaskInstance:
     task_id: str
-    state: str
+    state: object
     log_url: str = "https://airflow.internal/task-log"
     try_number: int = 1
 
@@ -180,6 +181,189 @@ def test_failure_message_uses_scheduler_reason_without_exception(
 
     assert reason in serialized
     assert "*Error type*" not in serialized
+
+
+@pytest.mark.parametrize("state", ["failed", SimpleNamespace(value="failed")])
+def test_primary_failed_task_id_is_deterministic_and_excludes_upstream(
+    monkeypatch, state
+) -> None:
+    module = _load_module(monkeypatch)
+    dag_run = _DagRun(
+        task_instances=[
+            _TaskInstance("upstream", "upstream_failed"),
+            _TaskInstance("z_failed", state),
+            _TaskInstance("success", "success"),
+            _TaskInstance("a_failed", state),
+        ]
+    )
+
+    task_id = module._primary_failed_task_id(dag_run)
+
+    assert task_id == "a_failed"
+
+
+@pytest.mark.parametrize(
+    ("dag_id", "task_id", "area", "cause"),
+    [
+        (
+            "youtube_gcs_action_log_pipeline",
+            "collect_youtube_trending_partition",
+            "YouTube 트렌딩 수집",
+            "YouTube API",
+        ),
+        (
+            "youtube_gcs_action_log_pipeline",
+            "ensure_action_log_partition",
+            "action log 생성·게시",
+            "가상 사용자·노출 생성",
+        ),
+        (
+            "youtube_gcs_action_log_pipeline",
+            "validate_action_log_partition",
+            "action log 품질 검증",
+            "파티션 누락·빈 데이터",
+        ),
+        (
+            "youtube_gcs_action_log_pipeline_qa",
+            "collect_youtube_trending_partition",
+            "YouTube 트렌딩 수집",
+            "수집 결과 게시",
+        ),
+        (
+            "youtube_gcs_action_log_pipeline_qa",
+            "ensure_action_log_partition",
+            "action log 생성·게시",
+            "GCS 게시",
+        ),
+        (
+            "youtube_gcs_action_log_pipeline_qa",
+            "validate_action_log_partition",
+            "action log 품질 검증",
+            "스키마·품질 조건",
+        ),
+        (
+            "youtube_backfill_kr",
+            "backfill_youtube_partitions",
+            "YouTube 과거 파티션 백필",
+            "대상 날짜 범위",
+        ),
+        (
+            "feast_offline_feature_build",
+            "build_offline_features",
+            "오프라인 feature 생성",
+            "입력 raw 파티션",
+        ),
+        (
+            "feast_offline_feature_build",
+            "build_training_entity",
+            "학습 entity 생성",
+            "action label·대상 기간",
+        ),
+        (
+            "ctr_model_training",
+            "train_ctr_model",
+            "CTR 모델 학습·등록",
+            "학습 Dataset·snapshot",
+        ),
+        (
+            "ctr_model_promote",
+            "promote_ctr_model",
+            "모델 평가·승격",
+            "candidate·평가 artifact",
+        ),
+        (
+            "ctr_model_promote",
+            "notify_model_promotion_event",
+            "모델 이벤트 알림",
+            "구조화 결과·XCom",
+        ),
+        (
+            "feast_online_store_materialize",
+            "materialize_online_store",
+            "온라인 feature materialize",
+            "offline feature 시점",
+        ),
+    ],
+)
+def test_failure_diagnosis_returns_exact_task_guidance(
+    monkeypatch, dag_id, task_id, area, cause
+) -> None:
+    module = _load_module(monkeypatch)
+
+    diagnosis = module._failure_diagnosis(dag_id, task_id)
+
+    assert diagnosis.area == area
+    assert cause in " ".join(diagnosis.likely_causes)
+
+
+@pytest.mark.parametrize(
+    ("task_id", "area", "cause"),
+    [
+        ("wait_action_log_partition", "GCS 입력 파티션 대기", "upstream 파티션 미게시"),
+        ("load_action_log_partition", "BigQuery raw 적재", "source URI·입력 객체"),
+        ("validate_action_log_partition", "BigQuery raw 검증", "행 수·파티션 날짜"),
+    ],
+)
+def test_failure_diagnosis_returns_lake_task_prefix_guidance(
+    monkeypatch, task_id, area, cause
+) -> None:
+    module = _load_module(monkeypatch)
+
+    diagnosis = module._failure_diagnosis("lake_to_bigquery_incremental", task_id)
+
+    assert diagnosis.area == area
+    assert cause in " ".join(diagnosis.likely_causes)
+
+
+def test_failure_diagnosis_uses_safe_default_for_unregistered_task(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+
+    diagnosis = module._failure_diagnosis("unknown_dag", None)
+
+    assert diagnosis == module.FailureDiagnosis(
+        area="미등록 Task 단계",
+        likely_causes=(
+            "Task 구성 또는 외부 의존성 오류일 수 있습니다.",
+            "상세 원인은 내부 로그 확인이 필요합니다.",
+        ),
+    )
+
+
+def test_failure_message_uses_safe_default_when_no_task_failed(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context()
+    context["dag_run"] = _DagRun(
+        task_instances=[_TaskInstance("successful_task", "success")]
+    )
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert "미등록 Task 단계" in serialized
+    assert "Task: `unknown`" in serialized
+    assert "상세 원인은 내부 로그 확인이 필요합니다" in serialized
+
+
+def test_failure_message_renders_task_based_diagnosis(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+    context = _context(dag_id="ctr_model_training")
+    context["dag_run"] = _DagRun(
+        dag_id="ctr_model_training",
+        task_instances=[_TaskInstance("train_ctr_model", "failed")],
+    )
+
+    message = module.build_dag_failure_message(context)
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert "실패 영역" in serialized
+    assert "판단 근거" in serialized
+    assert "가능성이 높은 원인" in serialized
+    assert "train_ctr_model" in serialized
+    assert "CTR 모델 학습·등록" in serialized
+    assert "<!here>" in serialized
+    assert "학습 Dataset·snapshot" in serialized
 
 
 @pytest.mark.parametrize("run_type", ["scheduled", "asset_triggered", "dataset_triggered"])

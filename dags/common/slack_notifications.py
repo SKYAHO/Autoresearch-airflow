@@ -3,7 +3,7 @@
 [파이프라인] Airflow DagRun 종료 callback과 모델 승격 XCom 소비 단계에서
 운영 이벤트를 Slack Incoming Webhook으로 전달한다.
 
-[기능] 정기 성공, 실패 진단 플레이북을 포함한 최종 실패, 모델
+[기능] 정기 성공, 실패 playbook·Task 기반 안전 진단을 포함한 최종 실패, 모델
 promoted/rejected 메시지 렌더링과 채널별 Connection 선택, webhook 오류 격리를
 제공한다.
 
@@ -73,6 +73,14 @@ class FailurePlaybook:
     actions: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class FailureDiagnosis:
+    """실패 task 조합별 정적 점검 영역과 가능성이 높은 원인."""
+
+    area: str
+    likely_causes: tuple[str, ...]
+
+
 _DEFAULT_FAILURE_PLAYBOOK = FailurePlaybook(
     impact_level="확인 필요",
     impacts=("등록되지 않은 DAG이므로 후속 영향을 확인해야 합니다.",),
@@ -83,6 +91,119 @@ _DEFAULT_FAILURE_PLAYBOOK = FailurePlaybook(
         "원인을 수정한 뒤 재실행 여부를 판단합니다.",
     ),
 )
+_DEFAULT_FAILURE_DIAGNOSIS = FailureDiagnosis(
+    area="미등록 Task 단계",
+    likely_causes=(
+        "Task 구성 또는 외부 의존성 오류일 수 있습니다.",
+        "상세 원인은 내부 로그 확인이 필요합니다.",
+    ),
+)
+_ACTION_LOG_DAG_IDS = {
+    "youtube_gcs_action_log_pipeline",
+    "youtube_gcs_action_log_pipeline_qa",
+}
+_ACTION_LOG_TASK_DIAGNOSES = {
+    "collect_youtube_trending_partition": FailureDiagnosis(
+        area="YouTube 트렌딩 수집",
+        likely_causes=(
+            "YouTube API 요청 또는 수집 결과 게시 단계가 실패했을 수 있습니다.",
+            "대상 날짜와 채널 목록을 확인해야 합니다.",
+        ),
+    ),
+    "ensure_action_log_partition": FailureDiagnosis(
+        area="action log 생성·게시",
+        likely_causes=(
+            "가상 사용자·노출 생성 단계가 실패했을 수 있습니다.",
+            "GCS 게시 대상과 파티션 상태를 확인해야 합니다.",
+        ),
+    ),
+    "validate_action_log_partition": FailureDiagnosis(
+        area="action log 품질 검증",
+        likely_causes=(
+            "파티션 누락·빈 데이터가 있을 수 있습니다.",
+            "스키마·품질 조건을 확인해야 합니다.",
+        ),
+    ),
+}
+_FAILURE_DIAGNOSES = {
+    **{
+        (dag_id, task_id): diagnosis
+        for dag_id in _ACTION_LOG_DAG_IDS
+        for task_id, diagnosis in _ACTION_LOG_TASK_DIAGNOSES.items()
+    },
+    ("youtube_backfill_kr", "backfill_youtube_partitions"): FailureDiagnosis(
+        area="YouTube 과거 파티션 백필",
+        likely_causes=(
+            "대상 날짜 범위가 올바른지 확인해야 합니다.",
+            "YouTube API·GCS 출력 상태를 확인해야 합니다.",
+        ),
+    ),
+    ("feast_offline_feature_build", "build_offline_features"): FailureDiagnosis(
+        area="오프라인 feature 생성",
+        likely_causes=(
+            "입력 raw 파티션이 준비되었는지 확인해야 합니다.",
+            "SQL build·feature 검증 단계를 확인해야 합니다.",
+        ),
+    ),
+    ("feast_offline_feature_build", "build_training_entity"): FailureDiagnosis(
+        area="학습 entity 생성",
+        likely_causes=(
+            "action label·대상 기간을 확인해야 합니다.",
+            "entity 테이블 검증 단계를 확인해야 합니다.",
+        ),
+    ),
+    ("ctr_model_training", "train_ctr_model"): FailureDiagnosis(
+        area="CTR 모델 학습·등록",
+        likely_causes=(
+            "학습 Dataset·snapshot을 확인해야 합니다.",
+            "학습 Pod·MLflow 등록 단계를 확인해야 합니다.",
+        ),
+    ),
+    ("ctr_model_promote", "promote_ctr_model"): FailureDiagnosis(
+        area="모델 평가·승격",
+        likely_causes=(
+            "candidate·평가 artifact를 확인해야 합니다.",
+            "MLflow Registry·승격 조건을 확인해야 합니다.",
+        ),
+    ),
+    ("ctr_model_promote", "notify_model_promotion_event"): FailureDiagnosis(
+        area="모델 이벤트 알림",
+        likely_causes=(
+            "구조화 결과·XCom을 확인해야 합니다.",
+            "Slack webhook 설정을 확인해야 합니다.",
+        ),
+    ),
+    ("feast_online_store_materialize", "materialize_online_store"): FailureDiagnosis(
+        area="온라인 feature materialize",
+        likely_causes=(
+            "offline feature 시점을 확인해야 합니다.",
+            "Feast·Redis 연결을 확인해야 합니다.",
+        ),
+    ),
+}
+_LAKE_TASK_PREFIX_DIAGNOSES = {
+    "wait_": FailureDiagnosis(
+        area="GCS 입력 파티션 대기",
+        likely_causes=(
+            "upstream 파티션 미게시 상태일 수 있습니다.",
+            "대상 날짜·객체 경로 불일치를 확인해야 합니다.",
+        ),
+    ),
+    "load_": FailureDiagnosis(
+        area="BigQuery raw 적재",
+        likely_causes=(
+            "source URI·입력 객체를 확인해야 합니다.",
+            "BigQuery load·스키마 단계를 확인해야 합니다.",
+        ),
+    ),
+    "validate_": FailureDiagnosis(
+        area="BigQuery raw 검증",
+        likely_causes=(
+            "행 수·파티션 날짜를 확인해야 합니다.",
+            "스키마·검증 조건을 확인해야 합니다.",
+        ),
+    ),
+}
 _FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
     "youtube_gcs_action_log_pipeline": FailurePlaybook(
         impact_level="높음",
@@ -169,6 +290,35 @@ _FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
 
 def _failure_playbook(dag_id: object) -> FailurePlaybook:
     return _FAILURE_PLAYBOOKS.get(str(dag_id), _DEFAULT_FAILURE_PLAYBOOK)
+
+
+def _primary_failed_task_id(dag_run: object) -> str | None:
+    """최종 실패 상태 task 중 task ID가 가장 앞선 값을 반환한다."""
+    task_ids = [
+        str(task_instance.task_id)
+        for task_instance in dag_run.get_task_instances()
+        if getattr(
+            getattr(task_instance, "state", None),
+            "value",
+            getattr(task_instance, "state", None),
+        )
+        == "failed"
+    ]
+    return min(task_ids) if task_ids else None
+
+
+def _failure_diagnosis(dag_id: object, task_id: str | None) -> FailureDiagnosis:
+    """DAG와 실제 실패 task 조합의 정적 안전 진단을 반환한다."""
+    dag_name = str(dag_id)
+    if task_id is not None:
+        diagnosis = _FAILURE_DIAGNOSES.get((dag_name, task_id))
+        if diagnosis is not None:
+            return diagnosis
+        if dag_name == "lake_to_bigquery_incremental":
+            for prefix, prefix_diagnosis in _LAKE_TASK_PREFIX_DIAGNOSES.items():
+                if task_id.startswith(prefix):
+                    return prefix_diagnosis
+    return _DEFAULT_FAILURE_DIAGNOSIS
 
 
 def _environment() -> str:
@@ -379,11 +529,13 @@ def build_dag_success_message(
 
 
 def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
-    """모든 최종 DagRun 실패를 @here 한 번 포함해 렌더링한다."""
+    """모든 최종 DagRun 실패를 playbook과 Task 진단으로 렌더링한다."""
     dag_run = _dag_run(context)
     environment = _environment()
     dag_id = _mrkdwn(getattr(dag_run, "dag_id", None))
     playbook = _failure_playbook(getattr(dag_run, "dag_id", None))
+    primary_task_id = _primary_failed_task_id(dag_run)
+    diagnosis = _failure_diagnosis(getattr(dag_run, "dag_id", None), primary_task_id)
     failed_tasks = ", ".join(failed_task_ids(dag_run)) or "unknown"
     failure = context.get("exception")
     reason = _mrkdwn(context.get("reason") or "unknown")
@@ -409,6 +561,15 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
         f"*담당*\n• {_mrkdwn(playbook.owner_role)}\n\n"
         f"*지금 할 일*\n{action_text}"
     )
+    cause_text = "\n".join(
+        f"• {_mrkdwn(cause)}" for cause in diagnosis.likely_causes
+    )
+    diagnosis_text = (
+        f"*실패 영역*\n• {_mrkdwn(diagnosis.area)}\n\n"
+        "*판단 근거*\n"
+        f"• Task: `{_mrkdwn(primary_task_id or 'unknown')}`\n\n"
+        f"*가능성이 높은 원인*\n{cause_text}"
+    )
     blocks: list[dict[str, object]] = [
         {
             "type": "header",
@@ -423,6 +584,7 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
         },
         {"type": "section", "fields": fields},
         {"type": "section", "text": {"type": "mrkdwn", "text": triage}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": diagnosis_text}},
         {"type": "section", "text": {"type": "mrkdwn", "text": diagnostic}},
     ]
     _with_dag_run_and_log_buttons(blocks, dag_run, context)
