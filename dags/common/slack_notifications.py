@@ -3,8 +3,9 @@
 [파이프라인] Airflow DagRun 종료 callback과 모델 승격 XCom 소비 단계에서
 운영 이벤트를 Slack Incoming Webhook으로 전달한다.
 
-[기능] 정기 성공, 최종 실패, 모델 promoted/rejected 메시지 렌더링과 채널별
-Connection 선택, webhook 오류 격리를 제공한다.
+[기능] 정기 성공, 실패 진단 플레이북을 포함한 최종 실패, 모델
+promoted/rejected 메시지 렌더링과 채널별 Connection 선택, webhook 오류 격리를
+제공한다.
 
 [비책임] webhook Secret 생성·권한, Alertmanager 인프라 알림, 모델 승격 판정
 자체는 담당하지 않는다.
@@ -60,6 +61,114 @@ class SlackMessage:
 
     text: str
     blocks: list[dict[str, object]]
+
+
+@dataclass(frozen=True)
+class FailurePlaybook:
+    """DAG 실패 카드에 표시할 운영 영향, 담당 역할과 권장 조치."""
+
+    impact_level: str
+    impacts: tuple[str, ...]
+    owner_role: str
+    actions: tuple[str, ...]
+
+
+_DEFAULT_FAILURE_PLAYBOOK = FailurePlaybook(
+    impact_level="확인 필요",
+    impacts=("등록되지 않은 DAG이므로 후속 영향을 확인해야 합니다.",),
+    owner_role="DAG 소유 영역",
+    actions=(
+        "아래 실패 로그와 실패 task를 확인합니다.",
+        "upstream 입력과 외부 의존성을 확인합니다.",
+        "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+    ),
+)
+_FAILURE_PLAYBOOKS: dict[str, FailurePlaybook] = {
+    "youtube_gcs_action_log_pipeline": FailurePlaybook(
+        impact_level="높음",
+        impacts=("당일 action log가 생성되지 않아 raw 적재와 후속 학습 데이터가 지연될 수 있습니다.",),
+        owner_role="데이터 수집 파이프라인",
+        actions=(
+            "수집·가상 사용자·GCS 출력 단계를 확인합니다.",
+            "대상 날짜와 입력 데이터가 올바른지 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+    "lake_to_bigquery_incremental": FailurePlaybook(
+        impact_level="높음",
+        impacts=("raw 테이블 검증과 Dataset 갱신이 멈춰 feature build·학습이 연쇄 지연됩니다.",),
+        owner_role="데이터 적재 파이프라인",
+        actions=(
+            "GCS 파티션 존재와 source URI를 확인합니다.",
+            "BigQuery load와 검증 실패 지점을 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+    "feast_offline_feature_build": FailurePlaybook(
+        impact_level="높음",
+        impacts=("학습용 feature와 training entity가 갱신되지 않아 신규 학습이 지연됩니다.",),
+        owner_role="Feature Store 오프라인",
+        actions=(
+            "입력 파티션을 확인합니다.",
+            "SQL build와 검증 실패 지점을 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+    "ctr_model_training": FailurePlaybook(
+        impact_level="높음",
+        impacts=("신규 candidate가 생성되지 않지만 기존 Champion 서빙은 유지됩니다.",),
+        owner_role="모델 학습 파이프라인",
+        actions=(
+            "입력 Dataset과 학습 Pod 상태를 확인합니다.",
+            "MLflow 등록 단계를 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+    "ctr_model_promote": FailurePlaybook(
+        impact_level="중간",
+        impacts=("Champion이 갱신되지 않지만 기존 Champion 서빙은 유지됩니다.",),
+        owner_role="모델 운영 파이프라인",
+        actions=(
+            "candidate와 registry 상태를 확인합니다.",
+            "평가와 승격 단계를 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+    "feast_online_store_materialize": FailurePlaybook(
+        impact_level="높음",
+        impacts=("온라인 feature 최신성이 낮아져 추천 입력이 오래될 수 있습니다.",),
+        owner_role="Feature Store 온라인",
+        actions=(
+            "offline feature 시점을 확인합니다.",
+            "Redis 연결과 materialize 단계를 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+    "youtube_gcs_action_log_pipeline_qa": FailurePlaybook(
+        impact_level="낮음",
+        impacts=("반복 QA 검증만 중단되며 운영 cron에는 직접 영향 없음",),
+        owner_role="데이터 수집 QA",
+        actions=(
+            "QA 입력과 제한값을 확인합니다.",
+            "실패 단계를 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+    "youtube_backfill_kr": FailurePlaybook(
+        impact_level="중간",
+        impacts=("요청한 과거 구간 복구가 중단되며 당일 운영 cron에는 직접 영향 없음",),
+        owner_role="데이터 백필",
+        actions=(
+            "대상 날짜 범위와 기존 객체를 확인합니다.",
+            "재개 지점을 확인합니다.",
+            "원인을 수정한 뒤 재실행 여부를 판단합니다.",
+        ),
+    ),
+}
+
+
+def _failure_playbook(dag_id: object) -> FailurePlaybook:
+    return _FAILURE_PLAYBOOKS.get(str(dag_id), _DEFAULT_FAILURE_PLAYBOOK)
 
 
 def _environment() -> str:
@@ -274,6 +383,7 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
     dag_run = _dag_run(context)
     environment = _environment()
     dag_id = _mrkdwn(getattr(dag_run, "dag_id", None))
+    playbook = _failure_playbook(getattr(dag_run, "dag_id", None))
     failed_tasks = ", ".join(failed_task_ids(dag_run)) or "unknown"
     failure = context.get("exception")
     reason = _mrkdwn(context.get("reason") or "unknown")
@@ -289,6 +399,16 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
             f"\n*{_mrkdwn(type(failure).__name__)}*: "
             f"{_mrkdwn(str(failure))}"
         )
+    impact_text = "\n".join(f"• {_mrkdwn(item)}" for item in playbook.impacts)
+    action_text = "\n".join(
+        f"{index}. {_mrkdwn(item)}"
+        for index, item in enumerate(playbook.actions, start=1)
+    )
+    triage = (
+        f"*영향*\n{impact_text}\n\n"
+        f"*담당*\n• {_mrkdwn(playbook.owner_role)}\n\n"
+        f"*지금 할 일*\n{action_text}"
+    )
     blocks: list[dict[str, object]] = [
         {
             "type": "header",
@@ -296,9 +416,13 @@ def build_dag_failure_message(context: Mapping[str, object]) -> SlackMessage:
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "<!here> 확인이 필요합니다."},
+            "text": {
+                "type": "mrkdwn",
+                "text": f"<!here> 운영 영향: {playbook.impact_level}",
+            },
         },
         {"type": "section", "fields": fields},
+        {"type": "section", "text": {"type": "mrkdwn", "text": triage}},
         {"type": "section", "text": {"type": "mrkdwn", "text": diagnostic}},
     ]
     _with_dag_run_and_log_buttons(blocks, dag_run, context)

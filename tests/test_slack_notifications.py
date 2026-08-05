@@ -20,24 +20,32 @@ class _TaskInstance:
     task_id: str
     state: str
     log_url: str = "https://airflow.internal/task-log"
+    try_number: int = 1
 
 
 class _DagRun:
-    dag_id = "example_dag"
     run_id = "scheduled__2026-07-29T00:00:00+00:00"
     logical_date = datetime(2026, 7, 29, tzinfo=timezone.utc)
     start_date = datetime(2026, 7, 29, 0, 1, tzinfo=timezone.utc)
     end_date = datetime(2026, 7, 29, 0, 5, tzinfo=timezone.utc)
 
-    def __init__(self, *, run_type: str = "scheduled") -> None:
+    def __init__(
+        self,
+        *,
+        dag_id: str = "example_dag",
+        run_type: str = "scheduled",
+        task_instances: list[_TaskInstance] | None = None,
+    ) -> None:
+        self.dag_id = dag_id
         self.run_type = run_type
-
-    def get_task_instances(self) -> list[_TaskInstance]:
-        return [
+        self.task_instances = task_instances or [
             _TaskInstance("upstream", "upstream_failed"),
             _TaskInstance("failed_task", "failed"),
             _TaskInstance("successful_task", "success"),
         ]
+
+    def get_task_instances(self) -> list[_TaskInstance]:
+        return self.task_instances
 
     def get_dagrun_url(self) -> str:
         return "https://airflow.internal/dag-run"
@@ -60,10 +68,12 @@ def _load_module(monkeypatch):
     return importlib.import_module("common.slack_notifications")
 
 
-def _context(*, run_type: str = "scheduled") -> dict[str, object]:
+def _context(
+    *, dag_id: str = "example_dag", run_type: str = "scheduled"
+) -> dict[str, object]:
     task_instance = _TaskInstance("failed_task", "failed")
     return {
-        "dag_run": _DagRun(run_type=run_type),
+        "dag_run": _DagRun(dag_id=dag_id, run_type=run_type),
         "task_instance": task_instance,
         "exception": RuntimeError(
             "password=synthetic-secret Bearer synthetic-token"
@@ -114,6 +124,45 @@ def test_failure_message_has_one_here_and_safe_balanced_fields(monkeypatch) -> N
     assert "2026-07-29T00:01:00+00:00" in serialized
     assert "2026-07-29T00:05:00+00:00" in serialized
     assert "4m 0s" in serialized
+
+
+@pytest.mark.parametrize(
+    ("dag_id", "level", "impact", "owner", "action"),
+    [
+        ("youtube_gcs_action_log_pipeline", "높음", "action log", "데이터 수집 파이프라인", "대상 날짜"),
+        ("lake_to_bigquery_incremental", "높음", "연쇄 지연", "데이터 적재 파이프라인", "GCS 파티션"),
+        ("feast_offline_feature_build", "높음", "training entity", "Feature Store 오프라인", "SQL build"),
+        ("ctr_model_training", "높음", "기존 Champion", "모델 학습 파이프라인", "MLflow 등록"),
+        ("ctr_model_promote", "중간", "기존 Champion", "모델 운영 파이프라인", "registry"),
+        ("feast_online_store_materialize", "높음", "온라인 feature 최신성", "Feature Store 온라인", "Redis 연결"),
+        ("youtube_gcs_action_log_pipeline_qa", "낮음", "운영 cron에는 직접 영향 없음", "데이터 수집 QA", "QA 입력"),
+        ("youtube_backfill_kr", "중간", "과거 구간 복구", "데이터 백필", "대상 날짜 범위"),
+    ],
+)
+def test_failure_message_renders_registered_dag_playbook(
+    monkeypatch, dag_id, level, impact, owner, action
+) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+
+    message = module.build_dag_failure_message(_context(dag_id=dag_id))
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    for expected in (f"운영 영향: {level}", impact, owner, action):
+        assert expected in serialized
+
+
+def test_failure_message_uses_default_playbook(monkeypatch) -> None:
+    module = _load_module(monkeypatch)
+    monkeypatch.setenv("AUTORESEARCH_AIRFLOW_ENVIRONMENT", "dev")
+
+    message = module.build_dag_failure_message(_context())
+    serialized = json.dumps(message.blocks, ensure_ascii=False)
+
+    assert "운영 영향: 확인 필요" in serialized
+    assert "DAG 소유 영역" in serialized
+    assert "upstream 입력" in serialized
+    assert serialized.count("<!here>") == 1
 
 
 @pytest.mark.parametrize("reason", ["task_failure", "all_tasks_deadlocked"])
