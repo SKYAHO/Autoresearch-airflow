@@ -281,7 +281,7 @@ jobs:
           REMOTE_WAIT
 
       - name: Refresh GCP authentication after production wait
-        if: always()
+        if: always() && steps.environment.outcome == 'success'
         uses: google-github-actions/auth@v3
         with:
           project_id: ${{ steps.environment.outputs.project_id }}
@@ -289,7 +289,7 @@ jobs:
           service_account: ${{ env.GKE_DEPLOYER_SA }}
 
       - name: Refresh GKE credentials after production wait
-        if: always()
+        if: always() && steps.environment.outcome == 'success'
         uses: google-github-actions/get-gke-credentials@v3
         with:
           project_id: ${{ steps.environment.outputs.project_id }}
