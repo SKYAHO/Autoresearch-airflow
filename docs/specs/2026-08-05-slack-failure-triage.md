@@ -1,6 +1,6 @@
 # Slack 실패 알림 현장 진단 패킷 설계
 
-- **상태**: Implemented
+- **상태**: Approved — 실패 원인 표시 개선 구현 대기
 - **날짜**: 2026-08-05
 - **이슈**: #240
 - **선행 설계**: `docs/specs/2026-07-29-slack-alert-notifications.md`
@@ -21,11 +21,33 @@ reason, sanitize된 exception type/message, Airflow 버튼을 유지하면서 �
 1. DAG별 운영 영향 수준과 후속 영향
 2. 사람 이름이 아닌 담당 역할
 3. 원인 확인과 재실행 판단을 위한 즉시 조치
-4. `실패 영역`, `판단 근거`, `가능성이 높은 원인`으로 이루어진 Task 기반 정적 진단
+4. Airflow callback이 전달한 실제 exception 또는 scheduler failure reason
+5. `실패 영역`, `판단 근거`, `우선 점검`으로 이루어진 Task 기반 정적 진단
 
 따라서 수신자는 버튼을 누르기 전에 카드 안에서 우선 판단할 수 있다. 정적 진단은
-확정된 장애 원인이 아니라, 확인해야 할 원인 범주와 점검 방향이다. 반복 알림, ACK
+확정된 장애 원인이 아니라, 확인해야 할 원인 범주와 점검 방향이다. 실제 exception과
+정적 진단은 각각 `실제 실패 원인`과 `우선 점검`으로 구분한다. 반복 알림, ACK
 버튼, 자동 재실행은 추가하지 않는다.
+
+## 실제 실패 원인 표시
+
+원문 Task 로그를 조회하지 않고 callback context에 이미 전달된 값만 사용한다.
+failure renderer는 작은 `_failure_summary` helper로 다음 우선순위에 따라 표시값을
+결정한다.
+
+1. `context["exception"]`이 `BaseException`이면 `실제 실패 원인`으로
+   `<ExceptionType>: <message>`를 표시한다.
+2. exception이 없고 `context["reason"]`을 문자열로 바꿔 trim한 값이 비어 있지
+   않으면 `Airflow 실패 사유`로 scheduler reason을 표시한다.
+3. 둘 다 없으면 `실패 원인`으로 `상세 원인은 Airflow Task 로그 확인이 필요합니다.`를
+   표시한다.
+
+helper는 `(표시 label, 표시 value)`를 반환한다. exception message와 reason은 기존
+`sanitize_text` 및 Slack mrkdwn escape를 거친 후 모든 공백을 단일 공백으로
+정규화하고 표시값을 1,000자로 제한한다. 완성된 section text에도 기존 3,000자 상한을
+적용한다. 원인 section은 기본 실행 정보 바로 다음에 두어 링크를 열기 전에 먼저 읽을
+수 있게 하며, 현재 카드 마지막의 영문 `Failure reason` section은 제거해 중복
+표시하지 않는다. 여러 줄 traceback이나 Task 로그를 새로 수집하거나 전송하지 않는다.
 
 ## 실패 Task와 정적 진단
 
@@ -41,7 +63,7 @@ DagRun의 task instance 중 실제 state가 `failed`인 task만 primary 후보�
 3. 미등록 DAG 또는 Task용 안전한 기본 진단
 
 카드는 선택된 Task ID를 `판단 근거`로 표시하고, mapping 결과의 `실패 영역`과
-`가능성이 높은 원인`을 함께 표시한다. exact mapping은 lake prefix mapping보다
+`우선 점검`을 함께 표시한다. exact mapping은 lake prefix mapping보다
 먼저 적용한다. 기본 진단은 `미등록 Task 단계`, Task 구성 또는 외부 의존성 오류,
 상세 원인의 내부 확인 필요를 안내한다.
 
@@ -85,7 +107,8 @@ credential 형식만 가리는 sanitizer로는 원문 로그를 외부 채널에
 `dags/common/slack_notifications.py`는 다음 책임을 둔다.
 
 - `FailurePlaybook`: 영향 수준·영향 문구·담당 역할·권장 조치
-- `FailureDiagnosis`: 실패 영역·가능성이 높은 원인
+- `FailureDiagnosis`: 실패 영역·우선 점검 항목
+- `_failure_summary`: callback exception, scheduler reason, 안전한 기본 문구의 선택
 - 실제 `failed` Task의 결정적 선택
 - exact mapping과 lake Task prefix mapping, 안전한 기본 진단
 - 플레이북·정적 진단을 포함한 failure renderer
@@ -120,8 +143,9 @@ rg -n 'TaskLogReader|FailureLogExcerpt|_normalize_log_excerpt|_read_failure_log_
 
 마지막 `rg`는 match 없음(exit 1)이 기대 결과다. 테스트는 8개 DAG 플레이북,
 primary failed Task 선택과 `upstream_failed` 제외, 실제 DAG/task 정의에서 추출한
-ID와 exact/prefix diagnosis registry의 교차 검증, 완성된 Block Kit 문자열 상한,
-기존 failure reason·sanitize·buttons·`<!here>` 회귀를 포함한다. 실제 Slack, GCS,
+ID와 exact/prefix diagnosis registry의 교차 검증, exception/reason/default 원인 표시
+우선순위, `실제 실패 원인`과 `우선 점검`의 구분, 완성된 Block Kit 문자열 상한,
+sanitize·buttons·`<!here>` 회귀를 포함한다. 실제 Slack, GCS,
 운영 Task 로그, 네트워크는 사용하지 않는다.
 
 ## 배포와 롤백
