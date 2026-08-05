@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-05T17:40:40Z",
+  "generated_at": "2026-08-05T18:04:25Z",
   "reports": [
+    {
+      "number": 213,
+      "title": "feat: 배포 전 dev 환경 좌표를 검증",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-08-05T18:04:14Z",
+      "summary_ko": [
+        "인프라 저장소의 dev 환경 카탈로그와 GitHub 환경 변수 좌표를 검증하는 composite action을 추가했습니다.",
+        "Airflow 이미지 빌드 및 GKE 배포 워크플로우에서 GCP 인증 전 환경 좌표를 대조하도록 변경했습니다.",
+        "dev 환경 좌표 단일 정본 설정 및 배포 전 검증 절차를 README와 관련 설계 문서에 반영했습니다."
+      ],
+      "report_url": "pr/213/"
+    },
     {
       "number": 235,
       "title": "chore: feast image digest 승격 (0d2cd640241c)",
