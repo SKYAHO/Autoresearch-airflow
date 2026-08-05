@@ -623,7 +623,7 @@ def test_github_airflow_image_workflow_uses_dev_gke_wif_variables() -> None:
     assert "    environment: dev-gke" in workflow
     assert "PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}" in workflow
     assert "workload_identity_provider: ${{ vars.WIF_PROVIDER_ID }}" in auth_step
-    assert "project_id: ${{ vars.GCP_PROJECT_ID }}" in auth_step
+    assert "project_id: ${{ steps.environment.outputs.project_id }}" in auth_step
     assert "projects/185508640491/" not in workflow
 
 
@@ -766,13 +766,13 @@ def test_gke_deploy_refreshes_credentials_after_waiting_for_production() -> None
     assert 'kubectl exec -i -n "$AIRFLOW_NAMESPACE"' in wait
     assert 'env PRODUCTION_DAG_ID="$PRODUCTION_DAG_ID" bash -s' in wait
     assert "if: always()" in refresh_auth
-    assert "project_id: ${{ env.GCP_PROJECT_ID }}" in refresh_auth
+    assert "project_id: ${{ steps.environment.outputs.project_id }}" in refresh_auth
     assert "workload_identity_provider: ${{ env.WIF_PROVIDER_ID }}" in refresh_auth
     assert "service_account: ${{ env.GKE_DEPLOYER_SA }}" in refresh_auth
     assert "if: always()" in refresh_gke
-    assert "project_id: ${{ env.GCP_PROJECT_ID }}" in refresh_gke
-    assert "cluster_name: ${{ env.GKE_CLUSTER }}" in refresh_gke
-    assert "location: ${{ env.GKE_LOCATION }}" in refresh_gke
+    assert "project_id: ${{ steps.environment.outputs.project_id }}" in refresh_gke
+    assert "cluster_name: ${{ steps.environment.outputs.gke_cluster_name }}" in refresh_gke
+    assert "location: ${{ steps.environment.outputs.zone }}" in refresh_gke
     assert "use_dns_based_endpoint: true" in refresh_gke
     assert (
         workflow.index(wait_step)
