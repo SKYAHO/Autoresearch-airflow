@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-05T18:04:25Z",
+  "generated_at": "2026-08-06T01:23:04Z",
   "reports": [
+    {
+      "number": 241,
+      "title": "[FEAT] Slack 실패 알림에 운영 영향과 안전한 진단 정보 추가",
+      "author": "Noah-JuYong",
+      "merged_at": "2026-08-06T01:22:53Z",
+      "summary_ko": [
+        "Airflow DAG 실패 시 Slack 알림 메시지에 DAG별 장애 영향 수준, 담당 역할, 즉시 조치 플레이북을 추가하였습니다.",
+        "실제 실패한 Task를 선택하여 정적 원인 영역, 판단 근거, 우선 점검 항목을 노출하고 안전한 Task 로그 링크와 일치시켰습니다.",
+        "원문 로그나 민감 정보 노출 없이 scheduler 실패 사유를 우선 요약하고 Slack Block Kit 글자 수 상한 제한을 적용하였습니다."
+      ],
+      "report_url": "pr/241/"
+    },
     {
       "number": 213,
       "title": "feat: 배포 전 dev 환경 좌표를 검증",
