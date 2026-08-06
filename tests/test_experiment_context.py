@@ -186,6 +186,11 @@ def test_rerun_reuses_registry_and_separates_run_results() -> None:
     first = build_experiment_context(_conf(), dag_run_id="run-one")
     second = build_experiment_context(_conf(), dag_run_id="run-two")
 
-    assert first.candidate.registry_uri == second.candidate.registry_uri
-    assert first.baseline.registry_uri == second.baseline.registry_uri
-    assert first.candidate.artifact_uri != second.candidate.artifact_uri
+    assert first.run_id != second.run_id
+    # 두 조건을 모두 순회한다 — 한쪽만 보면 나머지 조건의 결과가 덮어써져도 통과한다.
+    for before, after in (
+        (first.baseline, second.baseline),
+        (first.candidate, second.candidate),
+    ):
+        assert before.registry_uri == after.registry_uri
+        assert before.artifact_uri != after.artifact_uri
