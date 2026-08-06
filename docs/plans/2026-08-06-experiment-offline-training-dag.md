@@ -873,12 +873,31 @@ def test_leading_tasks_are_ordered(monkeypatch) -> None:
     assert "resolve_dataset_uri" in assemble.downstream_task_ids
 
 
-def test_probe_is_cheap_and_outside_the_pool(monkeypatch) -> None:
-    """수십 초짜리 게이트가 학습 Pool slot을 잡으면 fan-out이 그만큼 늦는다."""
+def test_probe_passes_the_option_it_is_checking_for(monkeypatch) -> None:
+    """--help만 넘기면 아무것도 걸러내지 못한다.
+
+    run-pipeline 서브커맨드는 구버전에도 있으므로 --help는 옵션 지원 여부와 무관하게
+    exit 0이다. 검사하려는 옵션을 함께 넘겨야 파서가 그 부재를 드러낸다
+    (typer 0.27.0 / click 8.4.2 실측, spec §10-1).
+    """
     dag = _load_dag(monkeypatch, "_experiment_dag_probe")
     probe = dag.task_dict["probe_baseline_cli"]
+    assert probe.kwargs["arguments"] == [
+        "python",
+        "-m",
+        "src.cli",
+        "run-pipeline",
+        "--dataset-uri",
+        "__probe__",
+        "--help",
+    ]
+
+
+def test_probe_is_cheap_and_outside_the_pool(monkeypatch) -> None:
+    """수십 초짜리 게이트가 학습 Pool slot을 잡으면 fan-out이 그만큼 늦는다."""
+    dag = _load_dag(monkeypatch, "_experiment_dag_probe_pool")
+    probe = dag.task_dict["probe_baseline_cli"]
     assert probe.kwargs["pool"] is None
-    assert probe.kwargs["arguments"][-2:] == ["run-pipeline", "--help"]
     assert probe.kwargs["execution_timeout"] <= timedelta(minutes=10)
     env = {var.name: var.value for var in probe.kwargs["env_vars"]}
     # baseline 코드 아카이브를 그대로 부트스트랩해야 정확도가 있다.
@@ -1012,11 +1031,17 @@ with DAG(
     # base_dev_sha가 --dataset-uri를 지원하는지 조립 **전에** 확인한다.
     # 미지원 SHA는 학습 시점에 exit 2로 fail-closed되지만, 그때는 이미 조립
     # (피크 4.36GB, 최대 2h)이 끝나 있다. Pool에는 넣지 않는다 — 부하가 아니라 게이트다.
+    #
+    # --help만 넘기면 안 된다: run-pipeline 서브커맨드는 구버전에도 있어 옵션 지원
+    # 여부와 무관하게 exit 0이다. 검사할 옵션을 함께 넘겨야 파서가 부재를 드러낸다.
+    # click은 알 수 없는 옵션을 파서 단계에서 처리하고 eager인 --help는 그 뒤에
+    # 발동하므로, 구버전은 exit 2로 죽고 신버전은 본문 실행 전에 종료된다
+    # (GCS·MLflow 접근 없음). exit code가 곧 판정이라 로그 파싱이 필요 없다.
     probe = AutoresearchBatchPodOperator(
         task_id="probe_baseline_cli",
         image=EXPERIMENT_IMAGE_TEMPLATE,
         module="src.cli",
-        arguments=["run-pipeline", "--help"],
+        arguments=["run-pipeline", "--dataset-uri", "__probe__", "--help"],
         pipeline="experiment-training",
         plain_env={
             "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,

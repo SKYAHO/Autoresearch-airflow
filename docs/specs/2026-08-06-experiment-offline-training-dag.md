@@ -269,8 +269,28 @@ typer 0.27.0 / click 8.4.2에서 재현한 결과 `exit_code=2`, `No such option
 그 시점엔 `assemble_dataset`(피크 4.36GB, 최대 2h)이 이미 다 돌아 있다 — 안전하되 비싸다.
 
 **그래서 `probe_baseline_cli`를 둔다 (채택).** 조립 앞에 `CODE_ARCHIVE_SHA=base_dev_sha`로
-`run-pipeline --help`만 실행하고 출력에 `--dataset-uri`가 있는지 본다. 실제 코드 아카이브를
-그대로 부트스트랩하므로 아카이브를 grep하는 것보다 정확하다.
+다음을 실행한다.
+
+```
+python -m src.cli run-pipeline --dataset-uri __probe__ --help
+```
+
+**`--help`만 실행하면 아무것도 걸러내지 못한다.** `run-pipeline` 서브커맨드는 구버전에도
+존재하므로 `--help`는 옵션 지원 여부와 무관하게 exit 0이다. 검사하려는 옵션을 **함께 넘겨야**
+파서가 그 옵션의 부재를 드러낸다.
+
+click은 알 수 없는 옵션을 파서 단계에서 처리하고, eager인 `--help`는 파싱이 끝난 뒤 파라미터
+루프에서 발동한다. 그래서 구버전은 `--help`를 앞에 놓아도 파싱에서 먼저 죽고, 신버전은
+`--help`가 본문 실행 전에 종료시켜 GCS·MLflow에 접근하지 않는다. typer 0.27.0 / click 8.4.2
+실측:
+
+| 커맨드 | 구버전(`#530` 이전) | 신버전(현재) |
+| --- | --- | --- |
+| `run-pipeline --help` | exit 0 — **판별 불가** | exit 0 |
+| `run-pipeline --dataset-uri __probe__ --help` | exit 2 `No such option` | exit 0, 본문 미실행 |
+
+파드 로그를 downstream에서 파싱할 필요가 없다 — **exit code가 곧 판정**이라 KPO 실패가 그대로
+게이트가 된다. 실제 코드 아카이브를 그대로 부트스트랩하므로 아카이브를 grep하는 것보다 정확하다.
 
 - 수십 초 대 최대 2h의 비대칭이 크고, baseline SHA가 `#530` 이전일 가능성이 낮지 않다.
 - **Pool에는 넣지 않는다.** 수십 초짜리가 `experiment_training` 4 slots 중 하나를 잡으면
