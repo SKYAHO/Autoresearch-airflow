@@ -90,8 +90,9 @@ TODO로 비운다. 골격만 두면 Phase C에서 DAG 구조가 한 번 더 바�
 `CODE_ARCHIVE_SHA`가 이 값에서 나오므로, 없으면 baseline을 실행할 수 없다. 이 사실을 `#209`에
 남긴다.
 
-`registry_root`는 `registry_uri`에서 candidate 좌표 접미를 제거해 역산하고, baseline
-`registry_uri`는 `registry_root` + `context.py` 규칙으로 파생한다 — 진실 원천을 하나로 둔다.
+`registry_root`는 `registry_uri`에서 candidate 좌표 접미를 제거해 역산하되 **설정값과 대조**하고
+(§8), baseline `registry_uri`는 `registry_root` + `context.py` 규칙으로 파생한다 — 진실 원천을
+하나로 둔다.
 
 ## 5. Task 그래프와 파드 경계
 
@@ -215,8 +216,10 @@ fail-closed")을 `validate_experiment_context`가 담당한다. 파드를 띄우
 
 - 필수 키 누락 → 실패
 - `experiment_id`·SHA·`run_id` 형식 위반 → 실패
-- `registry_uri`가 `registry_root` + `(issue, exp, candidate, candidate_sha)` 좌표에서 나온 URI와
-  **정확히 일치**하지 않으면 실패 (suffix 비교 금지 — 다른 bucket·상위 prefix가 통과한다)
+- `registry_uri`에서 root를 역산한 뒤, 그것이 **설정된 `EXPERIMENT_REGISTRY_ROOT`와 같은지**까지
+  확인한다. 역산만 하면 검사가 동어반복이 된다 — 어떤 bucket을 주든 그 bucket이 root가 되어
+  좌표가 스스로 정합해진다. 상위 prefix가 낀 URI(`<root>/shadow/experiments/…`)도 이 대조에서
+  걸린다. 다른 root를 써야 하는 실험은 Airflow Variable로 root 자체를 바꾼다
 - `registry_uri`가 `baseline` 조건 경로를 가리키면 실패 (조립 주체는 candidate뿐)
 - 스킴이 `gs`가 아니거나 userinfo·query·fragment가 있으면 실패
 
