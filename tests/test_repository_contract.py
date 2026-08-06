@@ -1,9 +1,13 @@
 import ast
+import importlib
 import re
 from pathlib import Path
 
+from airflow_stubs import forget_pipeline_packages, install_airflow_stubs
+
 
 ROOT = Path(__file__).resolve().parents[1]
+DAGS_ROOT = ROOT / "dags"
 README_PATH = ROOT / "README.md"
 GKE_HELM_GUIDE_PATH = ROOT / "docs" / "gke-helm-gitsync.md"
 GKE_DEV_DEPLOY_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "deploy-gke-dev.yml"
@@ -13,6 +17,14 @@ ACTION_LOG_PROD_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_prod.py"
 ACTION_LOG_QA_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "dag_qa.py"
 ACTION_LOG_CONFIG_PATH = ROOT / "dags" / "youtube_gcs_action_log" / "config.py"
 BACKFILL_DAG_PATH = ROOT / "dags" / "youtube_backfill" / "dag_kr.py"
+DIAGNOSIS_DAG_PATHS = (
+    BACKFILL_DAG_PATH,
+    DAGS_ROOT / "feature_store_build" / "dag.py",
+    DAGS_ROOT / "ctr_training" / "dag.py",
+    DAGS_ROOT / "ctr_model_promote" / "dag.py",
+    DAGS_ROOT / "feast_materialize" / "dag.py",
+)
+LAKE_DAG_PATH = DAGS_ROOT / "lake_to_bigquery" / "dag.py"
 EMAIL_SECRET_ENV = {
     "AIRFLOW__SMTP__SMTP_HOST": "smtp-host",
     "AIRFLOW__SMTP__SMTP_PORT": "smtp-port",
@@ -49,6 +61,85 @@ def _workflow_step(workflow: str, name: str) -> str:
     start = workflow.index(marker)
     end = workflow.find("\n      - name:", start + len(marker))
     return workflow[start:] if end == -1 else workflow[start:end]
+
+
+def _literal_keyword_values(path: Path, keyword_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {
+        keyword.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+        if keyword.arg == keyword_name
+        and isinstance(keyword.value, ast.Constant)
+        and isinstance(keyword.value.value, str)
+    }
+
+
+def _formatted_keyword_prefixes(path: Path, keyword_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    prefixes: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != keyword_name or not isinstance(
+                keyword.value, ast.JoinedStr
+            ):
+                continue
+            first = keyword.value.values[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                prefixes.add(first.value)
+    return prefixes
+
+
+def test_failure_diagnosis_registry_covers_actual_dag_task_definitions(
+    monkeypatch,
+) -> None:
+    install_airflow_stubs(monkeypatch)
+    monkeypatch.syspath_prepend(str(DAGS_ROOT))
+    forget_pipeline_packages()
+    notifications = importlib.import_module("common.slack_notifications")
+    default = notifications._DEFAULT_FAILURE_DIAGNOSIS
+
+    exact_pairs: set[tuple[str, str]] = set()
+    action_log_dag_ids = _literal_keyword_values(ACTION_LOG_PROD_PATH, "dag_id")
+    action_log_dag_ids.update(
+        _literal_keyword_values(ACTION_LOG_QA_PATH, "dag_id")
+    )
+    action_log_task_ids = _literal_keyword_values(ACTION_LOG_FACTORY_PATH, "task_id")
+    assert action_log_dag_ids and action_log_task_ids
+    exact_pairs.update(
+        (dag_id, task_id)
+        for dag_id in action_log_dag_ids
+        for task_id in action_log_task_ids
+    )
+    for path in DIAGNOSIS_DAG_PATHS:
+        dag_ids = _literal_keyword_values(path, "dag_id")
+        task_ids = _literal_keyword_values(path, "task_id")
+        assert dag_ids and task_ids, path
+        exact_pairs.update(
+            (dag_id, task_id)
+            for dag_id in dag_ids
+            for task_id in task_ids
+        )
+
+    assert exact_pairs
+    for dag_id, task_id in exact_pairs:
+        assert notifications._failure_diagnosis(dag_id, task_id) != default, (
+            dag_id,
+            task_id,
+        )
+
+    lake_dag_ids = _literal_keyword_values(LAKE_DAG_PATH, "dag_id")
+    lake_task_prefixes = _formatted_keyword_prefixes(LAKE_DAG_PATH, "task_id")
+    assert lake_dag_ids and lake_task_prefixes
+    for dag_id in lake_dag_ids:
+        for prefix in lake_task_prefixes:
+            assert (
+                notifications._failure_diagnosis(dag_id, f"{prefix}contract_probe")
+                != default
+            ), (dag_id, prefix)
 
 
 def test_dags_share_encapsulated_batch_pod_operator() -> None:
