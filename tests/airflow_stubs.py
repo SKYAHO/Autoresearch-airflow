@@ -128,6 +128,16 @@ def install_airflow_stubs(monkeypatch) -> None:
             return None
 
     airflow_slack_webhook.SlackWebhookHook = SlackWebhookHook
+    airflow_google = ModuleType("airflow.providers.google")
+    airflow_google_cloud = ModuleType("airflow.providers.google.cloud")
+    airflow_google_hooks = ModuleType("airflow.providers.google.cloud.hooks")
+    airflow_gcs = ModuleType("airflow.providers.google.cloud.hooks.gcs")
+
+    class GCSHook:
+        def download(self, **_kwargs) -> bytes:
+            raise AssertionError("parse test는 GCS를 읽지 않는다")
+
+    airflow_gcs.GCSHook = GCSHook
     airflow_cncf = ModuleType("airflow.providers.cncf")
     airflow_kubernetes = ModuleType("airflow.providers.cncf.kubernetes")
     airflow_operators = ModuleType("airflow.providers.cncf.kubernetes.operators")
@@ -159,6 +169,10 @@ def install_airflow_stubs(monkeypatch) -> None:
         "airflow.providers.slack": airflow_slack,
         "airflow.providers.slack.hooks": airflow_slack_hooks,
         "airflow.providers.slack.hooks.slack_webhook": airflow_slack_webhook,
+        "airflow.providers.google": airflow_google,
+        "airflow.providers.google.cloud": airflow_google_cloud,
+        "airflow.providers.google.cloud.hooks": airflow_google_hooks,
+        "airflow.providers.google.cloud.hooks.gcs": airflow_gcs,
         "airflow.providers.cncf": airflow_cncf,
         "airflow.providers.cncf.kubernetes": airflow_kubernetes,
         "airflow.providers.cncf.kubernetes.operators": airflow_operators,
@@ -202,5 +216,10 @@ def forget_pipeline_packages() -> None:
         "feast_materialize.config",
         "feature_store_build",
         "feature_store_build.config",
+        "experiment_training",
+        "experiment_training.config",
+        "experiment_training.context",
+        "experiment_training.env",
+        "experiment_training.snapshot",
     ):
         sys.modules.pop(name, None)
