@@ -28,7 +28,11 @@ baseline/candidate 두 조건의 학습을 조건별 code archive로 fan-out하�
 - 조건은 `baseline` | `candidate` 두 값뿐이고, 두 조건은 source SHA가 같아도 registry를 공유하지 않는다
 - **개발 환경이 Windows다.** 리눅스였다면 통과했을 실패(경로 구분자, 파일 권한 등)는 회귀로
   세지 않는다. 회귀 판단은 착수 전 baseline 대비 증감으로 한다 — task 1 시작 전에
-  `uv run python -m pytest tests/ -q` 결과를 기록해 둔다
+  `.venv/Scripts/python.exe -m pytest tests/ -q` 결과를 기록해 둔다
+- 앱 CLI를 로컬에서 직접 실행해 확인할 때는 `PYTHONIOENCODING=utf-8`을 붙인다. 붙이지 않으면
+  rich가 한국어 help를 Windows 콘솔(cp949)에 쓰다 `UnicodeEncodeError`로 죽어 **exit 1**이
+  나온다 — CLI의 실제 동작이 아니라 콘솔 인코딩 artifact이며, 파드(리눅스·UTF-8)에는 없다.
+  spec §10-1의 probe 실측이 이 함정을 한 번 밟았다
 
 ## 파일 구조
 
@@ -1384,6 +1388,6 @@ spec §13의 항목이다. 구현 완료 보고 시 함께 제시한다.
 
 | 시점 | 명령 | 결과 |
 | --- | --- | --- |
-| task 1 착수 전 baseline | `uv run python -m pytest tests/ -q` | (실행 후 기록) |
+| task 1 착수 전 baseline | `.venv/Scripts/python.exe -m pytest tests/ -q` | **251 passed, 0 failed** (2026-08-06) |
 | task 3 완료 후 | `uv run python -m pytest tests/ -q` | (실행 후 기록) |
 | task 5 완료 후 | 위 Step 6 전체 | (실행 후 기록) |
