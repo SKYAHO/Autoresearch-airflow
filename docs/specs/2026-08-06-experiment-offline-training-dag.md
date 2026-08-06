@@ -98,7 +98,7 @@ TODO로 비운다. 골격만 두면 Phase C에서 DAG 구조가 한 번 더 바�
 ```
 validate_experiment_context      PythonOperator — 파드·MLflow 접촉 전 fail-closed
         ↓
-[선택] probe_baseline_cli        KPO(수십 초) — base_dev_sha가 --dataset-uri를 지원하는지 (§10)
+probe_baseline_cli               KPO(수십 초, Pool 제외) — base_dev_sha가 --dataset-uri 지원? (§10-1)
         ↓
 assemble_dataset                 KPO / feast 이미지, CODE_ARCHIVE_SHA=candidate_sha
         ↓                        build-features --snapshot-root <실험 root> --output-path …
@@ -162,6 +162,39 @@ env: GCS_REGISTRY_PATH   = <candidate registry_uri>
      CTR_TRAINING_BQ_PROJECT, MLFLOW_TRACKING_URI, CODE_ARTIFACTS_BUCKET
 ```
 
+### `resolve_dataset_uri` (PythonOperator + GCSHook)
+
+읽을 포인터 좌표는 다음과 같이 조립한다.
+
+```
+gs://<snapshot-root>/experiments/<issue>/<exp>/<candidate_sha>/by-date/dt=<events_end_date>/<feature_service>.json
+                                                                                             ^^^^^^^^^^^^^^^^^
+                                                                              Phase A는 EXPERIMENT_FEATURE_SERVICE
+```
+
+포인터 JSON의 `uri` 필드(= `gs://…/by-hash/<dataset_sha256>/`)를 XCom으로 올린다.
+경로의 `<sha>`와 `dataset_sha256`이 어긋나는 포인터는 거부한다.
+
+**`<feature_service>` 세그먼트는 앱이 `manifest.feature_service`로 채우는 값이다.** Phase A는
+`--feature-service`를 넘기지 않으므로 앱 기본값 `DEFAULT_SERVICE`가 쓰이고, 파일명은
+`ctr_training_v1.json`이 된다.
+
+저장소 경계상 앱을 import할 수 없으므로 이 문자열을 DAG config에 **명시 상수**로 둔다.
+
+```python
+# src/features/feast_retrieval.py DEFAULT_SERVICE의 사본.
+# Phase A는 --feature-service를 넘기지 않아 앱이 이 이름으로 포인터를 쓴다.
+# 앱에서 이 이름이 바뀌면 resolve_dataset_uri가 없는 포인터를 읽어 실패한다.
+EXPERIMENT_FEATURE_SERVICE = "ctr_training_v1"
+```
+
+이는 §6의 `context.py` 재구현과 **같은 성격의 결합**이다 — 앱이 이름을 바꾸면 조용히 깨진다.
+차이는 실패 양상이다: 없는 포인터를 읽으므로 학습 파드가 뜨기 전에 `resolve_dataset_uri`에서
+멈춘다(조용한 오작동이 아니라 명시적 실패). contract test가 이 상수를 고정한다.
+
+§10-3의 앱 변경(`--result-path`)이 들어오면 포인터를 읽을 필요 자체가 없어지므로 이 결합도
+함께 사라진다.
+
 ### `train_seed_<n>` (조건별 이미지, `CODE_ARCHIVE_SHA`가 조건별로 다름)
 
 ```
@@ -198,6 +231,10 @@ fail-closed")을 `validate_experiment_context`가 담당한다. 파드를 띄우
   Pool 생성은 `deploy/airflow/values.yaml`의 `airflow pools set` 경로를 따른다
   (`action_log_openrouter` 전례). **dev 초기값 4 slots**으로 시작하고, 실측 후 조정한다 —
   운영 학습 파드와 batch-spot 노드를 공유하므로 처음부터 크게 잡지 않는다.
+  `probe_baseline_cli`는 이 Pool에 넣지 않는다(§10-1).
+- **4 slots는 학습 60개가 15배치로 직렬화된다는 뜻이다.** 학습 1회 소요시간의 실측치가 이
+  저장소에 없어 전체 wall-clock을 지금 가늠할 수 없다. 첫 완주 실측이 Pool 크기와 데모 일정을
+  동시에 좌우하므로 §13에 별도 항목으로 올린다.
 - schedule은 `None`(수동/외부 이벤트 트리거)이다. 운영 Dataset schedule과 공유하지 않는다.
 
 ### 파드 사이징
@@ -228,9 +265,14 @@ typer 0.27.0 / click 8.4.2에서 재현한 결과 `exit_code=2`, `No such option
 따라서 DAG의 사전 차단은 필수가 아니다. 다만 이 실패는 baseline **학습** 태스크에서 나므로
 그 시점엔 `assemble_dataset`(피크 4.36GB, 최대 2h)이 이미 다 돌아 있다 — 안전하되 비싸다.
 
-> **선택 항목 (리뷰에서 결정)**: 조립 앞에 `CODE_ARCHIVE_SHA=base_dev_sha`로
-> `run-pipeline --help`만 실행하는 probe 태스크(수십 초)를 두면 조립 전에 걸러낼 수 있다.
-> 실제 코드 아카이브를 그대로 쓰므로 아카이브 grep보다 정확하다.
+**그래서 `probe_baseline_cli`를 둔다 (채택).** 조립 앞에 `CODE_ARCHIVE_SHA=base_dev_sha`로
+`run-pipeline --help`만 실행하고 출력에 `--dataset-uri`가 있는지 본다. 실제 코드 아카이브를
+그대로 부트스트랩하므로 아카이브를 grep하는 것보다 정확하다.
+
+- 수십 초 대 최대 2h의 비대칭이 크고, baseline SHA가 `#530` 이전일 가능성이 낮지 않다.
+- **Pool에는 넣지 않는다.** 수십 초짜리가 `experiment_training` 4 slots 중 하나를 잡으면
+  학습 fan-out을 그만큼 늦춘다. 부하가 아니라 게이트다.
+- 실패 시 메시지에 `base_dev_sha`와 "`Autoresearch#530`(2026-08-04) 이후 SHA가 필요함"을 싣는다.
 
 ### 10-2. `--output-path` 생략 금지 — 지우면 prod 포인터를 조용히 덮어쓴다
 
@@ -277,6 +319,7 @@ Phase C가 `--feature-service`/`--extra-features`를 넘기면 `is_experiment_as
 | DAG parse | 실험 DAG가 import·parse되고 task 수·의존이 기대와 같음 |
 | 실행 인자 contract | 조건별 `CODE_ARCHIVE_SHA`·`GCS_REGISTRY_PATH`가 좌표 규칙대로 주입됨 |
 | 좌표 규칙 | registry/snapshot/artifact 3종이 `context.py` 형식과 일치 |
+| 포인터 경로 | `EXPERIMENT_FEATURE_SERVICE == "ctr_training_v1"`과 `by-date/dt=<end>/<service>.json` 조립 결과를 고정 (§7) |
 | fail-closed | 누락·형식 위반·baseline 경로·suffix 위조 `registry_uri`를 거부 |
 | 격리 | 서로 다른 conf 두 벌이 disjoint 좌표를 만듦 |
 | prod 무변경 회귀 | `ctr_model_training`의 schedule·registry·인자가 그대로임 |
@@ -305,6 +348,10 @@ git diff --check
 - [ ] `SKYAHO/Autoresearch`에 `build-features --result-contract/--result-path` 이슈 발행 —
       **Phase C 블로커**로 명시, `build_training_dataset.py:967`·`:462-479` 인용 (§10-3)
 - [ ] `#209`에 `base_dev_sha` 입력 계약 확장 보고 (§4)
+- [ ] **구현 직후 최우선 실측 — 전체 wall-clock**: 학습 파드 1회 소요시간을 재고, Pool 4 slots
+      기준 61파드의 완주 시간을 산출한다. 파드 사이징 조정(§9)과 묶여 있지만 **판단 기준이
+      다르다** — 사이징은 노드 과점을, 이 항목은 "한 바퀴가 일정 안에 도느냐"를 본다.
+      결과에 따라 Pool 상향 또는 seed 수 축소 실행을 검토한다
 - [ ] 실험 전용 snapshot·staging 버킷 좌표를 infra와 합의
 - [ ] Phase B: 결과 payload·callback (`Autoresearch#552` 머지 후)
 - [ ] Phase C: seed 주입·FeatureService·`--extra-features` (D-1 승인 후)
