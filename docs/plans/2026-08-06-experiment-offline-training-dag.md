@@ -41,6 +41,7 @@ dags/experiment_training/
   __init__.py      (빈 파일)
   config.py        이미지·버킷·상수·시드 목록. 환경변수 override는 여기서만 읽는다
   context.py       dag_run.conf 검증 + registry/artifact 좌표 조립 (순수, 의존성 없음)
+  env.py           Jinja가 실제 렌더링되는 Pod 환경변수 (TemplatedEnvVar)
   snapshot.py      by-date 포인터 좌표 조립 + GCS 읽기 (앱 스냅샷 스토어 결합의 유일한 지점)
   dag.py           DAG 배선
 tests/
@@ -997,19 +998,23 @@ def _validate_experiment_context(**context) -> dict:
     }
 
 
-def _condition_env(condition: str) -> dict[str, str]:
+def _condition_env(condition: str) -> list:
+    """조건별 code archive와 registry를 고정하는 환경변수.
+
+    **`plain_env`가 아니라 `templated_env`를 쓴다.** `plain_env`는 오퍼레이터가 평범한
+    `V1EnvVar`를 만드는 경로라 값의 Jinja가 렌더링되지 않는다(env.py docstring 참조).
+    """
     sha_key = "candidate_sha" if condition == "candidate" else "base_dev_sha"
-    return {
-        "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
-        "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
-        "CTR_TRAINING_BQ_PROJECT": CTR_TRAINING_BQ_PROJECT,
-        "CODE_ARCHIVE_SHA": f"{{{{ dag_run.conf['{sha_key}'] }}}}",
-        "GCS_REGISTRY_PATH": (
-            "{{ ti.xcom_pull(task_ids='validate_experiment_context')"
-            f"['{condition}_registry_uri'] }}}}"
-        ),
-        "GCS_STAGING_LOCATION": EXPERIMENT_STAGING_LOCATION,
-    }
+    return templated_env(
+        {
+            "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
+            "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
+            "CTR_TRAINING_BQ_PROJECT": CTR_TRAINING_BQ_PROJECT,
+            "CODE_ARCHIVE_SHA": _conf(sha_key),
+            "GCS_REGISTRY_PATH": _xcom(f"{condition}_registry_uri"),
+            "GCS_STAGING_LOCATION": EXPERIMENT_STAGING_LOCATION,
+        }
+    )
 
 
 with DAG(
@@ -1047,10 +1052,12 @@ with DAG(
         module="src.cli",
         arguments=["run-pipeline", "--dataset-uri", "__probe__", "--help"],
         pipeline="experiment-training",
-        plain_env={
-            "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
-            "CODE_ARCHIVE_SHA": "{{ dag_run.conf['base_dev_sha'] }}",
-        },
+        env_vars=templated_env(
+            {
+                "CODE_ARTIFACTS_BUCKET": CODE_ARTIFACTS_BUCKET,
+                "CODE_ARCHIVE_SHA": _conf("base_dev_sha"),
+            }
+        ),
         retries=0,
         execution_timeout=timedelta(minutes=10),
         cpu_request="250m",
@@ -1077,7 +1084,7 @@ with DAG(
             # Phase C: --feature-service / --extra-features
         ],
         pipeline="experiment-training",
-        plain_env=_condition_env("candidate"),
+        env_vars=_condition_env("candidate"),
         retries=1,
         execution_timeout=timedelta(hours=2),
         cpu_request="1",
@@ -1230,7 +1237,8 @@ from experiment_training.config import EXPERIMENT_POLICY_SEEDS
                             #          --experiment / --extra-features
                         ],
                         pipeline="experiment-training",
-                        plain_env=_condition_env(condition),
+                        # plain_env가 아니다 — Jinja가 렌더링되지 않는다(env.py 참조).
+                        env_vars=_condition_env(condition),
                         pool="experiment_training",
                         pool_slots=1,
                         retries=1,
@@ -1335,8 +1343,13 @@ Create `docs/experiment-offline-training.md`. 다음을 담는다:
 
 - 트리거 방법과 `dag_run.conf` 예시 (spec §4의 8개 키를 그대로 옮긴다)
 - **live 검증 절차**: `AIRFLOW_VAR_EXPERIMENT_POLICY_SEEDS=42`로 낮춰 학습 파드 2개로
-  완주시키고, 파드 1개의 소요시간을 잰 뒤 30 시드 환산값(Pool 4 slots 기준 15배치)을
-  기록한다. 그 값이 나오기 전에는 30 시드 전량 실행을 하지 않는다
+  완주시킨다. 확인 순서는 아래 스모크 1번이 **먼저**다
+  1. **`CODE_ARCHIVE_SHA`가 리터럴 Jinja 문자열이 아니라 40자 SHA로 찍히는지.** 렌더링이
+     안 되면 파드는 "실패"하지만 존재하지 않는 SHA로 아카이브를 못 찾는 형태라,
+     `probe_baseline_cli`의 fail-closed 게이트나 인프라 문제로 오인되기 쉽다. 이것을 먼저
+     못박아야 이후 실패의 원인 진단이 빠르다. `GCS_REGISTRY_PATH`도 같이 본다
+  2. 그 다음 파드 1개의 소요시간을 재고 30 시드 환산값(Pool 4 slots 기준 15배치)을 기록한다.
+     그 값이 나오기 전에는 30 시드 전량 실행을 하지 않는다
 - Phase A에서 시드 30개를 실제로 돌리면 **60개 파드가 동일한 학습을 한다**는 사실
   (시드 인자 주입은 Phase C)
 - `--output-path`와 실험 전용 snapshot root를 지우면 안 되는 이유 (spec §10-2 요약 + 링크)
@@ -1382,7 +1395,18 @@ spec §13의 항목이다. 구현 완료 보고 시 함께 제시한다.
 - [ ] 실험 전용 snapshot·staging·artifact 버킷을 infra와 합의 —
       `EXPERIMENT_SNAPSHOT_ROOT`/`EXPERIMENT_STAGING_LOCATION`/`EXPERIMENT_ARTIFACT_ROOT`의
       기본값 버킷이 아직 존재하지 않는다. **live 검증 전에 반드시 필요하다**
+- [ ] **live 스모크 1번 — 템플릿 렌더링 확인**: 단일 시드 실행에서 파드 환경의
+      `CODE_ARCHIVE_SHA`가 리터럴 Jinja 문자열이 아니라 40자 SHA인지 본다.
+      **wall-clock 실측보다 먼저 한다** — 템플릿이 안 풀린 실패는 존재하지 않는 SHA로
+      아카이브를 못 찾는 형태라 게이트 실패나 인프라 문제로 오인되기 쉽고, 그 상태에서
+      잰 시간은 의미가 없다. stub 테스트는 parse 레벨까지만 보므로 실제 렌더링은
+      런타임에서만 증명된다
 - [ ] live 실행 후 wall-clock 실측 결과를 `#209`에 기록하고 Pool 크기·학습 파드 사이징 확정
+- [ ] 이 저장소에 **공용 `plain_env` 템플릿화 이슈** 발행 — `batch_pod_operator.py`의
+      `plain_env`는 평범한 `V1EnvVar`를 만들어 값의 Jinja가 렌더링되지 않는다. 이번엔
+      실험 DAG에서 우연히 드러났을 뿐 **잠재 결함은 공용 코드에 남아 있고** 다른 DAG가
+      같은 함정을 다시 밟을 수 있다. 당장 막을 필요는 없다 — 기존 DAG의 env 값은 전부
+      정적이라 현재 오동작은 없다
 
 ## 검증 로그
 
