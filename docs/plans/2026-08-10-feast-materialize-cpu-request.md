@@ -29,7 +29,7 @@
 - Consumes: `AutoresearchBatchPodOperator(..., cpu_request, memory_request, cpu_limit, memory_limit)`
 - Produces: `materialize_online_store.kwargs["container_resources"]`의 request/limit 계약
 
-- [ ] **Step 1: 실패하는 resource contract 테스트를 추가합니다.**
+- [x] **Step 1: 실패하는 resource contract 테스트를 추가합니다.**
 
 `test_feast_materialize_uses_incremental_public_batch_contract`에서 toleration 단언 뒤에 다음을 추가합니다.
 
@@ -41,7 +41,7 @@
 
 이 테스트는 production DAG가 request를 다시 `2`로 올리거나 메모리·limit 계약을 의도치 않게 바꾸면 실패합니다.
 
-- [ ] **Step 2: 좁은 테스트를 실행해 RED를 확인합니다.**
+- [x] **Step 2: 좁은 테스트를 실행해 RED를 확인합니다.**
 
 Run:
 
@@ -51,7 +51,7 @@ uv run python -m pytest tests/test_feast_materialize_dag_parse.py::test_feast_ma
 
 Expected: `resources.requests`의 실제 CPU가 `"2"`이고 기대값이 `"1"`이라 assertion failure가 발생합니다.
 
-- [ ] **Step 3: DAG를 최소 수정합니다.**
+- [x] **Step 3: DAG를 최소 수정합니다.**
 
 `dags/feast_materialize/dag.py`에서 request만 변경하고 스케줄링 제약을 설명합니다.
 
@@ -65,7 +65,7 @@ Expected: `resources.requests`의 실제 CPU가 `"2"`이고 기대값이 `"1"`�
         memory_limit="8Gi",
 ```
 
-- [ ] **Step 4: 좁은 테스트를 실행해 GREEN을 확인합니다.**
+- [x] **Step 4: 좁은 테스트를 실행해 GREEN을 확인합니다.**
 
 Run:
 
@@ -75,7 +75,7 @@ uv run python -m pytest tests/test_feast_materialize_dag_parse.py -v
 
 Expected: `3 passed`.
 
-- [ ] **Step 5: 운영 문서를 실제 계약과 맞춥니다.**
+- [x] **Step 5: 운영 문서를 실제 계약과 맞춥니다.**
 
 `docs/feast-materialize.md`의 GKE 배치 설명을 다음 의미로 갱신합니다.
 
@@ -85,7 +85,7 @@ Expected: `3 passed`.
 CPU request를 `2`로 올리면 batch pool에는 스케줄될 수 없다.
 ```
 
-- [ ] **Step 6: 전체 검증을 실행합니다.**
+- [x] **Step 6: 전체 검증을 실행합니다.**
 
 Run:
 
@@ -97,7 +97,7 @@ git diff --check
 
 Expected: pytest `251 passed`, compileall exit 0, diff check exit 0.
 
-- [ ] **Step 7: 구현 변경을 커밋합니다.**
+- [x] **Step 7: 구현 변경을 커밋합니다.**
 
 ```bash
 git add tests/test_feast_materialize_dag_parse.py dags/feast_materialize/dag.py docs/feast-materialize.md docs/plans/2026-08-10-feast-materialize-cpu-request.md
