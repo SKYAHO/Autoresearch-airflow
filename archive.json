@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-10T15:41:37Z",
+  "generated_at": "2026-08-10T15:42:40Z",
   "reports": [
+    {
+      "number": 306,
+      "title": "fix: Feast materialize CPU request를 배치 풀에 맞춘다",
+      "author": "Noah-JuYong",
+      "merged_at": "2026-08-10T15:42:27Z",
+      "summary_ko": [
+        "Feast 동기화 파드의 CPU request를 2 vCPU에서 1 vCPU로 하향 조정하여 배치 노드 풀 스케줄링 불능 문제를 해결했습니다.",
+        "DAG 파싱 테스트에 CPU request 및 limit 자원 계약 검증 단언문을 추가하여 지속적인 자원 요구사항 관리를 보장했습니다.",
+        "운영 문서 및 실행 계획 문서에 2 vCPU 노드의 할당 가능 자원 제약 및 스케줄링 정책을 반영했습니다."
+      ],
+      "report_url": "pr/306/"
+    },
     {
       "number": 241,
       "title": "[FEAT] Slack 실패 알림에 운영 영향과 안전한 진단 정보 추가",
