@@ -83,7 +83,10 @@ with DAG(
         node_selector={},
         retries=1,
         execution_timeout=timedelta(hours=2),
-        cpu_request="2",
+        # 2 vCPU batch node의 allocatable CPU는 system reservation 뒤 2보다 작다.
+        # request를 1로 두어 Spot pool과 일반 pool fallback이 모두 실제로
+        # 스케줄 가능하게 하고, 실행 상한은 기존 4 CPU를 유지한다.
+        cpu_request="1",
         memory_request="4Gi",
         cpu_limit="4",
         memory_limit="8Gi",

@@ -68,6 +68,10 @@ def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -
         }
     ]
 
+    resources = task.kwargs["container_resources"]
+    assert resources.requests == {"cpu": "1", "memory": "4Gi"}
+    assert resources.limits == {"cpu": "4", "memory": "8Gi"}
+
     environment = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert environment == {
         "CODE_ARTIFACTS_BUCKET": "autoresearch-503903-code-artifacts",

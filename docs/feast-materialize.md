@@ -48,7 +48,9 @@ Spot node의 taint toleration은 유지하므로 해당 node가 수용 가능하
 기존 일반 node pool에도 배치될 수 있다. 이 정책은 이 DAG의 task에만 적용하며,
 다른 batch task의 `batch-spot` 기본 selector는 변경하지 않는다.
 
-자원 요청은 `2`/`4Gi` request와 2시간 timeout을 쓴다.
+자원 요청은 `1`/`4Gi` request, `4`/`8Gi` limit와 2시간 timeout을 쓴다.
+2 vCPU batch node의 allocatable CPU는 system reservation 뒤 `2`보다 작으므로,
+CPU request를 `2`로 올리면 해당 batch pool에는 스케줄될 수 없다.
 
 ## 배포 변수
 
