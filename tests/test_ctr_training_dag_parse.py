@@ -50,7 +50,7 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert list(dag.task_dict) == ["train_ctr_model"]
 
     task = dag.task_dict["train_ctr_model"]
-    # feast 런타임이 담긴 이미지(Dockerfile.feast, GAR autoresearch-feast) — build-features가
+    # feast 런타임이 담긴 이미지(deployment/Dockerfile.feast, GAR autoresearch-feast) — build-features가
     # Feast offline store로 피처를 조립하므로(Autoresearch#359). feast_materialize/서빙과
     # 같은 AUTORESEARCH_FEAST_IMAGE Variable을 공유한다.
     assert task.kwargs["image"] == "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
@@ -60,7 +60,7 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     assert task.kwargs["arguments"] == [
         "python",
         "-m",
-        "src.cli",
+        "autoresearch.cli",
         "run-pipeline",
         "--events-start-date",
         "{{ dag_run.conf.get('events_start_date') "

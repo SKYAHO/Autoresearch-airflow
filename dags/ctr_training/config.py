@@ -2,7 +2,7 @@
 
 학습 run-pipeline의 build-features 단계가 Feast offline store(point-in-time)로
 피처를 조립하므로(Autoresearch#359에서 DuckDB 재계산 경로 제거), feast 런타임이
-포함된 이미지(SKYAHO/Autoresearch의 Dockerfile.feast, GAR `autoresearch-feast`)를
+포함된 이미지(SKYAHO/Autoresearch의 deployment/Dockerfile.feast, GAR `autoresearch-feast`)를
 쓴다. 서빙·materialize와 같은 AUTORESEARCH_FEAST_IMAGE Airflow Variable을 공유해
 digest 승격을 한 곳에서 관리한다.
 """

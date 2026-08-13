@@ -293,7 +293,7 @@ Feast registry watermark가 관리하는 증분 범위이므로, 그날 늦게 �
 
 `ctr_model_training` DAG는 `lake_to_bigquery_incremental`이 검증 후 갱신하는
 `RAW_YOUTUBE_TRENDING`과 `RAW_ACTION_LOG` Dataset을 모두 구독합니다. 두 raw
-테이블이 준비되면 `AUTORESEARCH_TRAINING_IMAGE`의 `src.cli run-pipeline`을
+테이블이 준비되면 `AUTORESEARCH_TRAINING_IMAGE`의 `autoresearch.cli run-pipeline`을
 자동 실행하고 MLflow에 Run과 Model Registry version을 등록합니다.
 
 기본 학습 구간은 Dataset-triggered run의 `data_interval_end`를 기준으로 한
@@ -305,7 +305,7 @@ trigger 및 `events_start_date`/`events_end_date` conf override도 유지합니�
 - action-log 파이프라인이 생성하는 합성 action log는 `RAW_ACTION_LOG`의 정식
   학습 데이터입니다. 품질 검증과 raw 적재가 성공한 뒤 CTR 학습 입력으로 사용하며,
   정식 학습 데이터로 취급합니다.
-- 학습 이미지(`SKYAHO/Autoresearch`의 `Dockerfile.train`)는 immutable digest를
+- 학습 이미지(`SKYAHO/Autoresearch`의 `deployment/Dockerfile.train`)는 immutable digest를
   `AUTORESEARCH_TRAINING_IMAGE`로 지정합니다. 이미지 digest 갱신과 MLflow
   Registry version 생성, Registry alias 승격은 서로 다른 운영 단계입니다.
 - `airflow` → `mlflow` egress NetworkPolicy(`autoresearch-infra` 소관)가 적용되어

@@ -3,7 +3,7 @@
 ctr_model_training(dags/ctr_training)이 등록한 최신 모델 버전이 champion보다
 지표(val_roc_auc)가 낮지 않고, downsampling 후보라면 짝 calibration 모델이
 있을 때만 champion alias를 옮긴다. 판정 로직 자체는 이 DAG에 없다 —
-SKYAHO/Autoresearch 저장소의 `promote-model` CLI(src/tracking/promote.py,
+SKYAHO/Autoresearch 저장소의 `promote-model` CLI(autoresearch/model_registry/promote.py,
 #342/#343)가 전부 담당하고, 이 DAG는 KubernetesPodOperator로 그 CLI를
 호출하는 배선일 뿐이다.
 
@@ -64,7 +64,7 @@ with DAG(
     promote_ctr_model = AutoresearchBatchPodOperator(
         task_id="promote_ctr_model",
         image=PROMOTE_IMAGE_TEMPLATE,
-        module="src.cli",
+        module="autoresearch.cli",
         arguments=[
             "promote-model",
             "--model-name",

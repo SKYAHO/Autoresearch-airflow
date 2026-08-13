@@ -39,7 +39,7 @@ TRAINING_ENTITY_PARTITION_DATE_TEMPLATE = (
 
 
 # feature build는 BigQuery SQL만 실행하므로 Feast/학습 이미지가 아니라 공개
-# batch CLI를 담은 canonical application image(Dockerfile.app)를 사용한다.
+# batch CLI를 담은 canonical application image(deployment/Dockerfile.app)를 사용한다.
 BATCH_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
 
 BATCH_MODULE = "autoresearch.jobs.feature_store_build"
