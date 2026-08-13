@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-13T17:04:54Z",
+  "generated_at": "2026-08-13T17:06:12Z",
   "reports": [
+    {
+      "number": 324,
+      "title": "[CHORE] batch 실행 모듈 경로를 src.cli에서 autoresearch.cli로 갱신",
+      "author": "bbungjun",
+      "merged_at": "2026-08-13T17:05:58Z",
+      "summary_ko": [
+        "상위 애플리케이션 저장소의 패키지 재배치에 맞춰 CTR 학습 및 모델 승격 DAG의 실행 모듈 경로를 src.cli에서 autoresearch.cli로 갱신하였습니다.",
+        "실행 모듈 변경에 따라 관련 DAG 파싱 단언문 및 CLI 인자 검증 테스트 코드를 함께 수정하였습니다.",
+        "코드 주석, README, CTR 학습 운영 문서 내 구버전 모듈 경로 및 Dockerfile 파일 경로 표기를 최신 구조로 일괄 정정하였습니다."
+      ],
+      "report_url": "pr/324/"
+    },
     {
       "number": 306,
       "title": "fix: Feast materialize CPU request를 배치 풀에 맞춘다",
