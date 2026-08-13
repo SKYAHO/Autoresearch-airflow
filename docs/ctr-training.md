@@ -45,7 +45,7 @@ airflow dags trigger ctr_model_training --conf '{"events_start_date":"2026-07-18
 ## 실행 이미지·리소스·권한
 
 학습 task는 `AUTORESEARCH_TRAINING_IMAGE` Airflow Variable로 지정한 immutable
-training image의 entrypoint를 유지한 채 `python -m src.cli run-pipeline`을
+training image의 entrypoint를 유지한 채 `python -m autoresearch.cli run-pipeline`을
 실행합니다. 이미지 digest를 갱신하는 일, 학습 Run/Registry version을 만드는
 일, Registry alias를 승격하는 일은 각각 분리된 단계입니다. alias 또는
 champion 승격은 이 DAG의 책임이 아니며 별도 이슈 `#137`의 범위입니다.

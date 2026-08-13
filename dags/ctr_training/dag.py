@@ -15,8 +15,8 @@ Dataset을 구독하면 빌드 완료가 학습의 선행 조건이 된다.
 낡은 spine으로 조용히 학습하는 것보다 안 도는 편이 안전하다는 판단이며, 세
 테이블 중 하나만 실패해도 학습이 막힌다는 뜻이기도 하다(#197).
 
-SKYAHO/Autoresearch 저장소의 Dockerfile.feast 이미지(feast 런타임 포함,
-src.cli run-pipeline)를 KubernetesPodOperator로 실행한다. build-features와
+SKYAHO/Autoresearch 저장소의 deployment/Dockerfile.feast 이미지(feast 런타임 포함,
+autoresearch.cli run-pipeline)를 KubernetesPodOperator로 실행한다. build-features와
 train-model을 한 Pod 안에서 순차 실행하는 run-pipeline으로 묶은 이유는,
 KubernetesPodOperator가 Task마다 격리된 Pod를 띄우기 때문에 여러 Task로
 나누면 build-features가 만든 training_dataset.csv를 train-model Task로
@@ -75,7 +75,7 @@ with DAG(
     train_ctr_model = AutoresearchBatchPodOperator(
         task_id="train_ctr_model",
         image=TRAINING_IMAGE_TEMPLATE,
-        module="src.cli",
+        module="autoresearch.cli",
         arguments=[
             "run-pipeline",
             # build-features는 Feast offline store(training_entity spine +

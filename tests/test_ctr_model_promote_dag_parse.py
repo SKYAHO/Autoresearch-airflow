@@ -36,7 +36,7 @@ def test_ctr_model_promote_dag_uses_training_image_and_mlflow_env(monkeypatch) -
     assert task.kwargs["arguments"] == [
         "python",
         "-m",
-        "src.cli",
+        "autoresearch.cli",
         "promote-model",
         "--model-name",
         "ctr-model",
@@ -122,7 +122,7 @@ def test_ctr_model_promote_dag_model_names_respect_variable_override(
     assert task.kwargs["arguments"] == [
         "python",
         "-m",
-        "src.cli",
+        "autoresearch.cli",
         "promote-model",
         "--model-name",
         "ctr-model-qa",

@@ -117,11 +117,11 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
             image=image,
             # K8s `command`(cmds)를 지정하면 이미지의 ENTRYPOINT가 완전히
             # 무시된다. GCS 코드 부트스트랩 ENTRYPOINT를 쓰는 이미지
-            # (Dockerfile.feast, Dockerfile.train)에서 cmds를 쓰면 코드가
+            # (deployment/Dockerfile.feast, deployment/Dockerfile.train)에서 cmds를 쓰면 코드가
             # 하나도 풀리지 않은 채 곧장 module이 실행돼 즉시 실패한다.
             # 대신 실행할 커맨드 전체를 arguments(K8s args)로만 전달한다 —
             # ENTRYPOINT가 있는 이미지는 부트스트랩 후 `exec "$@"`로 이 값을
-            # 실행하고, ENTRYPOINT가 없는 이미지(Dockerfile.app)는 K8s가
+            # 실행하고, ENTRYPOINT가 없는 이미지(deployment/Dockerfile.app)는 K8s가
             # args를 그대로 실행해 기존 동작과 동일하다.
             arguments=["python", "-m", module, *arguments],
             service_account_name=_KPO_SERVICE_ACCOUNT,
