@@ -1,7 +1,31 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-14T08:12:16Z",
+  "generated_at": "2026-08-14T08:20:42Z",
   "reports": [
+    {
+      "number": 328,
+      "title": "chore: batch image digest 승격 (a77376c85740)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-08-14T08:20:38Z",
+      "summary_ko": [
+        "상위 저장소 릴리스에서 검증된 최신 배치 이미지 다이제스트로 설정을 업데이트합니다.",
+        "Airflow Helm values의 AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE 값을 변경합니다.",
+        "PR 머지 시 자동 배포 워크플로우를 통해 dev Airflow 환경에 반영됩니다."
+      ],
+      "report_url": "pr/328/"
+    },
+    {
+      "number": 327,
+      "title": "chore: training image digest 승격 (a77376c85740)",
+      "author": "autoresearch-ci-dispatcher[bot]",
+      "merged_at": "2026-08-14T08:20:28Z",
+      "summary_ko": [
+        "Autoresearch training 릴리스에서 검증된 최신 불변 도커 이미지 다이제스트로 CTR 학습 파이프라인 설정을 업데이트합니다.",
+        "Airflow Helm 차트의 개발 환경 설정 파일(`values.yaml`) 내 학습 이미지 다이제스트 환경변수를 승격시켰습니다.",
+        "PR 머지 후 배포 워크플로우를 통해 CTR 학습 작업이 새로운 컨테이너 이미지 환경에서 실행됩니다."
+      ],
+      "report_url": "pr/327/"
+    },
     {
       "number": 324,
       "title": "[CHORE] batch 실행 모듈 경로를 src.cli에서 autoresearch.cli로 갱신",
