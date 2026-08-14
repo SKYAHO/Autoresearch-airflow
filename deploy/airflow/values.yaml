@@ -131,7 +131,7 @@ airflow:
     - name: AIRFLOW_VAR_YOUTUBE_LAKE_BUCKET
       value: "autoresearch-503903-autoresearch-dev-raw-data"
     - name: AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE
-      value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-batch@sha256:8f2cbe7eaf030e5f5ec05044eea9b45903add758f8c734a7600c08beb234d055"
+      value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-batch@sha256:7a28dfabecfb01b1e3b00cbf6e16a013a5e0fc30937bfafe00a5077407e2ced1"
     - name: AIRFLOW_VAR_AUTORESEARCH_TRAINING_IMAGE
       value: "asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-training@sha256:ac272bc04430acabae66044aafef3f50174d5a0691e7763b2fdf75ffea00633c"
     - name: AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE
