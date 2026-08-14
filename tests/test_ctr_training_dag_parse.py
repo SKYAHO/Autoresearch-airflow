@@ -31,13 +31,13 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     # Dataset schedule은 AND이므로 셋이 모두 갱신돼야 실행된다.
     assert dag.kwargs["schedule"] == [
         FakeDataset(
-            "bigquery://autoresearch-503903/feast_offline_store/user_dynamic_feature"
+            "bigquery://autoresearch-505505/feast_offline_store/user_dynamic_feature"
         ),
         FakeDataset(
-            "bigquery://autoresearch-503903/feast_offline_store/video_feature"
+            "bigquery://autoresearch-505505/feast_offline_store/video_feature"
         ),
         FakeDataset(
-            "bigquery://autoresearch-503903/feast_offline_store/training_entity"
+            "bigquery://autoresearch-505505/feast_offline_store/training_entity"
         ),
     ]
     # spine이 빠지면 학습이 다시 spine 없이 시작할 수 있다.
@@ -98,10 +98,10 @@ def test_ctr_training_dag_uses_training_image_and_mlflow_env(monkeypatch) -> Non
     # 읽지 않으므로 CTR_TRAINING_BQ_RAW_DATASET은 제거됐다.
     assert env_by_name == {
         "MLFLOW_TRACKING_URI": "http://mlflow.mlflow:5000",
-        "CODE_ARTIFACTS_BUCKET": "autoresearch-503903-code-artifacts",
-        "CTR_TRAINING_BQ_PROJECT": "autoresearch-503903",
-        "GCS_REGISTRY_PATH": "gs://autoresearch-503903-feast-registry/registry.db",
-        "GCS_STAGING_LOCATION": "gs://autoresearch-503903-feast-staging/",
+        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
+        "CTR_TRAINING_BQ_PROJECT": "autoresearch-505505",
+        "GCS_REGISTRY_PATH": "gs://autoresearch-505505-feast-registry/registry.db",
+        "GCS_STAGING_LOCATION": "gs://autoresearch-505505-feast-staging/",
     }
 
 
@@ -131,7 +131,7 @@ def test_ctr_training_dag_feast_registry_env_respects_variable_override(
     # 공유하므로, 그 override가 학습 DAG에도 그대로 반영돼야 한다.
     monkeypatch.setenv(
         "AIRFLOW_VAR_FEAST_GCS_REGISTRY_PATH",
-        "gs://autoresearch-503903-feast-registry-qa/registry.db",
+        "gs://autoresearch-505505-feast-registry-qa/registry.db",
     )
     install_airflow_stubs(monkeypatch)
     monkeypatch.syspath_prepend(str(DAGS_ROOT))
@@ -147,7 +147,7 @@ def test_ctr_training_dag_feast_registry_env_respects_variable_override(
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert (
         env_by_name["GCS_REGISTRY_PATH"]
-        == "gs://autoresearch-503903-feast-registry-qa/registry.db"
+        == "gs://autoresearch-505505-feast-registry-qa/registry.db"
     )
 
 

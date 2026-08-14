@@ -31,8 +31,8 @@ YouTube Data API v3
 - Namespace: `airflow`
 - GKE node pool: `airflow-dev`
 - Batch KSA: `airflow/autoresearch-batch`
-- Workload Identity: `autoresearch-dev-app@autoresearch-503903.iam.gserviceaccount.com`
-- GCS bucket: `autoresearch-503903-autoresearch-dev-raw-data`
+- Workload Identity: `autoresearch-dev-app@autoresearch-505505.iam.gserviceaccount.com`
+- GCS bucket: `autoresearch-505505-autoresearch-dev-raw-data`
 - Batch image에는 `openai` dependency가 포함되어 OpenRouter 호출이 가능하다.
 - `ACTION_LOG_GENERATOR=openrouter`를 사용하면 action log generator가
   `mistralai/mistral-nemo`를 기본 모델로 사용한다.
@@ -139,20 +139,20 @@ Production 전환 때는 기존 DAG를 먼저 pause하여 새 git-sync DAG가 �
 운영 DAG에 필요한 값:
 
 ```text
-YOUTUBE_LAKE_BUCKET=autoresearch-503903-autoresearch-dev-raw-data
-AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/autoresearch-503903/autoresearch-dev-docker/autoresearch-batch@sha256:<production-digest>
+YOUTUBE_LAKE_BUCKET=autoresearch-505505-autoresearch-dev-raw-data
+AUTORESEARCH_BATCH_IMAGE=asia-northeast3-docker.pkg.dev/autoresearch-505505/autoresearch-dev-docker/autoresearch-batch@sha256:<production-digest>
 AIRFLOW_KPO_NAMESPACE=airflow
 AIRFLOW_KPO_SERVICE_ACCOUNT=autoresearch-batch
 AUTORESEARCH_API_SECRET_NAME=autoresearch-airflow-env
-YOUTUBE_TRENDING_BASE_PATH=gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/youtube_trending_kr
+YOUTUBE_TRENDING_BASE_PATH=gs://autoresearch-505505-autoresearch-dev-raw-data/data_lake/youtube_trending_kr
 YOUTUBE_TRENDING_REGION_CODE=KR
 YOUTUBE_TRENDING_MAX_RESULTS=200
 ACTION_LOG_GENERATOR=openrouter
 ACTION_LOG_MODEL_NAME=mistralai/mistral-nemo
-ACTION_LOG_YOUTUBE_BASE_PATH=gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/youtube_trending_kr
-ACTION_LOG_VIRTUAL_USERS_PATH=gs://autoresearch-503903-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet
-ACTION_LOG_OUTPUT_DIR=gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/action_log
-ACTION_LOG_QUARANTINE_DIR=gs://autoresearch-503903-autoresearch-dev-raw-data/data_lake/action_log_quarantine
+ACTION_LOG_YOUTUBE_BASE_PATH=gs://autoresearch-505505-autoresearch-dev-raw-data/data_lake/youtube_trending_kr
+ACTION_LOG_VIRTUAL_USERS_PATH=gs://autoresearch-505505-autoresearch-dev-raw-data/asset/virtual_user/vu_1000.parquet
+ACTION_LOG_OUTPUT_DIR=gs://autoresearch-505505-autoresearch-dev-raw-data/data_lake/action_log
+ACTION_LOG_QUARANTINE_DIR=gs://autoresearch-505505-autoresearch-dev-raw-data/data_lake/action_log_quarantine
 ACTION_LOG_CANDIDATES_PER_USER=24
 ACTION_LOG_CLICK_THRESHOLD=<calibrated-value>  # 기본값 없음, fail-closed
 ACTION_LOG_RERANK_URL=http://autoresearch-serving.autoresearch:8000
@@ -223,11 +223,11 @@ source를 사용하지 않습니다.
   "partition_date": "2026-07-10",
   "overwrite": true,
   "candidates_per_user": 20,
-  "qa_prefix": "gs://autoresearch-503903-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z",
-  "youtube_base_path": "gs://autoresearch-503903-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/youtube",
-  "virtual_users_path": "gs://autoresearch-503903-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",
-  "action_log_output_base_path": "gs://autoresearch-503903-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/final",
-  "action_log_quarantine_base_path": "gs://autoresearch-503903-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/final-quarantine"
+  "qa_prefix": "gs://autoresearch-505505-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z",
+  "youtube_base_path": "gs://autoresearch-505505-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/youtube",
+  "virtual_users_path": "gs://autoresearch-505505-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/input/virtual-users-100.parquet",
+  "action_log_output_base_path": "gs://autoresearch-505505-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/final",
+  "action_log_quarantine_base_path": "gs://autoresearch-505505-autoresearch-dev-raw-data/qa/action-log/run=qa-100-20260710T010203Z/final-quarantine"
 }
 ```
 

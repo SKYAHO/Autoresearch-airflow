@@ -60,11 +60,11 @@ CPU request를 `2`로 올리면 해당 batch pool에는 스케줄될 수 없다.
 | Variable | dev 값 |
 | --- | --- |
 | `AUTORESEARCH_FEAST_IMAGE` | `autoresearch-feast`의 immutable GAR digest |
-| `FEAST_CODE_ARTIFACTS_BUCKET` | `autoresearch-503903-code-artifacts` |
-| `FEAST_GCP_PROJECT_ID` | `autoresearch-503903` |
+| `FEAST_CODE_ARTIFACTS_BUCKET` | `autoresearch-505505-code-artifacts` |
+| `FEAST_GCP_PROJECT_ID` | `autoresearch-505505` |
 | `FEAST_BQ_DATASET` / `FEAST_BQ_LOCATION` | `feast_offline_store` / `asia-northeast3` |
-| `FEAST_GCS_REGISTRY_PATH` | `gs://autoresearch-503903-feast-registry/registry.db` |
-| `FEAST_GCS_STAGING_LOCATION` | `gs://autoresearch-503903-feast-staging/` |
+| `FEAST_GCS_REGISTRY_PATH` | `gs://autoresearch-505505-feast-registry/registry.db` |
+| `FEAST_GCS_STAGING_LOCATION` | `gs://autoresearch-505505-feast-staging/` |
 | `FEAST_REDIS_HOST` / `FEAST_REDIS_PORT` | Redis Cluster discovery endpoint / `6379` |
 | `FEAST_REDIS_CA_SECRET_ID` | `autoresearch-dev-redis-server-ca` |
 
