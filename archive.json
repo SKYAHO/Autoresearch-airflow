@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-15T16:49:00Z",
+  "generated_at": "2026-08-15T16:50:15Z",
   "reports": [
+    {
+      "number": 331,
+      "title": "feat: GCP 프로젝트 좌표를 autoresearch-505505로 교체",
+      "author": "hyochangsung",
+      "merged_at": "2026-08-15T16:48:48Z",
+      "summary_ko": [
+        "dev 환경 GCP 프로젝트가 autoresearch-505505로 이관됨에 따라 저장소 내 참조 좌표를 전체 교체했습니다.",
+        "Helm values, DAG별 기본 설정, 이미지 레지스트리 및 GCS 버킷 경로를 신규 프로젝트 ID로 업데이트했습니다.",
+        "파이프라인 DAG 파싱 테스트 및 계약 검증 테스트, 운영 문서의 관련 예시를 신규 프로젝트 좌표에 맞춰 최신화했습니다."
+      ],
+      "report_url": "pr/331/"
+    },
     {
       "number": 328,
       "title": "chore: batch image digest 승격 (a77376c85740)",
