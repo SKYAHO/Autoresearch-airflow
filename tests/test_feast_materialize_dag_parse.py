@@ -74,12 +74,12 @@ def test_feast_materialize_uses_incremental_public_batch_contract(monkeypatch) -
 
     environment = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert environment == {
-        "CODE_ARTIFACTS_BUCKET": "autoresearch-503903-code-artifacts",
-        "GCP_PROJECT_ID": "autoresearch-503903",
+        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
+        "GCP_PROJECT_ID": "autoresearch-505505",
         "BQ_DATASET": "feast_offline_store",
         "BQ_LOCATION": "asia-northeast3",
-        "GCS_REGISTRY_PATH": "gs://autoresearch-503903-feast-registry/registry.db",
-        "GCS_STAGING_LOCATION": "gs://autoresearch-503903-feast-staging/",
+        "GCS_REGISTRY_PATH": "gs://autoresearch-505505-feast-registry/registry.db",
+        "GCS_STAGING_LOCATION": "gs://autoresearch-505505-feast-staging/",
         "REDIS_HOST": "10.10.16.2",
         "REDIS_PORT": "6379",
         "REDIS_CA_SECRET_ID": "autoresearch-dev-redis-server-ca",
