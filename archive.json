@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-16T09:15:17Z",
+  "generated_at": "2026-08-16T09:16:08Z",
   "reports": [
+    {
+      "number": 333,
+      "title": "fix: 배치 파드에 CODE_ARTIFACTS_BUCKET을 오퍼레이터가 주입한다",
+      "author": "hyochangsung",
+      "merged_at": "2026-08-16T09:15:03Z",
+      "summary_ko": [
+        "배치 파드 실행에 필요한 코드 아카이브 버킷 환경변수를 공통 오퍼레이터에서 자동 주입하도록 수정했습니다.",
+        "DAG별 환경변수 주입 누락으로 발생하던 배치 파드의 기동 즉시 종료(exit 2) 및 파이프라인 중단 장애를 해결했습니다.",
+        "Helm 배포 설정에 해당 변수를 추가하고, 오퍼레이터 기본 주입 동작과 기존 오버라이드 유지를 검증하는 테스트를 구현했습니다."
+      ],
+      "report_url": "pr/333/"
+    },
     {
       "number": 331,
       "title": "feat: GCP 프로젝트 좌표를 autoresearch-505505로 교체",
