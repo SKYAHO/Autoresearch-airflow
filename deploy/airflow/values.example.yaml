@@ -62,6 +62,10 @@ airflow:
       value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-training@sha256:<production-digest>"
     - name: AIRFLOW_VAR_AUTORESEARCH_FEAST_IMAGE
       value: "asia-northeast3-docker.pkg.dev/<gcp-project>/autoresearch-dev-docker/autoresearch-feast@sha256:<production-digest>"
+    # 모든 배치 파드가 GCS 코드 부트스트랩 ENTRYPOINT로 코드를 받으므로
+    # AutoresearchBatchPodOperator가 이 값을 기본 주입한다(#332).
+    - name: AIRFLOW_VAR_CODE_ARTIFACTS_BUCKET
+      value: "<gcs-code-artifacts-bucket-name-without-gs-prefix>"
     - name: AIRFLOW_VAR_FEAST_CODE_ARTIFACTS_BUCKET
       value: "<gcs-code-artifacts-bucket-name-without-gs-prefix>"
     - name: AIRFLOW_VAR_FEAST_GCP_PROJECT_ID

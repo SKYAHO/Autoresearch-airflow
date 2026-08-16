@@ -131,3 +131,77 @@ def test_batch_operator_keeps_xcom_opt_in(monkeypatch) -> None:
 
     assert dag.task_dict["default_task"].kwargs["do_xcom_push"] is False
     assert dag.task_dict["xcom_task"].kwargs["do_xcom_push"] is True
+
+
+def _load_operator_module(name: str):
+    spec = importlib.util.spec_from_file_location(name, KPO_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _env_value(task, name: str) -> str | None:
+    for env in task.kwargs.get("env_vars", []):
+        if env.name == name:
+            return env.value
+    return None
+
+
+def test_batch_operator_always_injects_code_artifacts_bucket(monkeypatch) -> None:
+    """모든 배치 이미지가 GCS 코드 부트스트랩 ENTRYPOINT를 쓰므로, DAG가 따로
+    넘기지 않아도 오퍼레이터가 CODE_ARTIFACTS_BUCKET을 주입해야 한다(#332)."""
+
+    install_airflow_stubs(monkeypatch)
+    monkeypatch.setenv("AIRFLOW_VAR_CODE_ARTIFACTS_BUCKET", "example-code-artifacts")
+    module = _load_operator_module("_batch_operator_code_bucket")
+
+    with FakeDAG() as dag:
+        module.AutoresearchBatchPodOperator(
+            task_id="bootstrap_task",
+            image="example:latest",
+            module="example.job",
+            arguments=[],
+            pipeline="example",
+            execution_timeout=timedelta(minutes=1),
+            cpu_request="250m",
+            memory_request="512Mi",
+            cpu_limit="1",
+            memory_limit="2Gi",
+        )
+
+    task = dag.task_dict["bootstrap_task"]
+    assert _env_value(task, "CODE_ARTIFACTS_BUCKET") == "example-code-artifacts"
+
+
+def test_batch_operator_lets_plain_env_override_code_artifacts_bucket(
+    monkeypatch,
+) -> None:
+    """DAG별 plain_env가 기본 주입값을 덮어써 기존 호출부 동작이 바뀌지 않는다."""
+
+    install_airflow_stubs(monkeypatch)
+    monkeypatch.setenv("AIRFLOW_VAR_CODE_ARTIFACTS_BUCKET", "default-bucket")
+    module = _load_operator_module("_batch_operator_code_bucket_override")
+
+    with FakeDAG() as dag:
+        module.AutoresearchBatchPodOperator(
+            task_id="override_task",
+            image="example:latest",
+            module="example.job",
+            arguments=[],
+            pipeline="example",
+            execution_timeout=timedelta(minutes=1),
+            cpu_request="250m",
+            memory_request="512Mi",
+            cpu_limit="1",
+            memory_limit="2Gi",
+            plain_env={"CODE_ARTIFACTS_BUCKET": "dag-specific-bucket"},
+        )
+
+    task = dag.task_dict["override_task"]
+    values = [
+        env.value
+        for env in task.kwargs["env_vars"]
+        if env.name == "CODE_ARTIFACTS_BUCKET"
+    ]
+    assert values == ["dag-specific-bucket"]

@@ -45,7 +45,11 @@ def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
         module.YOUTUBE_BASE_PATH_TEMPLATE,
         "--overwrite=true",
     ]
-    assert "env_vars" not in task.kwargs
+    # 배치 이미지의 GCS 코드 부트스트랩 ENTRYPOINT가 요구하는 값만 주입된다.
+    # 이 DAG는 자체 plain_env가 없으므로 오퍼레이터 기본값 하나뿐이다(#332).
+    assert {env.name: env.value for env in task.kwargs["env_vars"]} == {
+        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
+    }
     assert task.kwargs["retries"] == 1
     assert task.kwargs["execution_timeout"] == timedelta(hours=2)
     assert task.kwargs["get_logs"] is True

@@ -19,6 +19,11 @@ _BATCH_IMAGE_PULL_POLICY = os.environ.get(
 _API_SECRET_NAME = os.environ.get(
     "AIRFLOW_VAR_AUTORESEARCH_API_SECRET_NAME", "autoresearch-airflow-env"
 )
+# 코드 아카이브 버킷(gs:// 제외한 이름). scripts/gcs_code_bootstrap.sh가
+# CODE_ARTIFACTS_BUCKET 또는 CODE_ARCHIVE_LOCAL_PATH 중 하나를 요구한다.
+_CODE_ARTIFACTS_BUCKET = os.environ.get(
+    "AIRFLOW_VAR_CODE_ARTIFACTS_BUCKET", "autoresearch-505505-code-artifacts"
+)
 _BATCH_SPOT_NODE_SELECTOR = {"cloud.google.com/gke-nodepool": "batch-spot"}
 _BATCH_SPOT_TOLERATIONS = [
     {
@@ -106,9 +111,15 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
             _secret_env_var(key, optional=secret_env_optional)
             for key in secret_env_keys
         ]
+        # 배치 이미지 3종(deployment/Dockerfile.app, .feast, .train)이 모두 GCS
+        # 코드 부트스트랩 ENTRYPOINT를 쓰므로 CODE_ARTIFACTS_BUCKET은 모든 배치
+        # 파드에 필요하다. DAG마다 개별로 넘기던 구조에서는 누락이 파드 시작
+        # 즉시 exit 2로 이어졌으므로(#332) 오퍼레이터가 기본값을 주입한다.
+        # DAG가 plain_env로 같은 key를 주면 그 값이 그대로 유지된다.
+        pod_env = dict(plain_env or {})
+        pod_env.setdefault("CODE_ARTIFACTS_BUCKET", _CODE_ARTIFACTS_BUCKET)
         env_vars += [
-            k8s.V1EnvVar(name=name, value=value)
-            for name, value in (plain_env or {}).items()
+            k8s.V1EnvVar(name=name, value=value) for name, value in pod_env.items()
         ]
         operator_arguments = _KubernetesPodOperatorArguments(
             task_id=task_id,
@@ -116,13 +127,11 @@ class AutoresearchBatchPodOperator(KubernetesPodOperator):
             namespace=_KPO_NAMESPACE,
             image=image,
             # K8s `command`(cmds)를 지정하면 이미지의 ENTRYPOINT가 완전히
-            # 무시된다. GCS 코드 부트스트랩 ENTRYPOINT를 쓰는 이미지
-            # (deployment/Dockerfile.feast, deployment/Dockerfile.train)에서 cmds를 쓰면 코드가
-            # 하나도 풀리지 않은 채 곧장 module이 실행돼 즉시 실패한다.
-            # 대신 실행할 커맨드 전체를 arguments(K8s args)로만 전달한다 —
-            # ENTRYPOINT가 있는 이미지는 부트스트랩 후 `exec "$@"`로 이 값을
-            # 실행하고, ENTRYPOINT가 없는 이미지(deployment/Dockerfile.app)는 K8s가
-            # args를 그대로 실행해 기존 동작과 동일하다.
+            # 무시된다. 배치 이미지 3종(deployment/Dockerfile.app, .feast,
+            # .train)이 모두 GCS 코드 부트스트랩 ENTRYPOINT를 쓰므로, cmds를
+            # 쓰면 코드가 하나도 풀리지 않은 채 곧장 module이 실행돼 즉시
+            # 실패한다. 대신 실행할 커맨드 전체를 arguments(K8s args)로만
+            # 전달해 부트스트랩이 `exec "$@"`로 이 값을 실행하게 한다.
             arguments=["python", "-m", module, *arguments],
             service_account_name=_KPO_SERVICE_ACCOUNT,
             image_pull_policy=_BATCH_IMAGE_PULL_POLICY,

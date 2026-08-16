@@ -161,6 +161,9 @@ def test_feature_build_reads_raw_layer_and_writes_feature_layer(monkeypatch) -> 
         "CTR_TRAINING_BQ_DATASET": "feast_offline_store",
         "CTR_TRAINING_BQ_RAW_DATASET": "data_lake_raw",
         "CTR_TRAINING_BQ_LOCATION": "asia-northeast3",
+        # 배치 이미지의 GCS 코드 부트스트랩 ENTRYPOINT가 요구하는 값으로,
+        # AutoresearchBatchPodOperator가 모든 배치 파드에 주입한다(#332).
+        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
     }
     # raw와 feature 계층이 같은 dataset을 가리키면 batch CLI가 exit 2로 거부한다.
     assert environment["CTR_TRAINING_BQ_RAW_DATASET"] != (
@@ -261,6 +264,9 @@ def test_training_entity_uses_the_same_public_batch_contract(monkeypatch) -> Non
         "CTR_TRAINING_BQ_DATASET": "feast_offline_store",
         "CTR_TRAINING_BQ_RAW_DATASET": "data_lake_raw",
         "CTR_TRAINING_BQ_LOCATION": "asia-northeast3",
+        # 배치 이미지의 GCS 코드 부트스트랩 ENTRYPOINT가 요구하는 값으로,
+        # AutoresearchBatchPodOperator가 모든 배치 파드에 주입한다(#332).
+        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
     }
     assert spine.kwargs["get_logs"] is True
     assert spine.kwargs["do_xcom_push"] is False
