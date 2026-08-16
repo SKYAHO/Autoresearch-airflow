@@ -966,3 +966,15 @@ def test_helm_values_do_not_embed_db_password() -> None:
         # 비밀번호를 평문으로 커밋하지 않는다. 연결은 Secret 참조로만.
         assert "metadataConnection:" not in values, relative_path
         assert not re.search(r"postgresql://[^\s:]+:[^@\s]+@", values), relative_path
+
+
+def test_helm_values_define_shared_code_artifacts_bucket() -> None:
+    """모든 배치 파드가 GCS 코드 부트스트랩으로 코드를 받으므로, 오퍼레이터가
+    기본 주입하는 CODE_ARTIFACTS_BUCKET이 배포 값에 정의되어 있어야 한다(#332)."""
+
+    for values_path in (
+        ROOT / "deploy" / "airflow" / "values.yaml",
+        ROOT / "deploy" / "airflow" / "values.example.yaml",
+    ):
+        values = values_path.read_text(encoding="utf-8")
+        assert "AIRFLOW_VAR_CODE_ARTIFACTS_BUCKET" in values

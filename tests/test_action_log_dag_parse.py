@@ -129,6 +129,9 @@ def test_action_log_dag_imports_and_builds_single_mode_pipeline(monkeypatch) -> 
         "OPENROUTER_TIMEOUT_MAX_RETRIES": "1",
         "OPENROUTER_RETRY_BACKOFF_BASE_SEC": "1",
         "OPENROUTER_RETRY_BACKOFF_MAX_SEC": "30",
+        # 배치 이미지의 GCS 코드 부트스트랩 ENTRYPOINT가 요구하는 값으로,
+        # AutoresearchBatchPodOperator가 모든 배치 파드에 주입한다(#332).
+        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
     }
 
     assert "cmds" not in quality.kwargs
