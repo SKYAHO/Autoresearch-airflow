@@ -32,6 +32,7 @@ jobs:
       AIRFLOW_NAMESPACE: airflow
       AIRFLOW_RELEASE: airflow
       PRODUCTION_DAG_ID: youtube_gcs_action_log_pipeline
+      RENDERED_VALUES: /tmp/airflow-values.rendered.yaml
 
     steps:
       - name: Checkout repository
@@ -44,6 +45,17 @@ jobs:
           configured_project_id: ${{ env.GCP_PROJECT_ID }}
           configured_cluster: ${{ env.GKE_CLUSTER }}
           configured_location: ${{ env.GKE_LOCATION }}
+
+      - name: 배포 값 렌더링 (project id 치환)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # deploy/airflow/values.yaml의 `__AR_PROJECT_ID__` placeholder는
+          # GCP 프로젝트 마이그레이션 때 이 파일을 고치지 않아도 되도록
+          # 배포 시점에만 실제 project id로 치환한다(#334). helm 명령은
+          # 이 렌더링 결과물만 참조하고, 원본 파일은 그대로 커밋에 남는다.
+          sed "s|__AR_PROJECT_ID__|${{ steps.environment.outputs.project_id }}|g" \
+            deploy/airflow/values.yaml >"$RENDERED_VALUES"
 
       - name: Validate deployment configuration
         shell: bash
@@ -109,10 +121,10 @@ jobs:
           helm repo update
           helm dependency update deploy/airflow
           helm lint deploy/airflow \
-            --values deploy/airflow/values.yaml
+            --values "$RENDERED_VALUES"
           helm template "$AIRFLOW_RELEASE" deploy/airflow \
             --namespace "$AIRFLOW_NAMESPACE" \
-            --values deploy/airflow/values.yaml \
+            --values "$RENDERED_VALUES" \
             >/tmp/airflow-gke-dev.yaml
 
       - name: Capture current release and DAG state
@@ -305,7 +317,7 @@ jobs:
           set -euo pipefail
           helm upgrade --install "$AIRFLOW_RELEASE" deploy/airflow \
             --namespace "$AIRFLOW_NAMESPACE" \
-            --values deploy/airflow/values.yaml \
+            --values "$RENDERED_VALUES" \
             --atomic \
             --wait \
             --wait-for-jobs \

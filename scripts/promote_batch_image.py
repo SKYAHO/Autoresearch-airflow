@@ -12,26 +12,41 @@ import re
 from pathlib import Path
 
 
-IMAGE_REGISTRY = (
-    "asia-northeast3-docker.pkg.dev/autoresearch-505505/autoresearch-dev-docker"
-)
+IMAGE_REGISTRY_HOST = "asia-northeast3-docker.pkg.dev"
+IMAGE_REPOSITORY_NAME = "autoresearch-dev-docker"
+# GCP project id 형식만 검증하고 특정 project id를 하드코딩하지 않는다
+# (Autoresearch-infra scripts/environment_catalog.rb의 project_id 검증
+# 정규식과 동일). checked-in values.yaml의 image digest 값은 project id를
+# 하드코딩한 채 promote_batch_image.py가 매 이미지 release마다 커밋하므로,
+# 이 스크립트가 특정 project id를 검증 기준으로 삼으면 GCP 프로젝트
+# 마이그레이션마다 이 파일도 고쳐야 한다(#334) — registry 명명 규칙만
+# 검증하면 그 편집이 사라진다.
+_PROJECT_ID_PATTERN = r"[a-z][a-z0-9-]{4,28}[a-z0-9]"
 DEFAULT_IMAGE_NAME = "autoresearch-batch"
 DEFAULT_VARIABLE_NAME = "AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE"
 
 SOURCE_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 
 
-def image_repository_for(image_name: str) -> str:
-    """Return the fully qualified GAR repository for a dev image name."""
+def image_repository_for(image_name: str, *, project_id: str = "example-project") -> str:
+    """Return an example fully qualified GAR repository for a dev image name.
 
-    return f"{IMAGE_REGISTRY}/{image_name}"
+    ``project_id``는 테스트/예시 fixture용 임의 값이다 — 실제 검증은
+    ``digest_ref_pattern_for``가 project id 형식만으로 수행한다.
+    """
+
+    return f"{IMAGE_REGISTRY_HOST}/{project_id}/{IMAGE_REPOSITORY_NAME}/{image_name}"
 
 
 def digest_ref_pattern_for(image_name: str) -> re.Pattern[str]:
-    """Return a pattern that only matches an immutable digest of this image."""
+    """Return a pattern that matches an immutable digest in our dev registry,
+    regardless of which GCP project currently hosts it."""
 
-    repository = image_repository_for(image_name)
-    return re.compile(rf"{re.escape(repository)}@sha256:[0-9a-f]{{64}}")
+    return re.compile(
+        rf"{re.escape(IMAGE_REGISTRY_HOST)}/{_PROJECT_ID_PATTERN}/"
+        rf"{re.escape(IMAGE_REPOSITORY_NAME)}/{re.escape(image_name)}"
+        r"@sha256:[0-9a-f]{64}"
+    )
 
 
 def values_pattern_for(variable_name: str) -> re.Pattern[str]:

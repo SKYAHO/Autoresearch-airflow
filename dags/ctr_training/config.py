@@ -11,6 +11,13 @@ from __future__ import annotations
 
 import os
 
+from common.gcp_project import (
+    code_artifacts_bucket,
+    current_project_id,
+    feast_registry_gcs_path,
+    feast_staging_gcs_path,
+)
+
 
 def _airflow_env(name: str, default: str) -> str:
     return os.environ.get(f"AIRFLOW_VAR_{name}", default)
@@ -25,7 +32,7 @@ TRAINING_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
 # 실행한다(Autoresearch#177/#196의 gcs_code_bootstrap.sh ENTRYPOINT).
 # feast_materialize/config.py의 CODE_ARTIFACTS_BUCKET과 같은 버킷·패턴.
 CODE_ARTIFACTS_BUCKET = _airflow_env(
-    "TRAINING_CODE_ARTIFACTS_BUCKET", "autoresearch-505505-code-artifacts"
+    "TRAINING_CODE_ARTIFACTS_BUCKET", code_artifacts_bucket()
 )
 
 # MLflow tracking server는 mlflow 네임스페이스의 ClusterIP로 노출되어 있고
@@ -41,18 +48,17 @@ MLFLOW_TRACKING_URI = _airflow_env(
 # 조회 결과를 staging 버킷에 언로드한다. feast_materialize DAG과 같은 registry·
 # staging을 가리키도록 동일한 FEAST_GCS_* Airflow env 이름을 공유한다.
 GCS_REGISTRY_PATH = _airflow_env(
-    "FEAST_GCS_REGISTRY_PATH",
-    "gs://autoresearch-505505-feast-registry/registry.db",
+    "FEAST_GCS_REGISTRY_PATH", feast_registry_gcs_path()
 )
 GCS_STAGING_LOCATION = _airflow_env(
-    "FEAST_GCS_STAGING_LOCATION", "gs://autoresearch-505505-feast-staging/"
+    "FEAST_GCS_STAGING_LOCATION", feast_staging_gcs_path()
 )
 
 # build-features가 training_entity spine을 BigQuery에서 직접 읽을 때 앱의
 # fail-closed 프로젝트 계약(CTR_TRAINING_BQ_PROJECT)을 만족시킨다. ADC의 암묵적
 # 기본 프로젝트에 의존하지 않으며 환경별 override는 Airflow Variable로 받는다.
 CTR_TRAINING_BQ_PROJECT = _airflow_env(
-    "CTR_TRAINING_BQ_PROJECT", "autoresearch-505505"
+    "CTR_TRAINING_BQ_PROJECT", current_project_id()
 )
 
 # 검증된 두 raw Dataset이 모두 갱신되면 자동 실행한다. 기간은 dag_run.conf

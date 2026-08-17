@@ -8,6 +8,8 @@ from typing import TypedDict
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from kubernetes.client import models as k8s
 
+from common.gcp_project import code_artifacts_bucket
+
 
 _KPO_NAMESPACE = os.environ.get("AIRFLOW_VAR_AIRFLOW_KPO_NAMESPACE", "airflow")
 _KPO_SERVICE_ACCOUNT = os.environ.get(
@@ -22,7 +24,7 @@ _API_SECRET_NAME = os.environ.get(
 # 코드 아카이브 버킷(gs:// 제외한 이름). scripts/gcs_code_bootstrap.sh가
 # CODE_ARTIFACTS_BUCKET 또는 CODE_ARCHIVE_LOCAL_PATH 중 하나를 요구한다.
 _CODE_ARTIFACTS_BUCKET = os.environ.get(
-    "AIRFLOW_VAR_CODE_ARTIFACTS_BUCKET", "autoresearch-505505-code-artifacts"
+    "AIRFLOW_VAR_CODE_ARTIFACTS_BUCKET", code_artifacts_bucket()
 )
 _BATCH_SPOT_NODE_SELECTOR = {"cloud.google.com/gke-nodepool": "batch-spot"}
 _BATCH_SPOT_TOLERATIONS = [

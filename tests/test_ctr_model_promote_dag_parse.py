@@ -2,7 +2,7 @@ import importlib.util
 from datetime import timedelta
 from pathlib import Path
 
-from airflow_stubs import forget_pipeline_packages, install_airflow_stubs
+from airflow_stubs import TEST_GCP_PROJECT_ID, forget_pipeline_packages, install_airflow_stubs
 
 DAGS_ROOT = Path(__file__).resolve().parents[1] / "dags"
 CTR_PROMOTE_DAG_PATH = DAGS_ROOT / "ctr_model_promote" / "dag.py"
@@ -72,7 +72,7 @@ def test_ctr_model_promote_dag_uses_training_image_and_mlflow_env(monkeypatch) -
     env_by_name = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
     assert env_by_name == {
         "MLFLOW_TRACKING_URI": "http://mlflow.mlflow:5000",
-        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
+        "CODE_ARTIFACTS_BUCKET": f"{TEST_GCP_PROJECT_ID}-code-artifacts",
         "CTR_SERVING_CALIBRATION_READY": "true",
     }
 

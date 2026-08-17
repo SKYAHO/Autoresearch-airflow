@@ -588,11 +588,14 @@ def test_scheduler_service_account_uses_workload_identity_for_google_operators()
         ROOT / "deploy" / "airflow" / "values.example.yaml"
     ).read_text(encoding="utf-8")
 
+    # project id는 __AR_PROJECT_ID__ placeholder다(#334) — deploy-gke-dev.yml이
+    # 배포 시점에 실제 project id로 치환하므로, 이 파일에는 placeholder가
+    # 그대로 남아 있어야 한다.
     assert re.search(
         r"scheduler:\s*\n"
         r"(?:.*\n)*?\s+serviceAccount:\s*\n"
         r"(?:.*\n)*?\s+iam\.gke\.io/gcp-service-account:\s*"
-        r"autoresearch-dev-airflow@autoresearch-505505\.iam\.gserviceaccount\.com",
+        r"autoresearch-dev-airflow@__AR_PROJECT_ID__\.iam\.gserviceaccount\.com",
         production_values,
     )
     assert "iam.gke.io/gcp-service-account:" in example_values
@@ -616,7 +619,7 @@ def test_gke_values_promote_production_digest_and_complete_gcs_paths() -> None:
         "data_lake/action_log",
         "data_lake/action_log_quarantine",
     ):
-        assert f"gs://autoresearch-505505-autoresearch-dev-raw-data/{suffix}" in values
+        assert f"gs://__AR_PROJECT_ID__-autoresearch-dev-raw-data/{suffix}" in values
 
 
 def test_helm_values_map_backfill_paths_to_airflow_variables() -> None:

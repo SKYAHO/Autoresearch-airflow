@@ -3,6 +3,11 @@ from __future__ import annotations
 import sys
 from types import ModuleType
 
+# DAG config가 GCP_PROJECT_ID 계열 기본값을 common.gcp_project.current_project_id()로
+# 조회하므로(#334), 로컬/CI 테스트에서 메타데이터 서버 없이도 결정적인 값을 쓰도록
+# conftest.py가 이 값을 GCP_PROJECT 환경변수로 미리 설정한다.
+TEST_GCP_PROJECT_ID = "test-project-1234"
+
 
 class Model:
     def __init__(self, **kwargs) -> None:

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 
+from common.gcp_project import code_artifacts_bucket
+
 
 def _airflow_env(name: str, default: str) -> str:
     return os.environ.get(f"AIRFLOW_VAR_{name}", default)
@@ -20,7 +22,7 @@ PROMOTE_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_TRAINING_IMAGE }}"
 # 학습 이미지와 동일하게 코드를 굽지 않고 파드 시작 시 GCS 코드 아카이브를
 # 받아 실행한다(ctr_training/config.py와 동일 버킷·패턴).
 CODE_ARTIFACTS_BUCKET = _airflow_env(
-    "TRAINING_CODE_ARTIFACTS_BUCKET", "autoresearch-505505-code-artifacts"
+    "TRAINING_CODE_ARTIFACTS_BUCKET", code_artifacts_bucket()
 )
 
 MLFLOW_TRACKING_URI = _airflow_env(

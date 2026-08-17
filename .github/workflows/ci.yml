@@ -46,7 +46,12 @@ jobs:
 
       - name: Check DAGs with the real Airflow runtime
         run: |
+          # DAG config가 GCP_PROJECT_ID 계열 기본값을
+          # common.gcp_project.current_project_id()로 조회하는데(#334), 이
+          # 컨테이너는 GKE가 아니라 GCP 메타데이터 서버가 없으므로
+          # GCP_PROJECT로 override한다.
           docker run --rm \
+            --env GCP_PROJECT=ci-dagbag-check \
             --volume "${{ github.workspace }}/dags:/usr/local/airflow/dags:ro" \
             --volume "${{ github.workspace }}/scripts/check_airflow_dagbag.py:/tmp/check_airflow_dagbag.py:ro" \
             autoresearch-airflow-ci \

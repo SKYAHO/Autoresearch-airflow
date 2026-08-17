@@ -2,7 +2,7 @@ import importlib.util
 from datetime import timedelta
 from pathlib import Path
 
-from airflow_stubs import forget_pipeline_packages, install_airflow_stubs
+from airflow_stubs import TEST_GCP_PROJECT_ID, forget_pipeline_packages, install_airflow_stubs
 
 
 DAGS_ROOT = Path(__file__).resolve().parents[1] / "dags"
@@ -48,7 +48,7 @@ def test_backfill_dag_uses_public_image_contract(monkeypatch) -> None:
     # 배치 이미지의 GCS 코드 부트스트랩 ENTRYPOINT가 요구하는 값만 주입된다.
     # 이 DAG는 자체 plain_env가 없으므로 오퍼레이터 기본값 하나뿐이다(#332).
     assert {env.name: env.value for env in task.kwargs["env_vars"]} == {
-        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
+        "CODE_ARTIFACTS_BUCKET": f"{TEST_GCP_PROJECT_ID}-code-artifacts",
     }
     assert task.kwargs["retries"] == 1
     assert task.kwargs["execution_timeout"] == timedelta(hours=2)

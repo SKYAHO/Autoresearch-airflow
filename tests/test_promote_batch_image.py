@@ -3,8 +3,10 @@ from pathlib import Path
 import pytest
 
 from scripts.promote_batch_image import (
+    DEFAULT_IMAGE_NAME,
     IMAGE_REPOSITORY,
     current_digest_ref,
+    digest_ref_pattern_for,
     image_repository_for,
     promote_digest,
     validate_digest_ref,
@@ -88,9 +90,11 @@ def test_checked_in_values_use_a_valid_immutable_digest() -> None:
         / "values.yaml"
     )
 
-    assert current_digest_ref(values_path.read_text(encoding="utf-8")).startswith(
-        f"{IMAGE_REPOSITORY}@sha256:"
-    )
+    # 실제 project id는 GCP 프로젝트 마이그레이션마다 바뀌므로(#334) 특정
+    # project id 문자열이 아니라 dev registry 명명 규칙 + immutable digest
+    # 형식만 검증한다.
+    digest_ref = current_digest_ref(values_path.read_text(encoding="utf-8"))
+    assert digest_ref_pattern_for(DEFAULT_IMAGE_NAME).fullmatch(digest_ref)
 
 
 # ── training/feast 등 대상 파라미터화 (#185) ──────────────────
