@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-17T10:34:36Z",
+  "generated_at": "2026-08-18T05:52:45Z",
   "reports": [
+    {
+      "number": 335,
+      "title": "feat: GCP 프로젝트 마이그레이션 시 인프라 레포만 변경하면 되도록 project id 참조 제거",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-08-18T05:52:30Z",
+      "summary_ko": [
+        "GCP 프로젝트 이전 시 Airflow 저장소 코드/설정을 고치지 않도록 하드코딩된 프로젝트 ID 참조를 전면 제거하였습니다.",
+        "GKE 런타임 환경에서는 메타데이터 서버를 통해 동적으로 프로젝트 ID를 조회하는 공용 헬퍼 모듈을 신설하였습니다.",
+        "Helm 배포 시점에는 치환용 플레이스홀더(__AR_PROJECT_ID__)를 사용하여 인프라 저장소의 프로젝트 ID를 주입받도록 구성하였습니다."
+      ],
+      "report_url": "pr/335/"
+    },
     {
       "number": 333,
       "title": "fix: 배치 파드에 CODE_ARTIFACTS_BUCKET을 오퍼레이터가 주입한다",
