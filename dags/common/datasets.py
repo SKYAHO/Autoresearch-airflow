@@ -16,12 +16,14 @@ import os
 
 from airflow.datasets import Dataset
 
+from common.gcp_project import current_project_id
+
 
 def _airflow_env(name: str, default: str) -> str:
     return os.environ.get(f"AIRFLOW_VAR_{name}", default)
 
 
-_BQ_PROJECT = _airflow_env("LAKE_TO_BQ_PROJECT", "autoresearch-505505")
+_BQ_PROJECT = _airflow_env("LAKE_TO_BQ_PROJECT", current_project_id())
 _RAW_DATASET = _airflow_env("LAKE_TO_BQ_DATASET", "data_lake_raw")
 _FEATURE_DATASET = _airflow_env("FEATURE_BUILD_BQ_DATASET", "feast_offline_store")
 

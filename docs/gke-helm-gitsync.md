@@ -23,6 +23,13 @@ Sync interval: 30s
 `deploy/airflow/values.example.yaml`을 복사해서 사용합니다. 모든 운영 설정은
 `airflow:` 아래에서 관리합니다.
 
+`values.yaml`의 `__AR_PROJECT_ID__`는 배포 시점 치환 placeholder입니다(#334).
+`Deploy Airflow dev` workflow가 `Autoresearch-infra` dev 환경 카탈로그의 project id로
+치환한 사본을 만들어 helm에 넘기므로, 로컬에서 `helm template`/`helm lint`로
+검증할 때는 placeholder가 그대로 남아 있어도 정상 렌더링됩니다(문자열 값이라
+Helm이 실제 GCP 리소스인지 확인하지 않기 때문). README.md의 "values 파일 구분"
+절 참고.
+
 ```yaml
 airflow:
   dags:

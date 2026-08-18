@@ -4,6 +4,8 @@ from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
 
+from airflow_stubs import TEST_GCP_PROJECT_ID
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DAGS_ROOT = ROOT / "dags"
@@ -215,9 +217,9 @@ def test_validate_task_publishes_raw_table_dataset(monkeypatch) -> None:
 
     expected = {
         "youtube_trending": (
-            "bigquery://autoresearch-505505/data_lake_raw/data_lake_youtube_trending_kr"
+            f"bigquery://{TEST_GCP_PROJECT_ID}/data_lake_raw/data_lake_youtube_trending_kr"
         ),
-        "action_log": "bigquery://autoresearch-505505/data_lake_raw/data_lake_action_log",
+        "action_log": f"bigquery://{TEST_GCP_PROJECT_ID}/data_lake_raw/data_lake_action_log",
     }
     for key, uri in expected.items():
         validate = dag.task_dict[f"validate_{key}_partition"]

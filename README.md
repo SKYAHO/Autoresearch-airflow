@@ -439,6 +439,17 @@ DAG와 helper가 같은 git revision으로 배포되므로 DAG 변경만으로�
 - `deploy/airflow/values.example.yaml`: 비밀값이 없는 신규 환경 구성용 placeholder
   values 예제입니다.
 
+`deploy/airflow/values.yaml`에 등장하는 `__AR_PROJECT_ID__`는 실제 GCP project id가
+아니라 배포 시점 치환 placeholder입니다(#334). `Deploy Airflow dev` workflow가 이
+저장소가 아니라 `Autoresearch-infra`의 dev 환경 카탈로그(`config/environments/dev/environment.yaml`)의
+project id로 이 값을 치환한 사본을 만들어 helm에 넘기므로, GCP 프로젝트를 이전해도
+이 파일(과 GAR/GCS/IAM 리소스 이름이 파생되는 다른 값들)을 손대지 않아도 됩니다.
+`AIRFLOW_VAR_AUTORESEARCH_BATCH_IMAGE`/`_TRAINING_IMAGE`/`_FEAST_IMAGE` 3개 이미지
+digest 값만 예외입니다 — 이 값은 `scripts/promote_batch_image.py`가 매 이미지
+release마다 실제 project id로 직접 커밋하는 promotion 대상이라 placeholder 치환
+대상에서 제외했습니다(마이그레이션 때는 이미지를 새 project의 registry로 digest
+보존 복사한 뒤 한 번 재승격하면 됩니다).
+
 현재 dev 설정의 주요 특성은 다음과 같습니다.
 
 - Airflow 2.11.2, `LocalExecutor`
@@ -481,7 +492,9 @@ helm template airflow deploy/airflow \
 
 digest PR 또는 배포 workflow 변경이 `main`에 merge되면 `Deploy Airflow dev` workflow가 실행됩니다.
 
-1. values의 immutable digest 형식과 Helm chart를 검증합니다.
+1. `values.yaml`의 `__AR_PROJECT_ID__` placeholder를 dev 환경 카탈로그의 실제
+   project id로 치환한 사본을 만들고, values의 immutable digest 형식과 Helm
+   chart를 검증합니다.
 2. GKE DNS endpoint로 인증하고 production DAG의 기존 pause 상태를 기록합니다.
 3. DAG를 pause한 뒤 queued/running run이 끝날 때까지 기다립니다.
 4. `helm upgrade --install --atomic`을 수행합니다.

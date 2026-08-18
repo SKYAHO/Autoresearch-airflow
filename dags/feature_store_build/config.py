@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+from common.gcp_project import current_project_id
+
 
 def _airflow_env(name: str, default: str) -> str:
     return os.environ.get(f"AIRFLOW_VAR_{name}", default)
@@ -44,7 +46,7 @@ BATCH_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_BATCH_IMAGE }}"
 
 BATCH_MODULE = "autoresearch.jobs.feature_store_build"
 
-GCP_PROJECT_ID = _airflow_env("FEATURE_BUILD_BQ_PROJECT", "autoresearch-505505")
+GCP_PROJECT_ID = _airflow_env("FEATURE_BUILD_BQ_PROJECT", current_project_id())
 # raw 계층(GCS 적재 결과)과 feature 계층(Feast source)은 물리적으로 분리된
 # dataset이다. 두 값이 같으면 batch CLI가 exit 2로 거부한다.
 BQ_RAW_DATASET = _airflow_env("FEATURE_BUILD_BQ_RAW_DATASET", "data_lake_raw")

@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import os
 
+from common.gcp_project import (
+    code_artifacts_bucket,
+    current_project_id,
+    feast_registry_gcs_path,
+    feast_staging_gcs_path,
+)
+
 
 def _airflow_env(name: str, default: str) -> str:
     return os.environ.get(f"AIRFLOW_VAR_{name}", default)
@@ -14,17 +21,16 @@ def _airflow_env(name: str, default: str) -> str:
 FEAST_IMAGE_TEMPLATE = "{{ var.value.AUTORESEARCH_FEAST_IMAGE }}"
 
 CODE_ARTIFACTS_BUCKET = _airflow_env(
-    "FEAST_CODE_ARTIFACTS_BUCKET", "autoresearch-505505-code-artifacts"
+    "FEAST_CODE_ARTIFACTS_BUCKET", code_artifacts_bucket()
 )
-GCP_PROJECT_ID = _airflow_env("FEAST_GCP_PROJECT_ID", "autoresearch-505505")
+GCP_PROJECT_ID = _airflow_env("FEAST_GCP_PROJECT_ID", current_project_id())
 BQ_DATASET = _airflow_env("FEAST_BQ_DATASET", "feast_offline_store")
 BQ_LOCATION = _airflow_env("FEAST_BQ_LOCATION", "asia-northeast3")
 GCS_REGISTRY_PATH = _airflow_env(
-    "FEAST_GCS_REGISTRY_PATH",
-    "gs://autoresearch-505505-feast-registry/registry.db",
+    "FEAST_GCS_REGISTRY_PATH", feast_registry_gcs_path()
 )
 GCS_STAGING_LOCATION = _airflow_env(
-    "FEAST_GCS_STAGING_LOCATION", "gs://autoresearch-505505-feast-staging/"
+    "FEAST_GCS_STAGING_LOCATION", feast_staging_gcs_path()
 )
 REDIS_HOST = _airflow_env("FEAST_REDIS_HOST", "10.10.16.2")
 REDIS_PORT = _airflow_env("FEAST_REDIS_PORT", "6379")

@@ -4,6 +4,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from airflow_stubs import (
+    TEST_GCP_PROJECT_ID,
     FakeDataset,
     forget_pipeline_packages,
     install_airflow_stubs,
@@ -68,9 +69,9 @@ def test_feature_build_is_triggered_by_both_raw_table_datasets(monkeypatch) -> N
     # 과거 파티션을 수동 재적재해도 검증 성공 즉시 다시 돈다.
     assert dag.kwargs["schedule"] == [
         FakeDataset(
-            "bigquery://autoresearch-505505/data_lake_raw/data_lake_youtube_trending_kr"
+            f"bigquery://{TEST_GCP_PROJECT_ID}/data_lake_raw/data_lake_youtube_trending_kr"
         ),
-        FakeDataset("bigquery://autoresearch-505505/data_lake_raw/data_lake_action_log"),
+        FakeDataset(f"bigquery://{TEST_GCP_PROJECT_ID}/data_lake_raw/data_lake_action_log"),
     ]
     # 스냅샷 2종과 spine은 대상 날짜가 다르므로 태스크를 나눈다(#194).
     assert list(dag.task_dict) == ["build_offline_features", "build_training_entity"]
@@ -85,10 +86,10 @@ def test_feature_build_publishes_offline_store_dataset(monkeypatch) -> None:
     # 배치 대상 테이블별 Dataset을 outlet으로 선언한다.
     assert task.kwargs["outlets"] == [
         FakeDataset(
-            "bigquery://autoresearch-505505/feast_offline_store/user_dynamic_feature"
+            f"bigquery://{TEST_GCP_PROJECT_ID}/feast_offline_store/user_dynamic_feature"
         ),
         FakeDataset(
-            "bigquery://autoresearch-505505/feast_offline_store/video_feature"
+            f"bigquery://{TEST_GCP_PROJECT_ID}/feast_offline_store/video_feature"
         ),
     ]
     # outlet 테이블 목록은 batch CLI --tables 인자와 일치해야 한다.
@@ -120,7 +121,7 @@ def test_feature_build_uses_public_batch_contract(monkeypatch) -> None:
         "-m",
         "autoresearch.jobs.feature_store_build",
         "--project",
-        "autoresearch-505505",
+        f"{TEST_GCP_PROJECT_ID}",
         "--dataset",
         "feast_offline_store",
         "--raw-dataset",
@@ -157,13 +158,13 @@ def test_feature_build_reads_raw_layer_and_writes_feature_layer(monkeypatch) -> 
     environment = {env_var.name: env_var.value for env_var in task.kwargs["env_vars"]}
 
     assert environment == {
-        "CTR_TRAINING_BQ_PROJECT": "autoresearch-505505",
+        "CTR_TRAINING_BQ_PROJECT": f"{TEST_GCP_PROJECT_ID}",
         "CTR_TRAINING_BQ_DATASET": "feast_offline_store",
         "CTR_TRAINING_BQ_RAW_DATASET": "data_lake_raw",
         "CTR_TRAINING_BQ_LOCATION": "asia-northeast3",
         # 배치 이미지의 GCS 코드 부트스트랩 ENTRYPOINT가 요구하는 값으로,
         # AutoresearchBatchPodOperator가 모든 배치 파드에 주입한다(#332).
-        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
+        "CODE_ARTIFACTS_BUCKET": f"{TEST_GCP_PROJECT_ID}-code-artifacts",
     }
     # raw와 feature 계층이 같은 dataset을 가리키면 batch CLI가 exit 2로 거부한다.
     assert environment["CTR_TRAINING_BQ_RAW_DATASET"] != (
@@ -241,7 +242,7 @@ def test_training_entity_publishes_its_own_dataset(monkeypatch) -> None:
 
     assert spine.kwargs["outlets"] == [
         FakeDataset(
-            "bigquery://autoresearch-505505/feast_offline_store/training_entity"
+            f"bigquery://{TEST_GCP_PROJECT_ID}/feast_offline_store/training_entity"
         )
     ]
     outlet_tables = [d.uri.rsplit("/", 1)[1] for d in spine.kwargs["outlets"]]
@@ -260,13 +261,13 @@ def test_training_entity_uses_the_same_public_batch_contract(monkeypatch) -> Non
         "autoresearch.jobs.feature_store_build",
     ]
     assert environment == {
-        "CTR_TRAINING_BQ_PROJECT": "autoresearch-505505",
+        "CTR_TRAINING_BQ_PROJECT": f"{TEST_GCP_PROJECT_ID}",
         "CTR_TRAINING_BQ_DATASET": "feast_offline_store",
         "CTR_TRAINING_BQ_RAW_DATASET": "data_lake_raw",
         "CTR_TRAINING_BQ_LOCATION": "asia-northeast3",
         # 배치 이미지의 GCS 코드 부트스트랩 ENTRYPOINT가 요구하는 값으로,
         # AutoresearchBatchPodOperator가 모든 배치 파드에 주입한다(#332).
-        "CODE_ARTIFACTS_BUCKET": "autoresearch-505505-code-artifacts",
+        "CODE_ARTIFACTS_BUCKET": f"{TEST_GCP_PROJECT_ID}-code-artifacts",
     }
     assert spine.kwargs["get_logs"] is True
     assert spine.kwargs["do_xcom_push"] is False

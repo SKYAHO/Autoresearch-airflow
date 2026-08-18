@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from common.gcp_project import current_project_id
+
 
 PARTITION_DATE_EXPRESSION = (
     "dag_run.conf.get('partition_date') "
@@ -15,7 +17,9 @@ PARTITION_DATE_COMPACT_TEMPLATE = (
     "{{ (" + PARTITION_DATE_EXPRESSION + ") | replace('-', '') }}"
 )
 
-BQ_PROJECT_TEMPLATE = "{{ var.value.get('LAKE_TO_BQ_PROJECT', 'autoresearch-505505') }}"
+BQ_PROJECT_TEMPLATE = (
+    "{{ var.value.get('LAKE_TO_BQ_PROJECT', '" + current_project_id() + "') }}"
+)
 # raw 테이블(data_lake_*)은 feast_offline_store에서 분리되어 전용
 # data_lake_raw dataset으로 이전됐다. feast_offline_store는 Feast feature
 # 테이블 4종 전용이며, 그 dataset 포인터는 feast_materialize/config.py의
