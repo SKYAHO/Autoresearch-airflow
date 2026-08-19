@@ -1,7 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-19T05:52:29Z",
+  "generated_at": "2026-08-19T06:00:51Z",
   "reports": [
+    {
+      "number": 337,
+      "title": "fix: airflow webserver가 mlflow의 예약 ILB IP를 쓰던 것을 되돌린다",
+      "author": "hyeongyu-data",
+      "merged_at": "2026-08-19T06:00:40Z",
+      "summary_ko": [
+        "GCP 프로젝트 이전 후 혼선이 생긴 Airflow 웹서버 내부 로드밸런서 IP를 원래 예약 IP로 정정합니다.",
+        "Airflow 도메인 접속 시 MLflow 서비스가 응답하던 IP 오설정 문제를 해결합니다.",
+        "Helm values의 webserver.service.loadBalancerIP 값을 10.10.0.3에서 10.10.0.2로 변경했습니다."
+      ],
+      "report_url": "pr/337/"
+    },
     {
       "number": 335,
       "title": "feat: GCP 프로젝트 마이그레이션 시 인프라 레포만 변경하면 되도록 project id 참조 제거",
