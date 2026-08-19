@@ -376,8 +376,10 @@ airflow:
       type: LoadBalancer
       # 인프라 예약 IP(terraform output airflow_ilb_ip). 리터럴로 두면 프로젝트·subnet
       # 변경을 따라오지 못한다 — #404 프로젝트 이전에서 구 IP가 남아 private DNS와
-      # 갈렸다(#192, infra#425). 예약 IP 재생성 시 output 값으로 다시 맞춘다.
-      loadBalancerIP: "10.10.0.3"
+      # 갈렸다(#192, infra#425). 08-16 2차 이전(infra#638/#642) 이후에도 이 값이
+      # mlflow의 예약 IP(10.10.0.3)와 뒤바뀌어 있었다(#336, infra#645/#646).
+      # 예약 IP 재생성 시 output 값으로 다시 맞춘다.
+      loadBalancerIP: "10.10.0.2"
       annotations:
         networking.gke.io/load-balancer-type: "Internal"
       ports:
